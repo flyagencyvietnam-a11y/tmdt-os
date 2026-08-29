@@ -5,7 +5,9 @@ Thay thế Google Sheet `VMG_Ads_Lead_Tracker.xlsx`.
 
 > Nguồn sự thật nghiệp vụ: [`docs/SPEC.md`](docs/SPEC.md). Nguyên tắc kỹ thuật: [`CLAUDE.md`](CLAUDE.md).
 
-## Trạng thái: Phase 0 xong · Phase 1 (vận hành cốt lõi) — phần lớn xong
+## Trạng thái: Phase 0–4 hoàn tất
+
+Toàn bộ lộ trình SPEC Mục 21 đã dựng + verify. 44 unit test. `git log`: 4 commit theo phase.
 
 ### Phase 0 — nền tảng
 - **Schema đầy đủ** (Drizzle, `src/lib/db/schema/`) — 18 bảng theo SPEC Mục 7, CHECK
@@ -68,8 +70,33 @@ Thay thế Google Sheet `VMG_Ads_Lead_Tracker.xlsx`.
   nhãn thay vì giá trị thô, áp cho toàn bộ dropdown.
 - 39 unit test.
 
-**Còn lại (Phase 4 / sau):** email cho cảnh báo CRITICAL (cần SMTP), xuất báo cáo XLSX,
-migration xlsx `--commit`, Dashboard VIEWER rút gọn riêng, tích hợp Meta API / DotB EMS.
+### Phase 4 — mở rộng & hoàn thiện (SPEC Mục 21)
+- **Email cảnh báo** `src/lib/email.ts` (nodemailer) — gửi khi cảnh báo CRITICAL;
+  chưa cấu hình SMTP → ghi log, không lỗi.
+- **Xuất XLSX** `src/lib/export-xlsx.ts` + `POST /api/export` (ghi audit `EXPORT` kèm số
+  dòng) — nút XLSX trong Data Grid + nút "Xuất XLSX" ở `/bao-cao` (5 sheet).
+- **`/bao-cao`** — báo cáo đầy đủ: theo sản phẩm (+ đối chiếu % ngân sách), theo nhân
+  sự, theo campaign, cohort, xu hướng tuần; toggle tháng/quý.
+- **Migration xlsx `--commit`** `scripts/migrate-xlsx.ts` — writer đầy đủ + báo cáo đối
+  chiếu (`data/seed/migration-report.md`, SPEC 19.3). Đã test: 566 lead / 58 campaign /
+  22 enrollment ghi thành công. `campaign-map.json` điền tay hoặc tự sinh template.
+- **`/ban-giao`** — bàn giao học viên sang DotB EMS: danh sách WON + doanh thu, xuất
+  CSV, nhập mã HV EMS (SPEC 2.3).
+- **QĐ08 sẵn sàng** — cột `campaign_daily_metrics.source` (MANUAL/API) +
+  `src/lib/services/meta-sync.ts` (stub, tôn trọng số nhập tay).
+- **Chấm điểm lead tự động** `src/lib/services/lead-score.ts` — luật, cột "Điểm" +
+  view "Ưu tiên" ở danh sách lead.
+- **Dashboard VIEWER** — `/` khi role VIEWER: một màn hình, doanh thu/HVM lũy kế vs chỉ
+  tiêu quý, ROAS tổng + theo SP, xu hướng 12 tuần, không dữ liệu cá nhân (SPEC 12.6).
+- **Hạ tầng (infrastructure as code, SPEC 5.3):** `Dockerfile`, `docker-compose.yml`
+  (app/db/caddy), `Caddyfile`, `scripts/backup.sh`, `RUNBOOK.md` đầy đủ.
+
+### Việc thật cần bạn quyết (không phải code)
+- **QĐ01/QĐ02** — ngưỡng CPMQL & giá niêm yết từ TCKT (hiện mặc định 600k).
+- **QĐ09/QĐ11** — VPS production, người dự phòng, rà soát Pháp chế về dữ liệu người < 18.
+- **Migration** — điền `campaign-map.json` (gộp 58 giá trị campaign trùng), chốt giả
+  định "Không chốt" → `max_stage`, rồi `npm run xlsx:migrate -- --commit`.
+- Xóa tài khoản demo `admin/admin` trong `scripts/seed.ts` trước golive.
 
 ## Chạy dev
 
