@@ -51,8 +51,25 @@ Thay thế Google Sheet `VMG_Ads_Lead_Tracker.xlsx`.
   doanh thu, lead WON.
 - 35 unit test.
 
-**Còn lại:** email cho cảnh báo CRITICAL (cần SMTP), xuất báo cáo XLSX, migration xlsx
-`--commit`, module Task/KPI/Sale Enablement (Phase 3).
+### Phase 3 — quản trị đội (SPEC Mục 13/14/15)
+- **Module KPI** `src/lib/services/kpi.ts` + [`/kpi`](src/app/(app)/kpi/page.tsx): giao chỉ
+  tiêu theo kỳ/quý (cá nhân/đội/sản phẩm), số thực tế **tự lấy từ dữ liệu vận hành** qua
+  `computeKpiActual`, thẻ tiến độ có vạch 85/90/100 + vạch tiến độ thời gian + cảnh báo
+  "nguy cơ trượt", điểm KPI tổng, ma trận toàn đội, cảnh báo tổng trọng số ≠ 100%. Bảng
+  `other_costs` (KOL/KOC) để `REVENUE_AFTER_MKT` chạy tự động (QĐ07). Kỳ đã bắt đầu → không
+  sửa chỉ tiêu (trừ ADMIN + lý do + audit).
+- **Module Task** `src/lib/services/tasks.ts` + [`/cong-viec`](src/app/(app)/cong-viec/page.tsx):
+  Kanban 3 cột (của tôi / toàn đội), việc `RECURRING` với luật lặp rút gọn + cron sinh task
+  con mỗi sáng, BLOCKED bắt buộc lý do, thẻ tổng % hoàn thành / quá hạn / bị chặn.
+- **Sale Enablement** `src/lib/services/sale-kit.ts` + [`/sale-kit`](src/app/(app)/sale-kit/page.tsx):
+  bảng `sale_kit_items`, chỉ nội dung `APPROVED` & chưa `valid_until` hiển thị cho EC, tìm
+  toàn văn, nút sao chép, MANAGER duyệt/xóa.
+- Sửa hiển thị Select (Base UI): component `SimpleSelect` truyền `items` để trigger hiện
+  nhãn thay vì giá trị thô, áp cho toàn bộ dropdown.
+- 39 unit test.
+
+**Còn lại (Phase 4 / sau):** email cho cảnh báo CRITICAL (cần SMTP), xuất báo cáo XLSX,
+migration xlsx `--commit`, Dashboard VIEWER rút gọn riêng, tích hợp Meta API / DotB EMS.
 
 ## Chạy dev
 

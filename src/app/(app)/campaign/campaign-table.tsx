@@ -13,18 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { cn } from "@/lib/utils";
 import { fmtInt, fmtRatioX, fmtVnd } from "@/lib/format";
 import { createCampaignAction, setCampaignStatusAction } from "./actions";
-
-const str = (v: unknown) => (v == null ? "" : String(v));
 
 interface Row {
   id: string;
@@ -276,60 +268,38 @@ function CreateCampaignDialog({
           </F>
           <div className="grid grid-cols-2 gap-2">
             <F label="Sản phẩm">
-              <Select value={f.productId} onValueChange={(v) => set("productId", str(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.code}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SimpleSelect
+                value={f.productId}
+                onValueChange={(v) => set("productId", v)}
+                options={products.map((p) => ({ value: p.id, label: p.code }))}
+              />
             </F>
             <F label="Kênh">
-              <Select value={f.channel} onValueChange={(v) => set("channel", str(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["FB", "GOOGLE", "TIKTOK", "KHAC"].map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SimpleSelect
+                value={f.channel}
+                onValueChange={(v) => set("channel", v)}
+                options={["FB", "GOOGLE", "TIKTOK", "KHAC"].map((c) => ({
+                  value: c,
+                  label: c,
+                }))}
+              />
             </F>
             <F label="Mục tiêu">
-              <Select value={f.objective} onValueChange={(v) => set("objective", str(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["MESSAGE", "LEADFORM", "TRAFFIC", "KHAC"].map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SimpleSelect
+                value={f.objective}
+                onValueChange={(v) => set("objective", v)}
+                options={["MESSAGE", "LEADFORM", "TRAFFIC", "KHAC"].map((c) => ({
+                  value: c,
+                  label: c,
+                }))}
+              />
             </F>
             <F label="Người phụ trách">
-              <Select value={f.ownerId} onValueChange={(v) => set("ownerId", str(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {owners.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {o.fullName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SimpleSelect
+                value={f.ownerId}
+                onValueChange={(v) => set("ownerId", v)}
+                options={owners.map((o) => ({ value: o.id, label: o.fullName }))}
+              />
             </F>
             <F label="Ngân sách/ngày (đ)">
               <Input

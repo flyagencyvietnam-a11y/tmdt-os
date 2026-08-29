@@ -3,13 +3,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { OPERATORS_BY_KIND } from "./filter-engine";
 import type {
   Conjunction,
@@ -25,9 +19,6 @@ const EMPTY_GROUP: FilterGroup = { conjunction: "and", conditions: [] };
 export function emptyFilterGroup(): FilterGroup {
   return structuredClone(EMPTY_GROUP);
 }
-
-/** Base UI Select trả value có thể null — chuẩn hóa về string cho handler. */
-const str = (v: unknown): string => (v == null ? "" : String(v));
 
 interface Props<Row> {
   columns: GridColumn<Row>[];
@@ -82,20 +73,17 @@ export function FilterBuilder<Row>({
     >
       <div className="flex items-center gap-2 text-sm">
         <span className="text-muted-foreground">Khớp</span>
-        <Select
+        <SimpleSelect
+          triggerClassName="h-7 w-24"
           value={value.conjunction}
           onValueChange={(v) =>
-            onChange({ ...value, conjunction: str(v) as Conjunction })
+            onChange({ ...value, conjunction: (v || "and") as Conjunction })
           }
-        >
-          <SelectTrigger className="h-7 w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="and">TẤT CẢ</SelectItem>
-            <SelectItem value="or">BẤT KỲ</SelectItem>
-          </SelectContent>
-        </Select>
+          options={[
+            { value: "and", label: "TẤT CẢ" },
+            { value: "or", label: "BẤT KỲ" },
+          ]}
+        />
         <span className="text-muted-foreground">điều kiện dưới đây</span>
       </div>
 
@@ -164,10 +152,10 @@ function ConditionRow<Row>({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select
+      <SimpleSelect
+        triggerClassName="h-7 w-44"
         value={condition.field}
-        onValueChange={(fieldRaw) => {
-          const field = str(fieldRaw);
+        onValueChange={(field) => {
           const nextCol = colByField(field);
           if (!nextCol) return;
           onChange({
@@ -175,54 +163,27 @@ function ConditionRow<Row>({
             operator: OPERATORS_BY_KIND[nextCol.kind][0].value,
           });
         }}
-      >
-        <SelectTrigger className="h-7 w-44">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {columns.map((c) => (
-            <SelectItem key={c.field} value={c.field}>
-              {c.header}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={columns.map((c) => ({ value: c.field, label: c.header }))}
+      />
 
-      <Select
+      <SimpleSelect
+        triggerClassName="h-7 w-40"
         value={condition.operator}
         onValueChange={(operator) =>
-          onChange({ ...condition, operator: str(operator) as FilterOperator })
+          onChange({ ...condition, operator: operator as FilterOperator })
         }
-      >
-        <SelectTrigger className="h-7 w-40">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {ops.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={ops.map((o) => ({ value: o.value, label: o.label }))}
+      />
 
       {opMeta.args >= 1 &&
         (col.kind === "enum" && col.enumOptions ? (
-          <Select
+          <SimpleSelect
+            triggerClassName="h-7 w-40"
+            placeholder="Chọn…"
             value={String(condition.value ?? "")}
-            onValueChange={(v) => onChange({ ...condition, value: str(v) })}
-          >
-            <SelectTrigger className="h-7 w-40">
-              <SelectValue placeholder="Chọn…" />
-            </SelectTrigger>
-            <SelectContent>
-              {col.enumOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onValueChange={(v) => onChange({ ...condition, value: v })}
+            options={col.enumOptions.map((o) => ({ value: o.value, label: o.label }))}
+          />
         ) : (
           <Input
             className="h-7 w-36"

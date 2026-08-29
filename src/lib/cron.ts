@@ -9,6 +9,7 @@ import {
   runColdDataSweep,
   runMonthLockReminder,
   runOverdueDigest,
+  runSpawnRecurring,
   runWeeklySummary,
 } from "@/lib/services/jobs";
 
@@ -34,6 +35,7 @@ export function startCron() {
 
   cron.schedule("0 8 * * *", wrap("overdue-digest", () => runOverdueDigest(db)), { timezone: TZ });
   cron.schedule("0 8 * * *", wrap("alert-scan-8h", () => runAlertScan(db)), { timezone: TZ });
+  cron.schedule("0 8 * * *", wrap("spawn-recurring", () => runSpawnRecurring(db)), { timezone: TZ });
   cron.schedule("30 10 * * *", wrap("alert-scan-10h30", () => runAlertScan(db)), { timezone: TZ });
   cron.schedule("30 0 * * *", wrap("cold-data-sweep", () => runColdDataSweep(db)), { timezone: TZ });
   cron.schedule("0 8 * * 1", wrap("weekly-summary", () => runWeeklySummary(db)), { timezone: TZ });

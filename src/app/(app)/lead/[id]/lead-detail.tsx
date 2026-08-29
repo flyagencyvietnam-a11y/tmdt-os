@@ -13,13 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Textarea } from "@/components/ui/textarea";
 import type { FormRefs } from "@/lib/services/refs";
 import { fmtDate, fmtDateTime, fmtVnd } from "@/lib/format";
@@ -29,7 +23,6 @@ import {
   updateLeadAction,
 } from "../actions";
 
-const str = (v: unknown) => (v == null ? "" : String(v));
 const STAGE_LABELS: Record<string, string> = {
   NEW: "Mới",
   NO_CONTACT: "Không LH được",
@@ -343,50 +336,35 @@ function CareForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <Mini label="Kênh">
-            <Select value={channel} onValueChange={(v) => setChannel(str(v))}>
-              <SelectTrigger className="h-8 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CHANNELS.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SimpleSelect
+              triggerClassName="h-8 w-full"
+              value={channel}
+              onValueChange={setChannel}
+              options={CHANNELS.map((c) => ({ value: c, label: c }))}
+            />
           </Mini>
           <Mini label="Hướng">
-            <Select value={direction} onValueChange={(v) => setDirection(str(v))}>
-              <SelectTrigger className="h-8 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="OUTBOUND">Mình liên hệ</SelectItem>
-                <SelectItem value="INBOUND">Khách nhắn</SelectItem>
-              </SelectContent>
-            </Select>
+            <SimpleSelect
+              triggerClassName="h-8 w-full"
+              value={direction}
+              onValueChange={setDirection}
+              options={[
+                { value: "OUTBOUND", label: "Mình liên hệ" },
+                { value: "INBOUND", label: "Khách nhắn" },
+              ]}
+            />
           </Mini>
         </div>
         <Mini label="Kết quả">
-          <Select
+          <SimpleSelect
+            triggerClassName="h-8 w-full"
             value={result}
             onValueChange={(v) => {
-              setResult(str(v));
+              setResult(v);
               setNextDateEdit(null);
             }}
-          >
-            <SelectTrigger className="h-8 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RESULTS.map((r) => (
-                <SelectItem key={r.v} value={r.v}>
-                  {r.l}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={RESULTS.map((r) => ({ value: r.v, label: r.l }))}
+          />
         </Mini>
         <Mini label="Nội dung trao đổi">
           <Textarea
@@ -396,19 +374,18 @@ function CareForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
           />
         </Mini>
         <Mini label="Giai đoạn mới (nếu có)">
-          <Select value={stageAfter} onValueChange={(v) => setStageAfter(str(v))}>
-            <SelectTrigger className="h-8 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__keep">— giữ nguyên —</SelectItem>
-              {["NO_CONTACT", "CONSULTING", "MQL", "SQL"].map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STAGE_LABELS[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SimpleSelect
+            triggerClassName="h-8 w-full"
+            value={stageAfter}
+            onValueChange={setStageAfter}
+            options={[
+              { value: "__keep", label: "— giữ nguyên —" },
+              ...["NO_CONTACT", "CONSULTING", "MQL", "SQL"].map((s) => ({
+                value: s,
+                label: STAGE_LABELS[s],
+              })),
+            ]}
+          />
         </Mini>
         {stageAfter !== "__keep" && (
           <Input
@@ -575,18 +552,11 @@ function StatusControls({ lead, onDone }: { lead: Lead; onDone: () => void }) {
           </DialogHeader>
           <div className="space-y-2">
             <Label>Lý do</Label>
-            <Select value={disqReason} onValueChange={(v) => setDisqReason(str(v))}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DISQ.map((d) => (
-                  <SelectItem key={d.v} value={d.v}>
-                    {d.l}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SimpleSelect
+              value={disqReason}
+              onValueChange={setDisqReason}
+              options={DISQ.map((d) => ({ value: d.v, label: d.l }))}
+            />
             <Button
               className="w-full"
               disabled={pending}
@@ -678,18 +648,14 @@ function RevenueSection({
           </DialogHeader>
           <div className="space-y-2">
             <Mini label="Sản phẩm">
-              <Select value={f.productId} onValueChange={(v) => set("productId", str(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {refs.products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.code} — {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SimpleSelect
+                value={f.productId}
+                onValueChange={(v) => set("productId", v)}
+                options={refs.products.map((p) => ({
+                  value: p.id,
+                  label: `${p.code} — ${p.name}`,
+                }))}
+              />
             </Mini>
             <div className="grid grid-cols-2 gap-2">
               <Mini label="Ngày hợp đồng">

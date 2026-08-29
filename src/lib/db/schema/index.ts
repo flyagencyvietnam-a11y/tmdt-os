@@ -6,5 +6,6 @@ export * from "./leads";
 export * from "./enrollments";
 export * from "./tasks";
 export * from "./kpi";
+export * from "./sale-kit";
 export * from "./system";
 export * from "./relations";

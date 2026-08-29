@@ -32,13 +32,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { cn } from "@/lib/utils";
 import { aggregate, buildGroups, type GroupNode } from "./aggregations";
 import { downloadCsv, rowsToCsv } from "./export-csv";
@@ -67,9 +61,6 @@ export interface DataGridProps<Row> {
   onEditCell?: (rowId: string, field: string, value: string) => void;
   emptyText?: string;
 }
-
-/** Base UI Select trả value có thể null — chuẩn hóa về string. */
-const str = (v: unknown): string => (v == null ? "" : String(v));
 
 const triggerBtn = cn(buttonVariants({ variant: "outline", size: "sm" }));
 
@@ -621,25 +612,16 @@ function SortButton<Row>({
         <div className="space-y-2">
           {sorts.map((s, i) => (
             <div key={i} className="flex items-center gap-2">
-              <Select
+              <SimpleSelect
+                triggerClassName="h-7 flex-1"
                 value={s.field}
                 onValueChange={(field) => {
                   const next = sorts.slice();
-                  next[i] = { ...s, field: str(field) };
+                  next[i] = { ...s, field };
                   onChange({ sorts: next });
                 }}
-              >
-                <SelectTrigger className="h-7 flex-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {columns.map((c) => (
-                    <SelectItem key={c.field} value={c.field}>
-                      {c.header}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={columns.map((c) => ({ value: c.field, label: c.header }))}
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -711,28 +693,21 @@ function GroupButton<Row>({
       <PopoverContent className="w-80" align="start">
         <div className="space-y-2">
           {[0, 1, 2].map((level) => (
-            <Select
+            <SimpleSelect
               key={level}
+              triggerClassName="h-8 w-full"
+              placeholder={`Cấp ${level + 1}`}
               value={groupBy[level]?.field ?? "__none"}
-              onValueChange={(fieldRaw) => {
-                const field = str(fieldRaw);
+              onValueChange={(field) => {
                 const next = groupBy.slice(0, level);
                 if (field && field !== "__none") next.push({ field });
                 onChange({ groupBy: next });
               }}
-            >
-              <SelectTrigger className="h-8">
-                <SelectValue placeholder={`Cấp ${level + 1}`} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— không —</SelectItem>
-                {groupable.map((c) => (
-                  <SelectItem key={c.field} value={c.field}>
-                    {c.header}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "__none", label: "— không —" },
+                ...groupable.map((c) => ({ value: c.field, label: c.header })),
+              ]}
+            />
           ))}
           <p className="text-xs text-muted-foreground">
             Đặt cột tổng hợp ở nút “Cột”.
@@ -779,29 +754,24 @@ function ColumnsButton<Row>({
                 />
                 <span className="flex-1 truncate">{c.header}</span>
                 {(c.kind === "number" || c.kind === "money") && (
-                  <Select
+                  <SimpleSelect
+                    triggerClassName="h-7 w-24"
                     value={conf?.aggregate ?? "__none"}
                     onValueChange={(v) =>
                       setCol(c.field, {
                         aggregate:
-                          str(v) === "__none"
-                            ? undefined
-                            : (str(v) as AggregateFn),
+                          v === "__none" ? undefined : (v as AggregateFn),
                       })
                     }
-                  >
-                    <SelectTrigger className="h-7 w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none">—</SelectItem>
-                      <SelectItem value="sum">tổng</SelectItem>
-                      <SelectItem value="avg">TB</SelectItem>
-                      <SelectItem value="min">nhỏ nhất</SelectItem>
-                      <SelectItem value="max">lớn nhất</SelectItem>
-                      <SelectItem value="count">đếm</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: "__none", label: "—" },
+                      { value: "sum", label: "tổng" },
+                      { value: "avg", label: "TB" },
+                      { value: "min", label: "nhỏ nhất" },
+                      { value: "max", label: "lớn nhất" },
+                      { value: "count", label: "đếm" },
+                    ]}
+                  />
                 )}
               </div>
             );

@@ -12,13 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { ROLE_LABELS, type Role } from "@/lib/auth/permissions";
 import { fmtDateTime } from "@/lib/format";
 import {
@@ -242,18 +236,11 @@ function RoleField({ defaultValue }: { defaultValue?: Role }) {
     <div className="space-y-1">
       <Label>Vai trò</Label>
       <input type="hidden" name="role" value={value} />
-      <Select value={value} onValueChange={(v) => v && setValue(v as Role)}>
-        <SelectTrigger className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {ROLES.map((r) => (
-            <SelectItem key={r} value={r}>
-              {r} — {ROLE_LABELS[r]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SimpleSelect
+        value={value}
+        onValueChange={(v) => v && setValue(v as Role)}
+        options={ROLES.map((r) => ({ value: r, label: `${r} — ${ROLE_LABELS[r]}` }))}
+      />
     </div>
   );
 }

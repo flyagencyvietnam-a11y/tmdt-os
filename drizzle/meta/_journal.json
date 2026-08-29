@@ -15,6 +15,13 @@
       "when": 1787972477677,
       "tag": "0001_enrollment_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787975461699,
+      "tag": "0002_sale_kit",
+      "breakpoints": true
     }
   ]
 }

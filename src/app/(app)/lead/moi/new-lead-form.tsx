@@ -7,13 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Textarea } from "@/components/ui/textarea";
 import type { FormRefs } from "@/lib/services/refs";
 import { checkDuplicatesAction, createLeadAction } from "../actions";
@@ -36,8 +30,6 @@ const STAGES = [
   { v: "MQL", l: "MQL" },
   { v: "SQL", l: "SQL" },
 ];
-
-const str = (v: unknown) => (v == null ? "" : String(v));
 
 export function NewLeadForm({
   refs,
@@ -165,85 +157,55 @@ export function NewLeadForm({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Sản phẩm *">
-          <Select value={f.productId} onValueChange={(v) => set("productId", str(v))}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {refs.products.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                  {!p.isActive ? " (ngừng)" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SimpleSelect
+            value={f.productId}
+            onValueChange={(v) => set("productId", v)}
+            options={refs.products.map((p) => ({
+              value: p.id,
+              label: `${p.code} — ${p.name}${!p.isActive ? " (ngừng)" : ""}`,
+            }))}
+          />
         </Field>
         <Field label="Nguồn *">
-          <Select value={f.source} onValueChange={(v) => set("source", str(v))}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SOURCES.map((s) => (
-                <SelectItem key={s.v} value={s.v}>
-                  {s.l}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SimpleSelect
+            value={f.source}
+            onValueChange={(v) => set("source", v)}
+            options={SOURCES.map((s) => ({ value: s.v, label: s.l }))}
+          />
         </Field>
       </div>
 
       {showCampaign && (
         <Field label="Campaign">
-          <Select
+          <SimpleSelect
             value={f.campaignId || "__none"}
-            onValueChange={(v) => set("campaignId", str(v) === "__none" ? "" : str(v))}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="— chưa gán —" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none">— chưa gán —</SelectItem>
-              {campaignOptions.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.displayName} ({c.internalCode})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onValueChange={(v) => set("campaignId", v === "__none" ? "" : v)}
+            placeholder="— chưa gán —"
+            options={[
+              { value: "__none", label: "— chưa gán —" },
+              ...campaignOptions.map((c) => ({
+                value: c.id,
+                label: `${c.displayName} (${c.internalCode})`,
+              })),
+            ]}
+          />
         </Field>
       )}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Giai đoạn *">
-          <Select value={f.stage} onValueChange={(v) => set("stage", str(v))}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STAGES.map((s) => (
-                <SelectItem key={s.v} value={s.v}>
-                  {s.l}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SimpleSelect
+            value={f.stage}
+            onValueChange={(v) => set("stage", v)}
+            options={STAGES.map((s) => ({ value: s.v, label: s.l }))}
+          />
         </Field>
         <Field label="Người phụ trách">
-          <Select value={f.assignedTo} onValueChange={(v) => set("assignedTo", str(v))}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {refs.ecUsers.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.fullName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SimpleSelect
+            value={f.assignedTo}
+            onValueChange={(v) => set("assignedTo", v)}
+            options={refs.ecUsers.map((u) => ({ value: u.id, label: u.fullName }))}
+          />
         </Field>
       </div>
 

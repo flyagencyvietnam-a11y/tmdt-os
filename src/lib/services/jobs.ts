@@ -10,6 +10,7 @@ import { COLD_LOST_REASON } from "./escalate";
 import { evaluateCampaignAlerts } from "./metrics";
 import type { AnyDb } from "./metrics";
 import { getManagerIds, notify, notifyMany } from "./notifications";
+import { spawnRecurringTasks } from "./tasks";
 
 export interface JobResult {
   job: string;
@@ -207,11 +208,18 @@ export async function runMonthLockReminder(
   return { job: "month-lock-reminder", createdNotifications: n, affected: 0 };
 }
 
+/** 08:00 — sinh task con từ việc định kỳ (SPEC 17.2 / 13.2). */
+export async function runSpawnRecurring(db: AnyDb, now = new Date()): Promise<JobResult> {
+  const r = await spawnRecurringTasks(db, now);
+  return { job: "spawn-recurring", createdNotifications: 0, affected: r.created };
+}
+
 /** Chạy toàn bộ tác vụ buổi sáng (dùng cho nút "chạy ngay" của ADMIN). */
 export async function runAllMorningJobs(db: AnyDb, now = new Date()) {
   return {
     overdue: await runOverdueDigest(db, now),
     alerts: await runAlertScan(db, now),
     cold: await runColdDataSweep(db),
+    recurring: await runSpawnRecurring(db, now),
   };
 }

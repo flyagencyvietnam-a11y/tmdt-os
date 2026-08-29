@@ -28,7 +28,8 @@ export async function runMorningJobsAction() {
     summary:
       `Quá hạn: ${r.overdue.createdNotifications} tb / ${r.overdue.affected} lead. ` +
       `Cảnh báo: ${r.alerts.createdNotifications} tb / ${r.alerts.affected} campaign. ` +
-      `Cold Data: ${r.cold.affected} lead.`,
+      `Cold Data: ${r.cold.affected} lead. ` +
+      `Việc định kỳ: +${r.recurring.affected} task.`,
   };
 }
 

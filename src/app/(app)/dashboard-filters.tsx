@@ -3,19 +3,11 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-const str = (v: unknown) => (v == null ? "" : String(v));
 
 const RANGES = [
   { v: "today", l: "Hôm nay" },
@@ -80,31 +72,19 @@ export function DashboardFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
-      <Select value={range} onValueChange={(v) => push({ range: str(v) })}>
-        <SelectTrigger className="h-8 w-36">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {RANGES.map((r) => (
-            <SelectItem key={r.v} value={r.v}>
-              {r.l}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SimpleSelect
+        triggerClassName="h-8 w-36"
+        value={range}
+        onValueChange={(v) => push({ range: v })}
+        options={RANGES.map((r) => ({ value: r.v, label: r.l }))}
+      />
 
-      <Select value={cmp} onValueChange={(v) => push({ cmp: str(v) })}>
-        <SelectTrigger className="h-8 w-44">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {COMPARE.map((c) => (
-            <SelectItem key={c.v} value={c.v}>
-              So với: {c.l}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SimpleSelect
+        triggerClassName="h-8 w-44"
+        value={cmp}
+        onValueChange={(v) => push({ cmp: v })}
+        options={COMPARE.map((c) => ({ value: c.v, label: `So với: ${c.l}` }))}
+      />
 
       <Popover>
         <PopoverTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>

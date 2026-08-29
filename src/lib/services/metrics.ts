@@ -799,6 +799,28 @@ export async function computeKpiActual(
       };
       return map[formulaKey];
     }
+    case "task_completion": {
+      // Task DONE / tổng task (không tính đã xóa/hủy) — SPEC Mục 14.2.
+      const conds = [
+        sql`t.deleted_at is null`,
+        sql`t.status <> 'CANCELLED'`,
+        sql`t.due_date >= ${filter.from} and t.due_date <= ${filter.to}`,
+      ];
+      if (filter.assignedTo?.length)
+        conds.push(
+          sql`t.assignee_id in (${sql.join(
+            filter.assignedTo.map((id) => sql`${id}`),
+            sql`, `,
+          )})`,
+        );
+      const [row] = await db.execute<{ done: number; total: number }>(sql`
+        select count(*) filter (where t.status = 'DONE')::int as done,
+               count(*)::int as total
+        from tasks t
+        where ${sql.join(conds, sql` and `)}
+      `).then((r) => (Array.isArray(r) ? r : (r as { rows: { done: number; total: number }[] }).rows));
+      return safeDiv(n(row?.done), n(row?.total));
+    }
     default:
       return null;
   }

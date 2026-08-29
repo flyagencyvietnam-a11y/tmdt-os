@@ -7,17 +7,9 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { lockPeriodAction, unlockPeriodAction } from "./actions";
-
-const str = (v: unknown) => (v == null ? "" : String(v));
 
 export function KhoaSoManager({
   suggestions,
@@ -46,18 +38,12 @@ export function KhoaSoManager({
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Tháng</label>
-            <Select value={pick} onValueChange={(v) => setPick(str(v))}>
-              <SelectTrigger className="h-8 w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {suggestions.map((s) => (
-                  <SelectItem key={s.label} value={s.label}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SimpleSelect
+              triggerClassName="h-8 w-40"
+              value={pick}
+              onValueChange={setPick}
+              options={suggestions.map((s) => ({ value: s.label, label: s.label }))}
+            />
           </div>
           <Input
             className="h-8 w-56"
