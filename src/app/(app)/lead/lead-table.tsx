@@ -55,11 +55,14 @@ export interface LeadRow {
   nextContactDate: string | null;
   silenceCount: number;
   isCold: boolean;
+  lastContactedAt: string | null;
   receivedAt: string | null;
   mqlAt: string | null;
   wonAt: string | null;
   revenue: number;
   interactionCount: number;
+  score: number;
+  scoreBand: string;
 }
 
 // Prebuilt views — SPEC Mục 11.4
@@ -202,6 +205,23 @@ const PREBUILT: SavedViewLike[] = [
           { field: "phone", operator: "empty" },
         ],
       },
+    },
+  },
+  {
+    id: "v-priority",
+    entity: "LEADS",
+    name: "Ưu tiên (điểm cao)",
+    visibility: "SHARED",
+    isDefault: false,
+    config: {
+      filters: {
+        conjunction: "and",
+        conditions: [
+          { field: "outcome", operator: "is", value: "OPEN" },
+          { field: "score", operator: "gte", value: 45 },
+        ],
+      },
+      sorts: [{ field: "score", direction: "desc" }],
     },
   },
 ];
@@ -355,6 +375,26 @@ export function LeadTable({
             </span>
           );
         },
+      },
+      {
+        field: "score",
+        header: "Điểm",
+        kind: "number",
+        accessor: (r) => r.score,
+        align: "right",
+        cell: (r) => (
+          <span
+            className={
+              r.scoreBand === "hot"
+                ? "font-semibold text-crit"
+                : r.scoreBand === "warm"
+                  ? "font-medium text-warn"
+                  : "text-muted-foreground"
+            }
+          >
+            {r.score}
+          </span>
+        ),
       },
       {
         field: "silenceCount",

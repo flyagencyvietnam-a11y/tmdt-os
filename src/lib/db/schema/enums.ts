@@ -165,6 +165,9 @@ export const otherCostTypeEnum = pgEnum("other_cost_type", [
   "OTHER",
 ]);
 
+/** Nguồn số liệu ads: nhập tay hay tự kéo từ API (QĐ08 — sẵn sàng cho Phase 4). */
+export const metricSourceEnum = pgEnum("metric_source", ["MANUAL", "API"]);
+
 /** Thứ hạng giai đoạn để so sánh trong TypeScript (khớp thứ tự enum Postgres). */
 export const STAGE_RANK: Record<
   (typeof leadStageEnum.enumValues)[number],

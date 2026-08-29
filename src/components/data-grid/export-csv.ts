@@ -34,3 +34,48 @@ export function downloadCsv(filename: string, csv: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** Xuất XLSX qua API (ghi audit ở server). SPEC Mục 16.1. */
+export async function downloadXlsx<Row>(
+  filename: string,
+  entity: string,
+  rows: Row[],
+  columns: GridColumn<Row>[],
+): Promise<void> {
+  const payload = {
+    filename,
+    entity,
+    sheets: [
+      {
+        name: entity,
+        columns: columns.map((c) => ({ header: c.header, key: c.field })),
+        rows: rows.map((r) => {
+          const o: Record<string, unknown> = {};
+          for (const c of columns) {
+            const raw = c.accessor(r);
+            o[c.field] =
+              c.kind === "enum" && c.enumLabels && typeof raw === "string"
+                ? (c.enumLabels[raw] ?? raw)
+                : raw instanceof Date
+                  ? raw.toISOString().slice(0, 10)
+                  : (raw as unknown);
+          }
+          return o;
+        }),
+      },
+    ],
+  };
+  const res = await fetch("/api/export", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Xuất XLSX thất bại");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

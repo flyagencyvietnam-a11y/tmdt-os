@@ -23,10 +23,48 @@ import {
   fmtRatioX,
   fmtVnd,
 } from "@/lib/format";
+import { getBaseMetrics } from "@/lib/services/metrics";
+import { getKpiProgressForPeriod } from "@/lib/services/kpi";
 import { monthBounds, quarterBounds, todayVnDayStr, addDaysStr } from "@/lib/time";
 import { DashboardFilters } from "./dashboard-filters";
 import { RunJobsButton } from "./run-jobs-button";
 import { TrendChart } from "./trend-chart";
+import { ViewerDashboard } from "./viewer-dashboard";
+
+async function loadViewerData() {
+  const today = todayVnDayStr();
+  const [qs, qe] = quarterBounds(today);
+  const qLabel = `${qs.slice(0, 4)}-Q${
+    Math.floor((Number(qs.slice(5, 7)) - 1) / 3) + 1
+  }`;
+  const qFilter = { from: qs, to: qe };
+  try {
+    const [b, bp, tr, kpis] = await Promise.all([
+      getBaseMetrics(db, qFilter),
+      breakdownByProduct(db, qFilter),
+      weeklyTrend(db, { weeks: 12, filter: qFilter }),
+      getKpiProgressForPeriod(db, { periodStart: qs, periodEnd: qe }),
+    ]);
+    return {
+      quarterLabel: qLabel,
+      from: qs,
+      to: qe,
+      revenueGross: b.revenueGross,
+      hvm: b.hvm,
+      roas: b.spend > 0 ? b.revenueGross / b.spend : null,
+      revenueTarget: kpis.find((k) => k.code === "REVENUE_GROSS")?.target ?? null,
+      hvmTarget: kpis.find((k) => k.code === "HVM")?.target ?? null,
+      byProduct: bp.rows.map((r) => ({
+        code: r.label.split(" — ")[0],
+        roas: r.metrics.roas,
+        revenue: r.metrics.revenueGross,
+      })),
+      trend: tr,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +102,18 @@ export default async function DashboardPage({
   const user = await requireUser();
   const sp = await searchParams;
   const isViewer = user.role === "VIEWER";
+
+  // VIEWER (BOD): màn hình rút gọn, không dữ liệu cá nhân — SPEC Mục 12.6.
+  if (isViewer) {
+    const viewerData = await loadViewerData();
+    if (!viewerData)
+      return (
+        <p className="text-sm text-muted-foreground">
+          Chưa lấy được dữ liệu. Kiểm tra kết nối cơ sở dữ liệu.
+        </p>
+      );
+    return <ViewerDashboard {...viewerData} />;
+  }
 
   const { from, to, label } = resolveRange(sp.range ?? "this_month");
   const cmpMode = (sp.cmp ?? "prev") as "prev" | "yoy" | "none";

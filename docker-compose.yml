@@ -1,0 +1,57 @@
+# VMG TMĐT OS — Docker Compose (SPEC Mục 5.3).
+# 3 service: app (Next.js) · db (PostgreSQL 16) · caddy (reverse proxy + HTTPS tự động).
+# Chạy: cp .env.example .env  (điền giá trị)  &&  docker compose up -d --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vmg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?bat buoc dat POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-vmg_tmdt_os}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./backup:/backup
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vmg}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-vmg}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-vmg_tmdt_os}
+      AUTH_SECRET: ${AUTH_SECRET:?bat buoc dat AUTH_SECRET}
+      APP_URL: ${APP_URL:-https://tmdt.vmg.local}
+      APP_TZ: Asia/Ho_Chi_Minh
+      ENABLE_CRON: "true"
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-VMG TMĐT OS <no-reply@vmg.local>}
+      NODE_ENV: production
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

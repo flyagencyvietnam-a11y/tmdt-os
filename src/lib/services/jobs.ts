@@ -2,9 +2,10 @@
  * Tác vụ định kỳ — SPEC Mục 17.2. Mỗi hàm chạy độc lập, idempotent trong ngày
  * (dùng dedupeKey). Gọi từ cron (src/lib/cron.ts) hoặc nút "chạy ngay" của ADMIN.
  */
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import { campaigns, leadStageHistory, leads, users } from "@/lib/db/schema";
+import { sendMail } from "@/lib/email";
 import { addDaysStr, todayVnDayStr } from "@/lib/time";
 import { COLD_LOST_REASON } from "./escalate";
 import { evaluateCampaignAlerts } from "./metrics";
@@ -16,7 +17,17 @@ export interface JobResult {
   job: string;
   createdNotifications: number;
   affected: number;
+  emailsSent?: number;
   detail?: string;
+}
+
+async function emailsFor(db: AnyDb, userIds: string[]): Promise<string[]> {
+  if (!userIds.length) return [];
+  const rows = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(and(inArray(users.id, userIds), eq(users.isActive, true)));
+  return rows.map((r) => r.email);
 }
 
 /** 08:00 — tổng hợp lead quá hạn theo từng EC (SPEC 17.2). */
@@ -99,6 +110,8 @@ export async function runAlertScan(db: AnyDb, now = new Date()): Promise<JobResu
   const managers = await getManagerIds(db);
 
   let created = 0;
+  const critTargets = new Set<string>();
+  const critLines: string[] = [];
   for (const a of alerts) {
     const targets = new Set<string>(managers);
     const owner = ownerMap.get(a.campaignId);
@@ -112,11 +125,31 @@ export async function runAlertScan(db: AnyDb, now = new Date()): Promise<JobResu
       linkUrl: "/campaign",
       dedupeKey: `campaign:${a.campaignId}:${a.rule}:${today}`,
     });
+    if (sev === "CRITICAL") {
+      for (const t of targets) critTargets.add(t);
+      critLines.push(`[${a.rule}] ${a.displayName} — ${a.detail}`);
+    }
   }
+
+  // Email cho mức CRITICAL (SPEC 17.1)
+  let emailsSent = 0;
+  if (critLines.length) {
+    const to = await emailsFor(db, [...critTargets]);
+    if (to.length) {
+      const r = await sendMail({
+        to,
+        subject: `[VMG TMĐT OS] ${critLines.length} cảnh báo campaign CRITICAL`,
+        text: `${critLines.join("\n")}\n\nMở: ${process.env.APP_URL ?? ""}/campaign`,
+      });
+      emailsSent = r.sent ? to.length : 0;
+    }
+  }
+
   return {
     job: "alert-scan",
     createdNotifications: created,
     affected: alerts.length,
+    emailsSent,
     detail: alerts.map((a) => `${a.rule}:${a.displayName}`).join(", "),
   };
 }

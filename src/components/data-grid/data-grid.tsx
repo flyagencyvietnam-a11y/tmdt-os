@@ -35,7 +35,7 @@ import {
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { cn } from "@/lib/utils";
 import { aggregate, buildGroups, type GroupNode } from "./aggregations";
-import { downloadCsv, rowsToCsv } from "./export-csv";
+import { downloadCsv, downloadXlsx, rowsToCsv } from "./export-csv";
 import { evalGroup } from "./filter-engine";
 import { emptyFilterGroup, FilterBuilder } from "./filter-builder";
 import type {
@@ -193,6 +193,20 @@ export function DataGrid<Row>({
             }}
           >
             <Download className="mr-1 h-4 w-4" /> CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              downloadXlsx(
+                `${entity.toLowerCase()}-${new Date().toISOString().slice(0, 10)}`,
+                entity,
+                sorted,
+                visibleColumns,
+              ).catch(() => {})
+            }
+          >
+            <Download className="mr-1 h-4 w-4" /> XLSX
           </Button>
         </div>
       </div>

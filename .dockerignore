@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.pglite
+/tmp
+backup
+data/seed/*.xlsx
+data/seed/campaign-map*.json
+data/seed/migration-report.md
+.env
+.env.local
+*.log

@@ -269,6 +269,95 @@ async function seedDemo() {
   );
 }
 
+/** KPI Q3, việc định kỳ, sale kit, chi phí KOL — cho demo Phase 3/4. */
+async function seedPhase3() {
+  const [existingKpi] = await db
+    .select({ c: sql<number>`count(*)` })
+    .from(schema.kpiAssignments);
+  if (Number(existingKpi?.c ?? 0) > 0) {
+    console.log("phase3: đã có KPI, bỏ qua.");
+    return;
+  }
+  const defs = await db.select().from(schema.kpiDefinitions);
+  const defByCode = Object.fromEntries(defs.map((d) => [d.code, d.id]));
+  const users = await db.select().from(schema.users);
+  const admin = users.find((u) => u.role === "ADMIN")!;
+  const ecs = users.filter((u) => u.role === "EC");
+  const products = await db.select().from(schema.products);
+  const tesol = products.find((p) => p.code === "TESOL")!;
+
+  // Kỳ quý hiện tại
+  const now = new Date();
+  const q = Math.floor(now.getUTCMonth() / 3);
+  const y = now.getUTCFullYear();
+  const qs = `${y}-${String(q * 3 + 1).padStart(2, "0")}-01`;
+  const qeMonth = q * 3 + 3;
+  const qeLast = new Date(Date.UTC(y, qeMonth, 0)).getUTCDate();
+  const qe = `${y}-${String(qeMonth).padStart(2, "0")}-${qeLast}`;
+
+  const kpiRows: (typeof schema.kpiAssignments.$inferInsert)[] = [];
+  // Chỉ tiêu đội (cho dashboard VIEWER)
+  kpiRows.push(
+    {
+      kpiDefinitionId: defByCode.REVENUE_GROSS,
+      periodType: "QUARTER",
+      periodStart: qs,
+      periodEnd: qe,
+      scopeType: "TEAM",
+      targetValue: "600000000",
+      weightPct: "100",
+      createdBy: admin.id,
+    },
+    {
+      kpiDefinitionId: defByCode.HVM,
+      periodType: "QUARTER",
+      periodStart: qs,
+      periodEnd: qe,
+      scopeType: "TEAM",
+      targetValue: "60",
+      weightPct: "100",
+      createdBy: admin.id,
+    },
+  );
+  // Cơ chế thưởng: mỗi EC 30/30/40
+  for (const ec of ecs) {
+    kpiRows.push(
+      { kpiDefinitionId: defByCode.HVM, periodType: "QUARTER", periodStart: qs, periodEnd: qe, scopeType: "USER", userId: ec.id, targetValue: "20", weightPct: "30", createdBy: admin.id },
+      { kpiDefinitionId: defByCode.CASH_COLLECTED, periodType: "QUARTER", periodStart: qs, periodEnd: qe, scopeType: "USER", userId: ec.id, targetValue: "150000000", weightPct: "30", createdBy: admin.id },
+      { kpiDefinitionId: defByCode.REVENUE_AFTER_MKT, periodType: "QUARTER", periodStart: qs, periodEnd: qe, scopeType: "USER", userId: ec.id, targetValue: "120000000", weightPct: "40", createdBy: admin.id },
+    );
+  }
+  await db.insert(schema.kpiAssignments).values(kpiRows);
+
+  // Việc định kỳ — SPEC Mục 13.4
+  const marketing = users.find((u) => u.role === "MARKETING")!;
+  await db.insert(schema.tasks).values([
+    { title: "Nhập spend & messages các campaign", groupCode: "Vận hành hằng ngày", type: "RECURRING", assigneeId: marketing.id, recurrenceRule: "DAILY_WEEKDAY", goalKpi: "DATA_COMPLIANCE", createdBy: admin.id, updatedBy: admin.id },
+    { title: "Rà soát cảnh báo campaign", groupCode: "Vận hành hằng ngày", type: "RECURRING", assigneeId: marketing.id, recurrenceRule: "DAILY_WEEKDAY", createdBy: admin.id, updatedBy: admin.id },
+    { title: "Xử lý hàng đợi lead quá hạn", groupCode: "Vận hành hằng ngày", type: "RECURRING", assigneeId: ecs[0].id, recurrenceRule: "DAILY", goalKpi: "DAILY_CLEAR_RATE", createdBy: admin.id, updatedBy: admin.id },
+    { title: "Chốt số liệu tháng, khóa sổ", groupCode: "Hằng tháng", type: "RECURRING", assigneeId: admin.id, recurrenceRule: "MONTHLY:3", createdBy: admin.id, updatedBy: admin.id },
+    { title: "Xây sale kit TESOL E-PATH", groupCode: "A. NỘI DUNG", type: "PROJECT", assigneeId: marketing.id, priority: "HIGH", dueDate: qe, createdBy: admin.id, updatedBy: admin.id },
+  ]);
+
+  // Sale kit — nội dung mẫu đã duyệt
+  await db.insert(schema.saleKitItems).values([
+    { category: "SCRIPT", title: "HỎI – HIỂU – HƯỚNG", body: "Nguyên tắc tư vấn: HỎI mục tiêu & bối cảnh → HIỂU nhu cầu thật → HƯỚNG tới giải pháp phù hợp. Không kết thúc cuộc trò chuyện bằng câu trả lời đóng.", status: "APPROVED", approvedBy: admin.id, approvedAt: new Date(), createdBy: admin.id, updatedBy: admin.id },
+    { category: "OBJECTION", title: "Xử lý phản đối: giá cao", body: "Ghi nhận cảm nhận của khách → làm rõ khách so sánh với gì → nhấn giá trị (lộ trình, GVNN, cam kết đầu ra riêng của sản phẩm) → đề xuất phương án học/thanh toán linh hoạt.", status: "APPROVED", approvedBy: admin.id, approvedAt: new Date(), createdBy: admin.id, updatedBy: admin.id },
+    { category: "PRODUCT_INFO", title: "TESOL E-PATH — tóm tắt", productId: tesol.id, body: "Chứng chỉ TESOL 120h INTESOL, kiểm định ALAP UK. 4–8 tuần, self-paced + livestream hàng tuần. Trainer VMG + INTESOL.", status: "APPROVED", approvedBy: admin.id, approvedAt: new Date(), createdBy: admin.id, updatedBy: admin.id },
+    { category: "FAQ", title: "Học online có được cấp chứng chỉ không?", body: "Có. Chứng chỉ do INTESOL cấp, giá trị như học trực tiếp, được công nhận quốc tế.", status: "DRAFT", createdBy: admin.id, updatedBy: admin.id },
+  ]);
+
+  // Chi phí KOL/KOC
+  await db.insert(schema.otherCosts).values([
+    { costType: "KOL_KOC", incurredOn: qs, productId: tesol.id, amount: 15000000, note: "KOC review khóa TESOL", createdBy: admin.id },
+    { costType: "TOOL", incurredOn: qs, amount: 3000000, note: "Công cụ thiết kế", createdBy: admin.id },
+  ]);
+
+  console.log(
+    `phase3: ${kpiRows.length} KPI, 5 task định kỳ, 4 sale kit, 2 chi phí khác.`,
+  );
+}
+
 async function main() {
   console.log(DEMO_MODE ? "Seed vào PGlite (DEMO)..." : "Seed vào Postgres...");
   await seedProducts();
@@ -276,7 +365,10 @@ async function main() {
   await seedHolidays();
   await seedSettings();
   await seedUsers();
-  if (!process.argv.includes("--no-demo")) await seedDemo();
+  if (!process.argv.includes("--no-demo")) {
+    await seedDemo();
+    await seedPhase3();
+  }
   await disposeDb();
   console.log("Seed xong.");
 }

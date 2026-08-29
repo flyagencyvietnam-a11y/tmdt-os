@@ -16,6 +16,7 @@ import {
   campaignChannelEnum,
   campaignObjectiveEnum,
   campaignStatusEnum,
+  metricSourceEnum,
 } from "./enums";
 import { products } from "./products";
 import { users } from "./users";
@@ -74,6 +75,8 @@ export const campaignDailyMetrics = pgTable(
     spend: bigint("spend", { mode: "number" }).notNull(),
     /** Số tin nhắn + đăng ký form. ĐÂY là con số Lead chính thức để báo cáo. >= 0. */
     messages: integer("messages").notNull(),
+    /** MANUAL (Marketing nhập tay) hoặc API (kéo từ Meta) — QĐ08. */
+    source: metricSourceEnum("source").notNull().default("MANUAL"),
     enteredBy: uuid("entered_by").references(() => users.id),
     enteredAt: timestamp("entered_at", { withTimezone: true }).notNull().defaultNow(),
     note: text("note"),

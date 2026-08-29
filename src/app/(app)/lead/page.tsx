@@ -5,6 +5,7 @@ import { can } from "@/lib/auth/permissions";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { campaigns, enrollments, leadInteractions, leads, products, users } from "@/lib/db/schema";
+import { scoreLead } from "@/lib/services/lead-score";
 import { getFormRefs } from "@/lib/services/refs";
 import { LeadTable } from "./lead-table";
 
@@ -32,6 +33,7 @@ export default async function Page() {
       nextContactDate: leads.nextContactDate,
       silenceCount: leads.silenceCount,
       isCold: leads.isCold,
+      lastContactedAt: leads.lastContactedAt,
       receivedAt: leads.receivedAt,
       mqlAt: leads.mqlAt,
       wonAt: leads.wonAt,
@@ -67,14 +69,32 @@ export default async function Page() {
         )}
       </div>
       <LeadTable
-        rows={rows.map((r) => ({
-          ...r,
-          receivedAt: r.receivedAt ? new Date(r.receivedAt).toISOString() : null,
-          mqlAt: r.mqlAt ? new Date(r.mqlAt).toISOString() : null,
-          wonAt: r.wonAt ? new Date(r.wonAt).toISOString() : null,
-          revenue: Number(r.revenue ?? 0),
-          interactionCount: Number(r.interactionCount ?? 0),
-        }))}
+        rows={rows.map((r) => {
+          const sc = scoreLead({
+            stage: r.stage,
+            maxStage: r.maxStage,
+            outcome: r.outcome,
+            silenceCount: r.silenceCount,
+            phone: r.phone,
+            nextContactDate: r.nextContactDate,
+            lastContactedAt: r.lastContactedAt,
+            source: r.source,
+            isCold: r.isCold,
+          });
+          return {
+            ...r,
+            receivedAt: r.receivedAt ? new Date(r.receivedAt).toISOString() : null,
+            mqlAt: r.mqlAt ? new Date(r.mqlAt).toISOString() : null,
+            wonAt: r.wonAt ? new Date(r.wonAt).toISOString() : null,
+            lastContactedAt: r.lastContactedAt
+              ? new Date(r.lastContactedAt).toISOString()
+              : null,
+            revenue: Number(r.revenue ?? 0),
+            interactionCount: Number(r.interactionCount ?? 0),
+            score: sc.score,
+            scoreBand: sc.band,
+          };
+        })}
         showContact={showContact}
         ecUsers={refs.ecUsers}
         canReassign={can(user.role, "lead.reassign", "update")}
