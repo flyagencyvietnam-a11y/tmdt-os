@@ -914,7 +914,11 @@ Nhóm chỉ số này không có trong sheet nhưng là thứ trực tiếp ph�
 
 ### 10.1. Màn hình `Campaigns`
 
-Bảng danh sách dùng component Data Grid chung (Mục 14), cột mặc định:
+Bảng danh sách dùng component Data Grid chung (Mục 16). **Sửa tại chỗ** (nhấp đôi,
+role có `campaign.update`): `status` (ON/PAUSED/OFF — chọn OFF phải nhập lý do),
+`display_name`, `daily_budget`, `channel`, `started_on`, `external_id`. Việc nhập số
+liệu ads hằng ngày cũng nằm ngay ở bảng này (xem 10.2) qua 2 cột `Spend (ngày)` /
+`Mess (ngày)` — chọn ngày ở đầu bảng. Cột mặc định:
 
 | Cột | Nguồn | Định dạng |
 |---|---|---|
@@ -946,20 +950,18 @@ Bảng danh sách dùng component Data Grid chung (Mục 14), cột mặc địn
 
 Dòng tổng cố định ở đầu bảng, tính lại theo bộ lọc đang áp dụng.
 
-### 10.2. Màn hình nhập số liệu hằng ngày
+### 10.2. Nhập số liệu ads hằng ngày (gộp vào bảng Campaign)
 
-Đây là màn hình Marketing Executive dùng mỗi ngày. **Phải tối ưu cho tốc độ tuyệt đối.**
+**Không còn tab riêng "Nhập số liệu ads".** Việc nhập số liệu nằm ngay trong bảng
+`/campaign` (10.1): chọn ngày ở đầu bảng (mặc định hôm nay), mỗi dòng campaign có 2
+cột sửa tại chỗ **Spend (ngày)** và **Mess (ngày)**. Nhấp đôi để nhập, Enter lưu,
+gọi `upsertDailyMetric` (UNIQUE campaign_id+metric_date, ghi audit `spend`/`messages`,
+V13 chặn kỳ khóa). Các cột chỉ số 30 ngày (Spend/MQL/CPMQL…) hiển thị cạnh đó để
+Marketing thấy hệ quả tức thì. Server action `copyYesterdayAction` vẫn còn cho tương
+lai (nút "sao chép từ hôm qua").
 
-Thiết kế: dạng lưới nhập nhanh.
-- Chọn ngày ở đầu màn hình, mặc định là hôm nay.
-- Hiển thị **tất cả campaign đang ON** thành các dòng, mỗi dòng 2 ô nhập: Spend và Messages.
-- Ô đã có dữ liệu hiển thị giá trị cũ, sửa được.
-- Điều hướng bằng phím Tab và Enter, không cần chạm chuột.
-- Nút "Sao chép từ hôm qua" cho các campaign có ngân sách ổn định.
-- Tự lưu sau 800ms ngừng gõ, có chỉ báo trạng thái lưu.
-- Cột phụ hiển thị ngay lập tức: CPL hôm nay, CPMQL lũy kế 14 ngày, để Marketing thấy hệ quả tức thì.
-
-**Không** bắt Marketing mở từng campaign để nhập. Đó là cách chắc chắn khiến việc nhập bị bỏ.
+Lý do gộp: đội 4–6 người, một bảng Campaign có đủ lọc/sắp xếp/nhập là đủ nhanh;
+bớt một tab, bớt một chỗ dữ liệu lệch nhau.
 
 ### 10.3. Màn hình chi tiết campaign
 

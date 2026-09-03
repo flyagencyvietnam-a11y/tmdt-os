@@ -14,22 +14,32 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { DataGrid, type GridColumn, type ViewConfig } from "@/components/data-grid";
 import { cn } from "@/lib/utils";
-import { fmtInt, fmtRatioX, fmtVnd } from "@/lib/format";
-import { createCampaignAction, setCampaignStatusAction } from "./actions";
+import { fmtRatioX, fmtVnd } from "@/lib/format";
+import {
+  createCampaignAction,
+  setCampaignStatusAction,
+  updateCampaignAction,
+  upsertDailyMetricAction,
+} from "./actions";
 
 interface Row {
   id: string;
   internalCode: string;
   displayName: string;
+  externalId: string | null;
   productCode: string | null;
   targetCpmql: number;
   channel: string;
   status: string;
   dailyBudget: number | null;
+  ownerId: string;
   ownerName: string | null;
   startedOn: string;
   endedOn: string | null;
+  spendDay: number | null;
+  messagesDay: number | null;
   spend: number;
   leads: number;
   mql: number;
@@ -43,6 +53,13 @@ interface Row {
   crLeadWon: number | null;
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  ON: "● ON",
+  PAUSED: "❚❚ PAUSED",
+  OFF: "○ OFF",
+};
+const CHANNELS = ["FB", "GOOGLE", "TIKTOK", "KHAC"];
+
 function cpmqlTone(cpmql: number | null, target: number, mql: number, spend: number) {
   if (mql === 0) return spend >= target * 1.5 ? "text-crit font-medium" : "";
   if (cpmql == null) return "";
@@ -54,123 +71,345 @@ function cpmqlTone(cpmql: number | null, target: number, mql: number, spend: num
 
 export function CampaignTable({
   rows,
+  day,
   canManage,
+  canEditCampaign,
+  canEnterMetrics,
   products,
   owners,
 }: {
   rows: Row[];
+  day: string;
   canManage: boolean;
+  canEditCampaign: boolean;
+  canEnterMetrics: boolean;
   products: { id: string; code: string; name: string }[];
   owners: { id: string; fullName: string }[];
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
 
-  const total = rows.reduce(
-    (a, r) => ({
-      spend: a.spend + r.spend,
-      leads: a.leads + r.leads,
-      mql: a.mql + r.mql,
-      won: a.won + r.won,
-      revenue: a.revenue + r.revenue,
-    }),
-    { spend: 0, leads: 0, mql: 0, won: 0, revenue: 0 },
+  const onEditCell = React.useCallback(
+    async (rowId: string, field: string, raw: string) => {
+      const row = rows.find((r) => r.id === rowId);
+      if (!row) return;
+      const v = raw.trim();
+      setSaving(true);
+      let res: Awaited<ReturnType<typeof updateCampaignAction>>;
+      try {
+        if (field === "status") {
+          const next = v as "ON" | "OFF" | "PAUSED";
+          let reason: string | undefined;
+          if (next === "OFF") {
+            reason = window.prompt("Lý do tắt campaign (bắt buộc):") ?? undefined;
+            if (!reason) return;
+          }
+          res = await setCampaignStatusAction(rowId, next, reason);
+        } else if (field === "displayName") {
+          if (!v) {
+            toast.error("Tên campaign không được để trống.");
+            return;
+          }
+          res = await updateCampaignAction(rowId, { displayName: v });
+        } else if (field === "dailyBudget") {
+          res = await updateCampaignAction(rowId, {
+            dailyBudget: v ? Number(v.replace(/[^\d.-]/g, "")) : null,
+          });
+        } else if (field === "channel") {
+          res = await updateCampaignAction(rowId, {
+            channel: v as "FB" | "GOOGLE" | "TIKTOK" | "KHAC",
+          });
+        } else if (field === "startedOn") {
+          res = await updateCampaignAction(rowId, { startedOn: v });
+        } else if (field === "externalId") {
+          res = await updateCampaignAction(rowId, { externalId: v || null });
+        } else if (field === "spendDay") {
+          res = await upsertDailyMetricAction({
+            campaignId: rowId,
+            metricDate: day,
+            spend: v ? Math.round(Number(v.replace(/[^\d.-]/g, ""))) : 0,
+            messages: row.messagesDay ?? 0,
+          });
+        } else if (field === "messagesDay") {
+          res = await upsertDailyMetricAction({
+            campaignId: rowId,
+            metricDate: day,
+            spend: row.spendDay ?? 0,
+            messages: v ? Math.round(Number(v.replace(/[^\d.-]/g, ""))) : 0,
+          });
+        } else {
+          return;
+        }
+      } finally {
+        setSaving(false);
+      }
+      if (res.ok) {
+        toast.success("Đã lưu.");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    },
+    [rows, day, router],
   );
+
+  const columns: GridColumn<Row>[] = React.useMemo(
+    () => [
+      {
+        field: "status",
+        header: "Trạng thái",
+        kind: "enum",
+        accessor: (r) => r.status,
+        enumLabels: STATUS_LABELS,
+        editable: canEditCampaign,
+        editKind: "select",
+        editOptions: ["ON", "PAUSED", "OFF"].map((s) => ({
+          value: s,
+          label: STATUS_LABELS[s],
+        })),
+        editValue: (r) => r.status,
+        cell: (r) => (
+          <span
+            className={cn(
+              "text-xs font-medium",
+              r.status === "ON"
+                ? "text-ok"
+                : r.status === "PAUSED"
+                  ? "text-warn"
+                  : "text-muted-foreground",
+            )}
+          >
+            {STATUS_LABELS[r.status]}
+          </span>
+        ),
+        defaultWidth: 110,
+      },
+      {
+        field: "displayName",
+        header: "Tên",
+        kind: "text",
+        accessor: (r) => r.displayName,
+        editable: canEditCampaign,
+        cell: (r) => (
+          <div>
+            <div className="font-medium">{r.displayName}</div>
+            <div className="font-mono text-[10px] text-muted-foreground">
+              {r.internalCode}
+            </div>
+          </div>
+        ),
+        defaultWidth: 240,
+        groupable: false,
+      },
+      {
+        field: "productCode",
+        header: "SP",
+        kind: "enum",
+        accessor: (r) => r.productCode,
+        cell: (r) => <Badge variant="secondary">{r.productCode}</Badge>,
+        defaultWidth: 90,
+      },
+      {
+        field: "dailyBudget",
+        header: "NS/ngày",
+        kind: "money",
+        accessor: (r) => r.dailyBudget,
+        editable: canEditCampaign,
+        cell: (r) => (r.dailyBudget ? fmtVnd(r.dailyBudget) : "–"),
+        align: "right",
+      },
+      {
+        field: "spendDay",
+        header: `Spend (${day})`,
+        kind: "money",
+        accessor: (r) => r.spendDay,
+        editable: canEnterMetrics,
+        cell: (r) =>
+          r.spendDay == null ? (
+            <span className="text-muted-foreground">–</span>
+          ) : (
+            fmtVnd(r.spendDay)
+          ),
+        align: "right",
+        groupable: false,
+        sortable: true,
+      },
+      {
+        field: "messagesDay",
+        header: `Mess (${day})`,
+        kind: "number",
+        accessor: (r) => r.messagesDay,
+        editable: canEnterMetrics,
+        cell: (r) =>
+          r.messagesDay == null ? (
+            <span className="text-muted-foreground">–</span>
+          ) : (
+            String(r.messagesDay)
+          ),
+        align: "right",
+        groupable: false,
+      },
+      {
+        field: "spend",
+        header: "Spend 30n",
+        kind: "money",
+        accessor: (r) => r.spend,
+        cell: (r) => fmtVnd(r.spend),
+        align: "right",
+      },
+      {
+        field: "leads",
+        header: "Lead",
+        kind: "number",
+        accessor: (r) => r.leads,
+        align: "right",
+      },
+      {
+        field: "mql",
+        header: "MQL",
+        kind: "number",
+        accessor: (r) => r.mql,
+        align: "right",
+      },
+      {
+        field: "sql",
+        header: "SQL",
+        kind: "number",
+        accessor: (r) => r.sql,
+        align: "right",
+      },
+      {
+        field: "won",
+        header: "HV",
+        kind: "number",
+        accessor: (r) => r.won,
+        align: "right",
+      },
+      {
+        field: "cpl",
+        header: "CPL",
+        kind: "money",
+        accessor: (r) => r.cpl,
+        cell: (r) => fmtVnd(r.cpl),
+        align: "right",
+      },
+      {
+        field: "cpmql",
+        header: "CPMQL",
+        kind: "money",
+        accessor: (r) => r.cpmql,
+        cell: (r) => (
+          <span
+            className={cpmqlTone(r.cpmql, r.targetCpmql, r.mql, r.spend)}
+          >
+            {fmtVnd(r.cpmql)}
+          </span>
+        ),
+        align: "right",
+      },
+      {
+        field: "cac",
+        header: "CAC",
+        kind: "money",
+        accessor: (r) => r.cac,
+        cell: (r) => fmtVnd(r.cac),
+        align: "right",
+      },
+      {
+        field: "roas",
+        header: "ROAS",
+        kind: "number",
+        accessor: (r) => r.roas,
+        cell: (r) => fmtRatioX(r.roas),
+        align: "right",
+      },
+      {
+        field: "channel",
+        header: "Kênh",
+        kind: "enum",
+        accessor: (r) => r.channel,
+        editable: canEditCampaign,
+        editKind: "select",
+        editOptions: CHANNELS.map((c) => ({ value: c, label: c })),
+        editValue: (r) => r.channel,
+        defaultWidth: 90,
+      },
+      {
+        field: "startedOn",
+        header: "Bắt đầu",
+        kind: "date",
+        accessor: (r) => r.startedOn,
+        editable: canEditCampaign,
+        groupable: false,
+      },
+      {
+        field: "externalId",
+        header: "ID Meta/Google",
+        kind: "text",
+        accessor: (r) => r.externalId,
+        editable: canEditCampaign,
+        cell: (r) => r.externalId ?? "–",
+        groupable: false,
+        defaultWidth: 150,
+      },
+      {
+        field: "ownerName",
+        header: "Owner",
+        kind: "text",
+        accessor: (r) => r.ownerName ?? "—",
+        defaultWidth: 120,
+      },
+    ],
+    [day, canEditCampaign, canEnterMetrics],
+  );
+
+  const initialView: ViewConfig = {
+    columns: [
+      { field: "spend", aggregate: "sum" },
+      { field: "leads", aggregate: "sum" },
+      { field: "mql", aggregate: "sum" },
+      { field: "won", aggregate: "sum" },
+      { field: "startedOn", visible: false },
+      { field: "externalId", visible: false },
+    ],
+    sorts: [{ field: "spendDay", direction: "desc" }],
+    rowHeight: "medium",
+  };
 
   return (
     <div className="space-y-3">
-      {canManage && (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm text-muted-foreground">Ngày nhập số liệu</label>
+        <Input
+          type="date"
+          value={day}
+          className="h-8 w-40"
+          onChange={(e) =>
+            e.target.value && router.push(`/campaign?date=${e.target.value}`)
+          }
+        />
+        {(canEditCampaign || canEnterMetrics) && (
+          <span className="text-xs text-muted-foreground">
+            {saving ? "Đang lưu…" : "Nhấp đôi ô để sửa"}
+          </span>
+        )}
+        {canManage && (
+          <Button size="sm" className="ml-auto" onClick={() => setCreateOpen(true)}>
             + Campaign
           </Button>
-        </div>
-      )}
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-2 py-2">Trạng thái</th>
-              <th className="px-2 py-2">Tên</th>
-              <th className="px-2 py-2">SP</th>
-              <th className="px-2 py-2 text-right">Ngân sách/ngày</th>
-              <th className="px-2 py-2 text-right">Spend</th>
-              <th className="px-2 py-2 text-right">Lead</th>
-              <th className="px-2 py-2 text-right">MQL</th>
-              <th className="px-2 py-2 text-right">SQL</th>
-              <th className="px-2 py-2 text-right">HV</th>
-              <th className="px-2 py-2 text-right">CPL</th>
-              <th className="px-2 py-2 text-right">CPMQL</th>
-              <th className="px-2 py-2 text-right">CAC</th>
-              <th className="px-2 py-2 text-right">ROAS</th>
-              <th className="px-2 py-2">Owner</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b bg-muted/20 font-medium">
-              <td className="px-2 py-1.5" colSpan={4}>
-                TỔNG ({rows.length})
-              </td>
-              <td className="px-2 py-1.5 text-right">{fmtVnd(total.spend)}</td>
-              <td className="px-2 py-1.5 text-right">{fmtInt(total.leads)}</td>
-              <td className="px-2 py-1.5 text-right">{fmtInt(total.mql)}</td>
-              <td className="px-2 py-1.5 text-right">–</td>
-              <td className="px-2 py-1.5 text-right">{fmtInt(total.won)}</td>
-              <td className="px-2 py-1.5 text-right">
-                {total.leads ? fmtVnd(total.spend / total.leads) : "–"}
-              </td>
-              <td className="px-2 py-1.5 text-right">
-                {total.mql ? fmtVnd(total.spend / total.mql) : "–"}
-              </td>
-              <td className="px-2 py-1.5 text-right">
-                {total.won ? fmtVnd(total.spend / total.won) : "–"}
-              </td>
-              <td className="px-2 py-1.5 text-right">
-                {total.spend ? fmtRatioX(total.revenue / total.spend) : "–"}
-              </td>
-              <td />
-            </tr>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b hover:bg-muted/20">
-                <td className="px-2 py-1.5">
-                  <StatusToggle row={r} disabled={!canManage} onDone={() => router.refresh()} />
-                </td>
-                <td className="px-2 py-1.5">
-                  <div className="font-medium">{r.displayName}</div>
-                  <div className="font-mono text-[10px] text-muted-foreground">
-                    {r.internalCode}
-                  </div>
-                </td>
-                <td className="px-2 py-1.5">
-                  <Badge variant="secondary">{r.productCode}</Badge>
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums">
-                  {r.dailyBudget ? fmtVnd(r.dailyBudget) : "–"}
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtVnd(r.spend)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtInt(r.leads)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtInt(r.mql)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtInt(r.sql)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtInt(r.won)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtVnd(r.cpl)}</td>
-                <td
-                  className={cn(
-                    "px-2 py-1.5 text-right tabular-nums",
-                    cpmqlTone(r.cpmql, r.targetCpmql, r.mql, r.spend),
-                  )}
-                >
-                  {fmtVnd(r.cpmql)}
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtVnd(r.cac)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">
-                  {fmtRatioX(r.roas)}
-                </td>
-                <td className="px-2 py-1.5 text-xs">{r.ownerName ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        )}
       </div>
+
+      <DataGrid
+        entity="CAMPAIGNS"
+        columns={columns}
+        rows={rows}
+        getRowId={(r) => r.id}
+        initialView={initialView}
+        onEditCell={canEditCampaign || canEnterMetrics ? onEditCell : undefined}
+        emptyText="Chưa có campaign."
+      />
 
       <CreateCampaignDialog
         open={createOpen}
@@ -183,50 +422,6 @@ export function CampaignTable({
         }}
       />
     </div>
-  );
-}
-
-function StatusToggle({
-  row,
-  disabled,
-  onDone,
-}: {
-  row: Row;
-  disabled: boolean;
-  onDone: () => void;
-}) {
-  const [pending, start] = React.useTransition();
-  const cycle: Record<string, "ON" | "OFF" | "PAUSED"> = {
-    ON: "PAUSED",
-    PAUSED: "OFF",
-    OFF: "ON",
-  };
-  const color =
-    row.status === "ON"
-      ? "text-ok"
-      : row.status === "PAUSED"
-        ? "text-warn"
-        : "text-muted-foreground";
-  return (
-    <button
-      disabled={disabled || pending}
-      className={cn("text-xs font-medium", color, disabled && "cursor-default")}
-      onClick={() =>
-        start(async () => {
-          const next = cycle[row.status];
-          let reason: string | undefined;
-          if (next === "OFF") {
-            reason = window.prompt("Lý do tắt campaign (bắt buộc):") ?? undefined;
-            if (!reason) return;
-          }
-          const res = await setCampaignStatusAction(row.id, next, reason);
-          if (res.ok) onDone();
-          else toast.error(res.error);
-        })
-      }
-    >
-      {row.status === "ON" ? "● ON" : row.status === "PAUSED" ? "❚❚ PAUSED" : "○ OFF"}
-    </button>
   );
 }
 
@@ -278,10 +473,7 @@ function CreateCampaignDialog({
               <SimpleSelect
                 value={f.channel}
                 onValueChange={(v) => set("channel", v)}
-                options={["FB", "GOOGLE", "TIKTOK", "KHAC"].map((c) => ({
-                  value: c,
-                  label: c,
-                }))}
+                options={CHANNELS.map((c) => ({ value: c, label: c }))}
               />
             </F>
             <F label="Mục tiêu">

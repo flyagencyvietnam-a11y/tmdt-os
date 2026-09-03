@@ -13,7 +13,6 @@ import {
   Sparkles,
   Target,
   Users,
-  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -33,7 +32,6 @@ const ITEMS: NavItem[] = [
   { href: "/hom-nay", label: "Hôm nay", icon: CalendarClock, roles: ["EC", "ADMIN", "MANAGER"], phase: "P1" },
   { href: "/lead", label: "Lead", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"], phase: "P1" },
   { href: "/campaign", label: "Campaign", icon: Megaphone, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"], phase: "P1" },
-  { href: "/ads", label: "Nhập số liệu ads", icon: Wallet, roles: ["ADMIN", "MANAGER", "MARKETING"], phase: "P1" },
   { href: "/cong-viec", label: "Công việc", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },
   { href: "/kpi", label: "KPI", icon: Target, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"] },
   { href: "/sale-kit", label: "Sale Enablement", icon: Sparkles, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },
