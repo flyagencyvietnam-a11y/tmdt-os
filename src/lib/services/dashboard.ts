@@ -5,9 +5,10 @@
  * getBaseMetrics / deriveMetrics / getOpsDiscipline / evaluateCampaignAlerts
  * trong metrics.ts (nguồn công thức duy nhất) rồi gom nhóm / so sánh / xếp chuỗi.
  */
-import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import {
   appSettings,
+  campaignDailyMetrics,
   campaigns,
   leads,
   products,
@@ -86,15 +87,17 @@ export async function getHealth(
   filter: MetricsFilter,
   compareMode: CompareMode,
 ): Promise<HealthMetrics> {
-  const cur = await getBaseMetrics(db, filter);
-  const curAll = { ...cur, ...deriveMetrics(cur) };
-
   const cmp = comparePeriod(filter.from, filter.to, compareMode);
-  let cmpAll: (BaseMetrics & DerivedMetrics) | null = null;
-  if (cmp) {
-    const c = await getBaseMetrics(db, { ...filter, from: cmp.from, to: cmp.to });
-    cmpAll = { ...c, ...deriveMetrics(c) };
-  }
+  const [cur, cmpBase] = await Promise.all([
+    getBaseMetrics(db, filter),
+    cmp
+      ? getBaseMetrics(db, { ...filter, from: cmp.from, to: cmp.to })
+      : Promise.resolve(null),
+  ]);
+  const curAll = { ...cur, ...deriveMetrics(cur) };
+  const cmpAll: (BaseMetrics & DerivedMetrics) | null = cmpBase
+    ? { ...cmpBase, ...deriveMetrics(cmpBase) }
+    : null;
 
   const t = (k: keyof (BaseMetrics & DerivedMetrics)) =>
     withDelta(Number(curAll[k] ?? 0), cmpAll ? Number(cmpAll[k] ?? 0) : null);
@@ -150,17 +153,18 @@ export async function breakdownByProduct(
     .where(eq(appSettings.key, "budget_share_plan"));
   const plan = (planRow[0]?.value ?? {}) as Record<string, number>;
 
-  const rows: BreakdownRow[] = [];
-  let totalSpend = 0;
-  for (const p of list) {
-    const b = await getBaseMetrics(db, { ...filter, productIds: [p.id] });
-    totalSpend += b.spend;
-    rows.push({
-      key: p.id,
-      label: `${p.code} — ${p.name}`,
-      metrics: { ...b, ...deriveMetrics(b) },
-    });
-  }
+  // N sản phẩm — chạy song song (mỗi lần gọi metrics là nhiều round-trip DB).
+  const rows: BreakdownRow[] = await Promise.all(
+    list.map(async (p) => {
+      const b = await getBaseMetrics(db, { ...filter, productIds: [p.id] });
+      return {
+        key: p.id,
+        label: `${p.code} — ${p.name}`,
+        metrics: { ...b, ...deriveMetrics(b) },
+      };
+    }),
+  );
+  const totalSpend = rows.reduce((s, r) => s + r.metrics.spend, 0);
 
   const enriched = rows.map((r) => {
     const p = list.find((x) => x.id === r.key)!;
@@ -184,6 +188,44 @@ export async function breakdownByCampaign(
   filter: MetricsFilter,
   limit = 20,
 ): Promise<BreakdownRow[]> {
+  // Chỉ xét campaign có hoạt động trong kỳ: có số liệu spend theo ngày HOẶC có
+  // lead đạt MQL trong kỳ (khớp bộ lọc "spend=0 && mql=0 -> bỏ" bên dưới).
+  // Tránh fan-out getBaseMetrics cho toàn bộ campaign.
+  const [startUtc, endUtc] = [
+    vnDayBoundsUtc(filter.from)[0],
+    vnDayBoundsUtc(filter.to)[1],
+  ];
+  const [spendCids, mqlCids] = await Promise.all([
+    db
+      .selectDistinct({ id: campaignDailyMetrics.campaignId })
+      .from(campaignDailyMetrics)
+      .where(
+        and(
+          gte(campaignDailyMetrics.metricDate, filter.from),
+          lte(campaignDailyMetrics.metricDate, filter.to),
+        ),
+      ),
+    db
+      .selectDistinct({ id: leads.campaignId })
+      .from(leads)
+      .where(
+        and(
+          isNull(leads.deletedAt),
+          isNull(leads.duplicateOf),
+          gte(leads.mqlAt, startUtc),
+          lt(leads.mqlAt, endUtc),
+        ),
+      ),
+  ]);
+  const activeIds = [
+    ...new Set(
+      [...spendCids, ...mqlCids]
+        .map((r) => r.id)
+        .filter((v): v is string => !!v),
+    ),
+  ];
+  if (activeIds.length === 0) return [];
+
   const list = await db
     .select({
       id: campaigns.id,
@@ -191,22 +233,25 @@ export async function breakdownByCampaign(
       displayName: campaigns.displayName,
     })
     .from(campaigns)
-    .where(isNull(campaigns.deletedAt));
+    .where(and(isNull(campaigns.deletedAt), inArray(campaigns.id, activeIds)));
 
-  const rows: BreakdownRow[] = [];
-  for (const c of list) {
-    const b = await getBaseMetrics(db, {
-      ...filter,
-      campaignIds: [c.id],
-      campaignAttribution: true,
-    });
-    if (b.spend === 0 && b.mql === 0) continue;
-    rows.push({
+  const computed = await Promise.all(
+    list.map(async (c) => {
+      const b = await getBaseMetrics(db, {
+        ...filter,
+        campaignIds: [c.id],
+        campaignAttribution: true,
+      });
+      return { c, b };
+    }),
+  );
+  const rows: BreakdownRow[] = computed
+    .filter(({ b }) => !(b.spend === 0 && b.mql === 0))
+    .map(({ c, b }) => ({
       key: c.id,
       label: c.displayName,
       metrics: { ...b, ...deriveMetrics(b) },
-    });
-  }
+    }));
   rows.sort((a, b) => b.metrics.spend - a.metrics.spend);
   return rows.slice(0, limit);
 }
@@ -233,52 +278,43 @@ export async function breakdownByUser(
     vnDayBoundsUtc(filter.to)[1],
   ];
 
-  const out = [];
-  for (const u of ecs) {
-    const b = await getBaseMetrics(db, { ...filter, assignedTo: [u.id] });
-    if (
-      b.mql === 0 &&
-      b.won === 0 &&
-      b.revenueGross === 0
-    ) {
-      // vẫn có thể có lead được giao — kiểm tra trước khi bỏ
-    }
-    const [assignedRow] = await db
-      .select({ c: sql<number>`count(*)` })
-      .from(leads)
-      .where(
-        and(
-          eq(leads.assignedTo, u.id),
-          isNull(leads.deletedAt),
-          isNull(leads.duplicateOf),
-          gte(leads.receivedAt, startUtc),
-          lt(leads.receivedAt, endUtc),
-        ),
-      );
-    const leadsAssigned = Number(assignedRow?.c ?? 0);
-    if (
-      leadsAssigned === 0 &&
-      b.mql === 0 &&
-      b.won === 0
+  const out = (
+    await Promise.all(
+      ecs.map(async (u) => {
+        const b = await getBaseMetrics(db, { ...filter, assignedTo: [u.id] });
+        const [assignedRow] = await db
+          .select({ c: sql<number>`count(*)` })
+          .from(leads)
+          .where(
+            and(
+              eq(leads.assignedTo, u.id),
+              isNull(leads.deletedAt),
+              isNull(leads.duplicateOf),
+              gte(leads.receivedAt, startUtc),
+              lt(leads.receivedAt, endUtc),
+            ),
+          );
+        const leadsAssigned = Number(assignedRow?.c ?? 0);
+        if (leadsAssigned === 0 && b.mql === 0 && b.won === 0) return null;
+
+        const ops = await getOpsDiscipline(db, {
+          assignedTo: [u.id],
+          from: filter.from,
+          to: filter.to,
+        });
+
+        return {
+          key: u.id,
+          label: u.fullName,
+          metrics: { ...b, ...deriveMetrics(b) },
+          leadsAssigned,
+          crMqlWon: safeDiv(b.won, b.mql),
+          overdueRate: ops.overdueRate,
+          firstResponseRate: ops.firstResponseRate,
+        };
+      }),
     )
-      continue;
-
-    const ops = await getOpsDiscipline(db, {
-      assignedTo: [u.id],
-      from: filter.from,
-      to: filter.to,
-    });
-
-    out.push({
-      key: u.id,
-      label: u.fullName,
-      metrics: { ...b, ...deriveMetrics(b) },
-      leadsAssigned,
-      crMqlWon: safeDiv(b.won, b.mql),
-      overdueRate: ops.overdueRate,
-      firstResponseRate: ops.firstResponseRate,
-    });
-  }
+  ).filter((x): x is NonNullable<typeof x> => x !== null);
   return out;
 }
 
@@ -311,22 +347,23 @@ export async function weeklyTrend(
   }
   weekStart = starts[0];
 
-  const points: WeekPoint[] = [];
-  for (const ws of starts) {
-    const we = addDaysStr(ws, 6);
-    const b = await getBaseMetrics(db, {
-      ...(opts.filter as MetricsFilter),
-      from: ws,
-      to: we,
-    });
-    points.push({
-      weekStart: ws,
-      spend: b.spend,
-      mql: b.mql,
-      won: b.won,
-      cpmql: safeDiv(b.spend, b.mql),
-    });
-  }
+  const points: WeekPoint[] = await Promise.all(
+    starts.map(async (ws) => {
+      const we = addDaysStr(ws, 6);
+      const b = await getBaseMetrics(db, {
+        ...(opts.filter as MetricsFilter),
+        from: ws,
+        to: we,
+      });
+      return {
+        weekStart: ws,
+        spend: b.spend,
+        mql: b.mql,
+        won: b.won,
+        cpmql: safeDiv(b.spend, b.mql),
+      };
+    }),
+  );
   return points;
 }
 

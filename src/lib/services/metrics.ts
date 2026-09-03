@@ -126,30 +126,29 @@ export async function getBaseMetrics(
   const needCampaignJoin =
     !!filter.productIds?.length || !!filter.channels?.length;
 
-  let spendLeadsRow: { spend: unknown; leads: unknown }[];
+  const jc = [...cdmConds];
   if (needCampaignJoin) {
-    const jc = [...cdmConds];
     if (filter.productIds?.length)
       jc.push(inArray(campaigns.productId, filter.productIds));
     if (filter.channels?.length)
       jc.push(inArray(campaigns.channel, filter.channels));
-    spendLeadsRow = await db
-      .select({
-        spend: sql`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
-        leads: sql`coalesce(sum(${campaignDailyMetrics.messages}), 0)`,
-      })
-      .from(campaignDailyMetrics)
-      .innerJoin(campaigns, eq(campaigns.id, campaignDailyMetrics.campaignId))
-      .where(and(...jc));
-  } else {
-    spendLeadsRow = await db
-      .select({
-        spend: sql`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
-        leads: sql`coalesce(sum(${campaignDailyMetrics.messages}), 0)`,
-      })
-      .from(campaignDailyMetrics)
-      .where(and(...cdmConds));
   }
+  const spendLeadsPromise = needCampaignJoin
+    ? db
+        .select({
+          spend: sql`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
+          leads: sql`coalesce(sum(${campaignDailyMetrics.messages}), 0)`,
+        })
+        .from(campaignDailyMetrics)
+        .innerJoin(campaigns, eq(campaigns.id, campaignDailyMetrics.campaignId))
+        .where(and(...jc))
+    : db
+        .select({
+          spend: sql`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
+          leads: sql`coalesce(sum(${campaignDailyMetrics.messages}), 0)`,
+        })
+        .from(campaignDailyMetrics)
+        .where(and(...cdmConds));
 
   // --- các chỉ số từ bản ghi lead ---
   const leadBase = [isNull(leads.deletedAt), isNull(leads.duplicateOf)];
@@ -171,7 +170,7 @@ export async function getBaseMetrics(
       ]
     : [];
 
-  const [leadsRecordedRow] = await db
+  const leadsRecordedPromise = db
     .select({ c: sql`count(*)` })
     .from(leads)
     .where(
@@ -182,7 +181,7 @@ export async function getBaseMetrics(
       ),
     );
 
-  const [mqlRow] = await db
+  const mqlPromise = db
     .select({ c: sql`count(*)` })
     .from(leads)
     .where(
@@ -190,11 +189,12 @@ export async function getBaseMetrics(
         ...leadBase,
         ...attributionOk,
         gte(leads.maxStage, "MQL"),
-        sql`${leads.mqlAt} >= ${startUtc} and ${leads.mqlAt} < ${endUtc}`,
+        gte(leads.mqlAt, startUtc),
+        lt(leads.mqlAt, endUtc),
       ),
     );
 
-  const [sqlRow] = await db
+  const sqlPromise = db
     .select({ c: sql`count(*)` })
     .from(leads)
     .where(
@@ -202,18 +202,20 @@ export async function getBaseMetrics(
         ...leadBase,
         ...attributionOk,
         gte(leads.maxStage, "SQL"),
-        sql`${leads.sqlAt} >= ${startUtc} and ${leads.sqlAt} < ${endUtc}`,
+        gte(leads.sqlAt, startUtc),
+        lt(leads.sqlAt, endUtc),
       ),
     );
 
-  const [wonRow] = await db
+  const wonPromise = db
     .select({ c: sql`count(*)` })
     .from(leads)
     .where(
       and(
         ...leadBase,
         eq(leads.outcome, "WON"),
-        sql`${leads.wonAt} >= ${startUtc} and ${leads.wonAt} < ${endUtc}`,
+        gte(leads.wonAt, startUtc),
+        lt(leads.wonAt, endUtc),
       ),
     );
 
@@ -233,7 +235,7 @@ export async function getBaseMetrics(
   if (filter.assignedTo?.length)
     enrConds.push(inArray(enrollments.creditedTo, filter.assignedTo));
 
-  const [revRow] = await db
+  const revPromise = db
     .select({
       hvm: sql`coalesce(sum(${enrollments.studentCount}), 0)`,
       gross: sql`coalesce(sum(${enrollments.grossAmount}), 0)`,
@@ -244,7 +246,24 @@ export async function getBaseMetrics(
     .innerJoin(leads, eq(leads.id, enrollments.leadId))
     .where(and(...enrConds));
 
-  const kolCost = await getKolCost(db, filter);
+  // Các truy vấn trên độc lập nhau — chạy song song để giảm round-trip DB.
+  const [
+    spendLeadsRow,
+    [leadsRecordedRow],
+    [mqlRow],
+    [sqlRow],
+    [wonRow],
+    [revRow],
+    kolCost,
+  ] = await Promise.all([
+    spendLeadsPromise,
+    leadsRecordedPromise,
+    mqlPromise,
+    sqlPromise,
+    wonPromise,
+    revPromise,
+    getKolCost(db, filter),
+  ]);
 
   return {
     spend: n(spendLeadsRow[0]?.spend),

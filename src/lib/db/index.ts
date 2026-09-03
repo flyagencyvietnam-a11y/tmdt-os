@@ -50,8 +50,8 @@ function createDb(): AnyPgDb {
   }
 
   g.__vmgSql ??= postgres(process.env.DATABASE_URL as string, {
-    max: 10,
-    prepare: false, // Supabase pooler
+    max: Number(process.env.DB_POOL_MAX ?? 20),
+    prepare: false, // Supabase pooler (transaction mode) — không dùng prepared statement
   });
   return drizzlePg(g.__vmgSql, { schema, casing: "snake_case" });
 }

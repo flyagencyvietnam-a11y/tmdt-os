@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import { leads, products } from "@/lib/db/schema";
 import { addDaysStr, todayVnDayStr, vnDayBoundsUtc } from "@/lib/time";
@@ -49,7 +49,8 @@ export async function listProductConfigs(
           isNull(leads.deletedAt),
           isNull(leads.duplicateOf),
           gte(leads.maxStage, "MQL"),
-          sql`${leads.mqlAt} >= ${startUtc} and ${leads.mqlAt} < ${endUtc}`,
+          gte(leads.mqlAt, startUtc),
+          lt(leads.mqlAt, endUtc),
         ),
       );
     const [wonRow] = await db
@@ -61,7 +62,8 @@ export async function listProductConfigs(
           isNull(leads.deletedAt),
           isNull(leads.duplicateOf),
           eq(leads.outcome, "WON"),
-          sql`${leads.wonAt} >= ${startUtc} and ${leads.wonAt} < ${endUtc}`,
+          gte(leads.wonAt, startUtc),
+          lt(leads.wonAt, endUtc),
         ),
       );
     const mql = Number(mqlRow?.c ?? 0);
