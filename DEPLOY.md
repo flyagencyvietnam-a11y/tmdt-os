@@ -35,12 +35,13 @@ Vercel account đã có: **team `flyagencyvietnam-2039's projects`** (hobby).
 
 ## 3. Áp schema + seed + nạp dữ liệu thật lên DB production
 
-Lấy `DATABASE_URL` production (Vercel → Storage → Neon → `.env.local` / Connection string).
-Trên máy bạn:
+Lấy connection string production (Supabase → **Connect** → Transaction pooler, hoặc
+Vercel → Storage → Neon). Đặt vào `.env.local` (các script tự đọc file này):
 
 ```bash
 cd "C:\Users\Admin\Downloads\Ecom OS"
-setx DATABASE_URL "postgres://..."   # hoặc đặt trong .env.local
+# .env.local:  DATABASE_URL="postgresql://...pooler.supabase.com:6543/postgres"
+#              (ký tự đặc biệt trong mật khẩu phải URL-encode: '%' -> '%25')
 npm run db:migrate                    # áp 4 migration
 npm run db:seed -- --no-demo          # danh mục sản phẩm + tài khoản (KHÔNG dữ liệu demo)
 
@@ -53,6 +54,12 @@ npm run xlsx:migrate -- --commit
 
 Đăng nhập: `truongphong@vmg.local` / `ChangeMe#2026` (buộc đổi). Tài khoản `admin/admin`
 vẫn còn theo yêu cầu — đổi mật khẩu hoặc xoá trong `scripts/seed.ts` khi thấy cần.
+
+## Vùng máy chủ
+
+`vercel.json` đặt `regions: ["syd1"]` để serverless function chạy **cùng vùng
+Sydney với Supabase** — mỗi round-trip DB ~1–5 ms thay vì ~150–250 ms. Nếu đổi
+vùng Supabase, sửa `regions` cho khớp (vd. `sin1` cho Singapore).
 
 ## Vercel Cron
 

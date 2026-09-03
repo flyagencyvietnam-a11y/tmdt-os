@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./_env";
 import bcrypt from "bcryptjs";
 import { sql } from "drizzle-orm";
 import { DEMO_MODE, db, disposeDb } from "../src/lib/db";

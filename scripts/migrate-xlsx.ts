@@ -14,7 +14,7 @@
  *
  * Giả định "Không chốt" -> max_stage: xem MAX_STAGE_KHONG_CHOT (SPEC Phụ lục A.1).
  */
-import "dotenv/config";
+import "./_env";
 import fs from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";

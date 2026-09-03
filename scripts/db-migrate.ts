@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./_env";
 import { DEMO_MODE, PGLITE_DIR, disposeDb, runMigrations } from "../src/lib/db";
 
 async function main() {
