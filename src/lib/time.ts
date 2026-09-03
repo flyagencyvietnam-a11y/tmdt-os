@@ -58,3 +58,126 @@ export function quarterBounds(dayStr: string): [string, string] {
   const [, end] = monthBounds(`${y}-${String(endM).padStart(2, "0")}-01`);
   return [`${y}-${String(startM).padStart(2, "0")}-01`, end];
 }
+
+/**
+ * "Tuần báo cáo" theo quy ước VMG: **Thứ 7 tuần trước → Thứ 6 tuần này** (7 ngày).
+ * Trả [from = Thứ 7, to = Thứ 6].
+ */
+export function reportWeekBounds(dayStr: string): [string, string] {
+  const dow = new Date(`${dayStr}T00:00:00Z`).getUTCDay(); // 0=CN … 6=T7
+  const backToSat = (dow + 1) % 7; // T7->0, CN->1, … T6->6
+  const from = addDaysStr(dayStr, -backToSat);
+  return [from, addDaysStr(from, 6)];
+}
+
+function dm(dayStr: string): string {
+  const [, m, d] = dayStr.split("-");
+  return `${d}/${m}`;
+}
+
+/** Nhãn tuần báo cáo: "12/07 – 18/07". */
+export function reportWeekLabel(fromSat: string): string {
+  const [from, to] = reportWeekBounds(fromSat);
+  return `${dm(from)} – ${dm(to)}`;
+}
+
+export interface PeriodOption {
+  value: string; // week:YYYY-MM-DD | month:YYYY-MM | quarter:YYYY-Q#
+  label: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * Danh sách các kỳ gần đây để chọn cụ thể trên bộ lọc dashboard.
+ * kind: "week" (tuần báo cáo T7→T6) | "month" | "quarter". i=0 là kỳ hiện tại.
+ */
+export function recentPeriods(
+  kind: "week" | "month" | "quarter",
+  count: number,
+  now: Date = new Date(),
+): PeriodOption[] {
+  const today = vnDayStr(now);
+  const out: PeriodOption[] = [];
+
+  if (kind === "week") {
+    const [thisSat] = reportWeekBounds(today);
+    for (let i = 0; i < count; i++) {
+      const sat = addDaysStr(thisSat, -7 * i);
+      const [from, to] = reportWeekBounds(sat);
+      out.push({
+        value: `week:${from}`,
+        label: `${reportWeekLabel(from)}${i === 0 ? " (tuần này)" : i === 1 ? " (tuần trước)" : ""}`,
+        from,
+        to,
+      });
+    }
+    return out;
+  }
+
+  if (kind === "month") {
+    const [y, m] = today.split("-").map(Number);
+    for (let i = 0; i < count; i++) {
+      const mm = m - 1 - i; // 0-based month index rồi trừ
+      const d = new Date(Date.UTC(y, mm, 1));
+      const yy = d.getUTCFullYear();
+      const mo = d.getUTCMonth() + 1;
+      const key = `${yy}-${String(mo).padStart(2, "0")}`;
+      const [from, to] = monthBounds(`${key}-01`);
+      out.push({
+        value: `month:${key}`,
+        label: `Tháng ${mo}/${yy}${i === 0 ? " (này)" : i === 1 ? " (trước)" : ""}`,
+        from,
+        to,
+      });
+    }
+    return out;
+  }
+
+  // quarter
+  const [y0, m0] = today.split("-").map(Number);
+  let q0 = Math.floor((m0 - 1) / 3); // 0..3
+  let yq = y0;
+  for (let i = 0; i < count; i++) {
+    const startMonth = q0 * 3 + 1;
+    const [from, to] = quarterBounds(`${yq}-${String(startMonth).padStart(2, "0")}-01`);
+    out.push({
+      value: `quarter:${yq}-Q${q0 + 1}`,
+      label: `Q${q0 + 1}/${yq}${i === 0 ? " (này)" : i === 1 ? " (trước)" : ""}`,
+      from,
+      to,
+    });
+    q0 -= 1;
+    if (q0 < 0) {
+      q0 = 3;
+      yq -= 1;
+    }
+  }
+  return out;
+}
+
+/** Giải mã 1 giá trị period (từ recentPeriods.value) thành [from, to]. */
+export function resolvePeriodValue(
+  value: string,
+): { from: string; to: string } | null {
+  const [kind, rest] = value.split(":");
+  if (kind === "week" && /^\d{4}-\d{2}-\d{2}$/.test(rest ?? "")) {
+    const [from, to] = reportWeekBounds(rest);
+    return { from, to };
+  }
+  if (kind === "month" && /^\d{4}-\d{2}$/.test(rest ?? "")) {
+    const [from, to] = monthBounds(`${rest}-01`);
+    return { from, to };
+  }
+  if (kind === "quarter") {
+    const mq = /^(\d{4})-Q([1-4])$/.exec(rest ?? "");
+    if (mq) {
+      const startMonth = (Number(mq[2]) - 1) * 3 + 1;
+      const [from, to] = quarterBounds(
+        `${mq[1]}-${String(startMonth).padStart(2, "0")}-01`,
+      );
+      return { from, to };
+    }
+  }
+  return null;
+}

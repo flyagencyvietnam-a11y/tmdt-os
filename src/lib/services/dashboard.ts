@@ -336,10 +336,10 @@ export async function weeklyTrend(
 ): Promise<WeekPoint[]> {
   const weeks = opts.weeks ?? 12;
   const end = opts.end ?? new Date().toISOString().slice(0, 10);
-  // tuần bắt đầu Thứ Hai
-  const endDow = new Date(`${end}T00:00:00Z`).getUTCDay(); // 0=CN
-  const mondayOffset = endDow === 0 ? 6 : endDow - 1;
-  let weekStart = addDaysStr(end, -mondayOffset);
+  // Tuần báo cáo VMG: bắt đầu Thứ 7 (T7 tuần trước → T6 tuần này).
+  const endDow = new Date(`${end}T00:00:00Z`).getUTCDay(); // 0=CN … 6=T7
+  const satOffset = (endDow + 1) % 7; // T7->0, CN->1, … T6->6
+  let weekStart = addDaysStr(end, -satOffset);
 
   const starts: string[] = [];
   for (let i = 0; i < weeks; i++) {

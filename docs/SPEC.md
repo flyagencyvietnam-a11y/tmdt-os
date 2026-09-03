@@ -1078,12 +1078,22 @@ Ba tầng, từ trên xuống:
 
 ### 12.2. Bộ lọc toàn cục
 
-Áp dụng cho toàn bộ dashboard, ghi nhớ theo người dùng:
-- Khoảng thời gian: Hôm nay / 7 ngày / 14 ngày / Tháng này / Tháng trước / Quý này / Tùy chọn
+Áp dụng cho toàn bộ dashboard, ghi nhớ theo người dùng (localStorage):
+- **Độ mịn thời gian:** Nhanh / Tuần / Tháng / Quý.
+  - *Nhanh:* Hôm nay / 7 ngày / 14 ngày / Tháng này / Tháng trước / Quý này.
+  - *Tuần / Tháng / Quý:* kèm ô chọn **kỳ cụ thể** — liệt kê 12 kỳ gần nhất
+    (`week:YYYY-MM-DD` | `month:YYYY-MM` | `quarter:YYYY-Q#`).
+  - **Tuần báo cáo VMG = Thứ 7 tuần trước → Thứ 6 tuần này** (7 ngày). `weeklyTrend`
+    và ô chọn tuần đều theo mốc này. Helper: `reportWeekBounds` / `recentPeriods` /
+    `resolvePeriodValue` trong `src/lib/time.ts`.
 - So sánh với: kỳ liền trước / cùng kỳ năm trước / không so sánh
 - Sản phẩm (nhiều lựa chọn)
 - Kênh (nhiều lựa chọn)
 - Người phụ trách (nhiều lựa chọn)
+
+**Tab "Báo cáo" cũ đã gộp vào Dashboard.** Khối "Bóc tách" (12.5) hiển thị breakdown
+theo sản phẩm / campaign / nhân sự / xu hướng tuần / cohort cho kỳ đang chọn, kèm nút
+**Xuất XLSX** (5 sheet) — chỉ ADMIN/MANAGER. Không còn route `/bao-cao`.
 
 ### 12.3. Tầng 1 - Khối cần hành động
 

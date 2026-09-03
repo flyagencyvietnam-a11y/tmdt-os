@@ -25,10 +25,19 @@ import {
 } from "@/lib/format";
 import { getBaseMetrics } from "@/lib/services/metrics";
 import { getKpiProgressForPeriod } from "@/lib/services/kpi";
-import { monthBounds, quarterBounds, todayVnDayStr, addDaysStr } from "@/lib/time";
+import {
+  monthBounds,
+  quarterBounds,
+  todayVnDayStr,
+  addDaysStr,
+  reportWeekBounds,
+  reportWeekLabel,
+  resolvePeriodValue,
+} from "@/lib/time";
 import { DashboardFilters } from "./dashboard-filters";
 import { RunJobsButton } from "./run-jobs-button";
 import { TrendChart } from "./trend-chart";
+import { ReportExport } from "./report-export";
 import { ViewerDashboard } from "./viewer-dashboard";
 
 async function loadViewerData() {
@@ -70,6 +79,22 @@ export const dynamic = "force-dynamic";
 
 function resolveRange(range: string): { from: string; to: string; label: string } {
   const today = todayVnDayStr();
+
+  // Kỳ cụ thể do người dùng chọn: week:YYYY-MM-DD | month:YYYY-MM | quarter:YYYY-Q#
+  if (range.includes(":")) {
+    const r = resolvePeriodValue(range);
+    if (r) {
+      const [kind, rest] = range.split(":");
+      const label =
+        kind === "week"
+          ? `Tuần ${reportWeekLabel(rest)}`
+          : kind === "month"
+            ? `Tháng ${rest.slice(5)}/${rest.slice(0, 4)}`
+            : `Q${rest.slice(-1)}/${rest.slice(0, 4)}`;
+      return { ...r, label };
+    }
+  }
+
   switch (range) {
     case "today":
       return { from: today, to: today, label: "Hôm nay" };
@@ -77,6 +102,10 @@ function resolveRange(range: string): { from: string; to: string; label: string 
       return { from: addDaysStr(today, -6), to: today, label: "7 ngày" };
     case "14d":
       return { from: addDaysStr(today, -13), to: today, label: "14 ngày" };
+    case "this_week": {
+      const [s, e] = reportWeekBounds(today);
+      return { from: s, to: e, label: `Tuần ${reportWeekLabel(s)}` };
+    }
     case "last_month": {
       const [s] = monthBounds(today);
       const [fs, fe] = monthBounds(addDaysStr(s, -1));
@@ -92,6 +121,141 @@ function resolveRange(range: string): { from: string; to: string; label: string 
       return { from: s, to: e, label: "Tháng này" };
     }
   }
+}
+
+type Breakdowns = {
+  byProduct: Awaited<ReturnType<typeof breakdownByProduct>>;
+  byCampaign: Awaited<ReturnType<typeof breakdownByCampaign>>;
+  byUser: Awaited<ReturnType<typeof breakdownByUser>>;
+  trend: Awaited<ReturnType<typeof weeklyTrend>>;
+  cohort: Awaited<ReturnType<typeof cohortByReceiptMonth>>;
+};
+
+/** Gộp từ tab "Báo cáo" cũ: dựng các sheet để xuất XLSX. */
+function buildReportSheets(d: Breakdowns) {
+  return [
+    {
+      name: "Theo sản phẩm",
+      columns: [
+        { header: "Sản phẩm", key: "sp" },
+        { header: "Spend", key: "spend" },
+        { header: "Lead", key: "leads" },
+        { header: "MQL", key: "mql" },
+        { header: "SQL", key: "sql" },
+        { header: "HV", key: "won" },
+        { header: "Doanh thu", key: "rev" },
+        { header: "CPMQL", key: "cpmql" },
+        { header: "CAC", key: "cac" },
+        { header: "ROAS", key: "roas" },
+        { header: "% NS thực tế", key: "actualPct" },
+        { header: "% NS phân bổ", key: "planPct" },
+      ],
+      rows: d.byProduct.rows.map((r) => ({
+        sp: r.label,
+        spend: r.metrics.spend,
+        leads: r.metrics.leads,
+        mql: r.metrics.mql,
+        sql: r.metrics.sql,
+        won: r.metrics.won,
+        rev: r.metrics.revenueGross,
+        cpmql: r.metrics.cpmql ?? "",
+        cac: r.metrics.cac ?? "",
+        roas: r.metrics.roas ?? "",
+        actualPct: r.budgetShareActualPct?.toFixed(1) ?? "",
+        planPct: r.budgetSharePlanPct ?? "",
+      })),
+    },
+    {
+      name: "Theo campaign",
+      columns: [
+        { header: "Campaign", key: "c" },
+        { header: "Spend", key: "spend" },
+        { header: "MQL", key: "mql" },
+        { header: "HV", key: "won" },
+        { header: "CPMQL", key: "cpmql" },
+        { header: "CAC", key: "cac" },
+        { header: "ROAS", key: "roas" },
+      ],
+      rows: d.byCampaign.map((r) => ({
+        c: r.label,
+        spend: r.metrics.spend,
+        mql: r.metrics.mql,
+        won: r.metrics.won,
+        cpmql: r.metrics.cpmql ?? "",
+        cac: r.metrics.cac ?? "",
+        roas: r.metrics.roas ?? "",
+      })),
+    },
+    {
+      name: "Theo nhân sự",
+      columns: [
+        { header: "Nhân sự", key: "u" },
+        { header: "Lead giao", key: "assigned" },
+        { header: "MQL", key: "mql" },
+        { header: "SQL", key: "sql" },
+        { header: "HV", key: "won" },
+        { header: "HVM", key: "hvm" },
+        { header: "Doanh thu", key: "rev" },
+        { header: "CR MQL→Chốt", key: "cr" },
+        { header: "Tỷ lệ trễ hẹn", key: "overdue" },
+        { header: "Tốc độ phản hồi", key: "resp" },
+      ],
+      rows: d.byUser.map((r) => ({
+        u: r.label,
+        assigned: r.leadsAssigned,
+        mql: r.metrics.mql,
+        sql: r.metrics.sql,
+        won: r.metrics.won,
+        hvm: r.metrics.hvm,
+        rev: r.metrics.revenueGross,
+        cr: r.crMqlWon == null ? "" : (r.crMqlWon * 100).toFixed(1) + "%",
+        overdue:
+          r.overdueRate == null ? "" : (r.overdueRate * 100).toFixed(1) + "%",
+        resp:
+          r.firstResponseRate == null
+            ? ""
+            : (r.firstResponseRate * 100).toFixed(1) + "%",
+      })),
+    },
+    {
+      name: "Xu hướng tuần",
+      columns: [
+        { header: "Tuần bắt đầu", key: "w" },
+        { header: "Spend", key: "spend" },
+        { header: "MQL", key: "mql" },
+        { header: "HV Chốt", key: "won" },
+        { header: "CPMQL", key: "cpmql" },
+      ],
+      rows: d.trend.map((p) => ({
+        w: p.weekStart,
+        spend: p.spend,
+        mql: p.mql,
+        won: p.won,
+        cpmql: p.cpmql ?? "",
+      })),
+    },
+    {
+      name: "Cohort",
+      columns: [
+        { header: "Tháng tiếp nhận", key: "m" },
+        { header: "Tổng lead", key: "total" },
+        { header: "0-7 ngày", key: "b0" },
+        { header: "8-30 ngày", key: "b1" },
+        { header: "31-60 ngày", key: "b2" },
+        { header: "61-90 ngày", key: "b3" },
+        { header: ">90 ngày", key: "b4" },
+      ],
+      rows: d.cohort.map((r) => ({
+        m: r.month,
+        total: r.totalLeads,
+        b0: r.buckets[0],
+        b1: r.buckets[1],
+        b2: r.buckets[2],
+        b3: r.buckets[3],
+        b4: r.buckets[4],
+      })),
+    },
+  ];
 }
 
 export default async function DashboardPage({
@@ -222,7 +386,23 @@ export default async function DashboardPage({
 
           {/* ---------- TẦNG 3 — BÓC TÁCH ---------- */}
           <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-muted-foreground">Bóc tách</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-muted-foreground">
+                Bóc tách · {label} ({from} → {to})
+              </h2>
+              {(user.role === "ADMIN" || user.role === "MANAGER") && (
+                <ReportExport
+                  filename={`bao-cao-${from}_${to}`}
+                  sheets={buildReportSheets({
+                    byProduct: data.byProduct,
+                    byCampaign: data.byCampaign,
+                    byUser: data.byUser,
+                    trend: data.trend,
+                    cohort: data.cohort,
+                  })}
+                />
+              )}
+            </div>
 
             <ProductTable data={data.byProduct} />
 

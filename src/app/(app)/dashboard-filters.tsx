@@ -8,8 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { recentPeriods } from "@/lib/time";
 
-const RANGES = [
+const FAST_RANGES = [
   { v: "today", l: "Hôm nay" },
   { v: "7d", l: "7 ngày" },
   { v: "14d", l: "14 ngày" },
@@ -17,6 +18,21 @@ const RANGES = [
   { v: "last_month", l: "Tháng trước" },
   { v: "this_quarter", l: "Quý này" },
 ];
+
+const GRAINS = [
+  { v: "fast", l: "Nhanh" },
+  { v: "week", l: "Tuần" },
+  { v: "month", l: "Tháng" },
+  { v: "quarter", l: "Quý" },
+];
+
+/** Từ giá trị `range` suy ra độ mịn đang chọn. */
+function grainOf(range: string): "fast" | "week" | "month" | "quarter" {
+  if (range.startsWith("week:") || range === "this_week") return "week";
+  if (range.startsWith("month:")) return "month";
+  if (range.startsWith("quarter:")) return "quarter";
+  return "fast";
+}
 const COMPARE = [
   { v: "prev", l: "Kỳ liền trước" },
   { v: "yoy", l: "Cùng kỳ năm trước" },
@@ -35,7 +51,17 @@ export function DashboardFilters({
   const sp = useSearchParams();
 
   const range = sp.get("range") ?? "this_month";
+  const grain = grainOf(range);
   const cmp = sp.get("cmp") ?? "prev";
+
+  // Danh sách kỳ cụ thể (12 kỳ gần nhất) cho Tuần / Tháng / Quý.
+  const periodOpts = React.useMemo(
+    () =>
+      grain === "fast"
+        ? []
+        : recentPeriods(grain, 12).map((p) => ({ value: p.value, label: p.label })),
+    [grain],
+  );
   const selProducts = new Set((sp.get("products") ?? "").split(",").filter(Boolean));
   const selChannels = new Set((sp.get("channels") ?? "").split(",").filter(Boolean));
 
@@ -73,11 +99,33 @@ export function DashboardFilters({
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
       <SimpleSelect
-        triggerClassName="h-8 w-36"
-        value={range}
-        onValueChange={(v) => push({ range: v })}
-        options={RANGES.map((r) => ({ value: r.v, label: r.l }))}
+        triggerClassName="h-8 w-24"
+        value={grain}
+        onValueChange={(g) => {
+          if (g === "fast") push({ range: "this_month" });
+          else {
+            const first = recentPeriods(g as "week" | "month" | "quarter", 1)[0];
+            push({ range: first.value });
+          }
+        }}
+        options={GRAINS.map((g) => ({ value: g.v, label: g.l }))}
       />
+
+      {grain === "fast" ? (
+        <SimpleSelect
+          triggerClassName="h-8 w-36"
+          value={range}
+          onValueChange={(v) => push({ range: v })}
+          options={FAST_RANGES.map((r) => ({ value: r.v, label: r.l }))}
+        />
+      ) : (
+        <SimpleSelect
+          triggerClassName="h-8 w-52"
+          value={range === "this_week" ? periodOpts[0]?.value : range}
+          onValueChange={(v) => push({ range: v })}
+          options={periodOpts}
+        />
+      )}
 
       <SimpleSelect
         triggerClassName="h-8 w-44"
