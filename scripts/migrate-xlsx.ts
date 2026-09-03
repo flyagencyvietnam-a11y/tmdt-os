@@ -94,9 +94,15 @@ function normName(raw: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+/** Cửa sổ hợp lệ của plan TMĐT: từ 01/06/2026 tới hôm nay (giờ VN). Xem SPEC Phụ lục A. */
+const PLAN_START = "2026-06-01";
+const PLAN_END = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
 function saneIso(y: number, mo: string, d: string): { iso: string | null; suspect: boolean } {
-  if (y < 2023 || y > 2027) return { iso: null, suspect: true }; // ngoài phạm vi hợp lý -> coi như thiếu
-  return { iso: `${y}-${mo}-${d}`, suspect: false };
+  if (y < 2023 || y > 2030) return { iso: null, suspect: true };
+  const iso = `${y}-${mo}-${d}`;
+  // Ngoài cửa sổ plan gần như chắc chắn là lỗi format ngày/tháng hoặc gõ nhầm năm.
+  if (iso < PLAN_START || iso > PLAN_END) return { iso, suspect: true };
+  return { iso, suspect: false };
 }
 function normDate(v: unknown): { iso: string | null; suspect: boolean } {
   if (v == null || v === "") return { iso: null, suspect: false };
@@ -246,7 +252,7 @@ async function main() {
 
     leads.push({
       rowNo: r,
-      receivedAt: d1.iso,
+      receivedAt: d1.suspect ? null : d1.iso,
       fullName: name,
       phone: normPhone(row.getCell(C.sdt).value),
       email: emailOrPage.includes("@") ? emailOrPage : null,

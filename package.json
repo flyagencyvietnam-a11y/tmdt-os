@@ -18,7 +18,8 @@
     "demo": "tsx scripts/db-migrate.ts && tsx scripts/seed.ts && next dev",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "xlsx:inspect": "tsx scripts/inspect-xlsx.ts",
-    "xlsx:migrate": "tsx scripts/migrate-xlsx.ts"
+    "xlsx:migrate": "tsx scripts/migrate-xlsx.ts",
+    "db:fix-dates": "tsx scripts/fix-lead-dates.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

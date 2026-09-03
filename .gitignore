@@ -51,3 +51,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# backup 1 lần của script sửa ngày
+/data/seed/leads-date-backup-*.json
