@@ -43,6 +43,7 @@ yarn-error.log*
 /data/seed/*.xlsx
 /data/seed/campaign-map.json
 /data/seed/campaign-map.template.json
+/data/seed/migration-report.md
 
 # vercel
 .vercel
