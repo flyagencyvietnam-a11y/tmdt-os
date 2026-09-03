@@ -127,6 +127,13 @@ export interface GridColumn<Row> {
   align?: "left" | "right" | "center";
   sortable?: boolean;
   groupable?: boolean;
-  /** Cho phép sửa tại chỗ. */
+  /** Cho phép sửa tại chỗ (nhấp đôi). */
   editable?: boolean;
+  /** Kiểu ô sửa: "text" (mặc định, <input>) hoặc "select" (<select>). */
+  editKind?: "text" | "select";
+  /** Lựa chọn cho editKind="select". `value` là giá trị gửi lên onEditCell. */
+  editOptions?: { value: string; label: string }[];
+  /** Giá trị khởi tạo ô sửa (mặc định = String(accessor(row))). Dùng khi giá trị
+   *  hiển thị khác giá trị lưu (ví dụ tên campaign hiện thị nhưng lưu id). */
+  editValue?: (row: Row) => string;
 }

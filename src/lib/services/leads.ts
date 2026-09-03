@@ -199,7 +199,17 @@ export async function updateLead(
   const now = new Date();
   const set: Partial<typeof leads.$inferInsert> = { updatedBy: actor.id };
   const changes: Record<string, { from: unknown; to: unknown }> = {};
-  const auditTouched = ["stage", "outcome", "assigned_to", "next_contact_date"];
+  const auditTouched = [
+    "stage",
+    "outcome",
+    "assigned_to",
+    "next_contact_date",
+    "full_name",
+    "phone",
+    "email",
+    "consult_note",
+    "campaign_id",
+  ];
 
   let curStage = before.stage as Stage;
   let curOutcome = before.outcome as Outcome;
@@ -303,7 +313,6 @@ export async function updateLead(
 
   // ---- các trường tự do khác ----
   for (const f of [
-    "consultNote",
     "productRaw",
     "placementTestResult",
     "classAssigned",
@@ -311,26 +320,48 @@ export async function updateLead(
   ] as const) {
     if (patch[f] !== undefined) set[f] = patch[f] as never;
   }
+  if (patch.consultNote !== undefined) {
+    const to = patch.consultNote?.trim() || null;
+    if (to !== before.consultNote) {
+      set.consultNote = to;
+      changes.consult_note = { from: before.consultNote, to };
+    }
+  }
   if (patch.desiredStartDate !== undefined)
     set.desiredStartDate = patch.desiredStartDate;
   if (patch.fullName) {
-    set.fullName = patch.fullName.trim();
-    set.nameNormalized = normalizeName(patch.fullName);
+    const to = patch.fullName.trim();
+    if (to && to !== before.fullName) {
+      set.fullName = to;
+      set.nameNormalized = normalizeName(patch.fullName);
+      changes.full_name = { from: before.fullName, to };
+    }
   }
   if (patch.phone !== undefined) {
-    set.phone = normalizePhone(patch.phone);
-    set.phoneNormalized = normalizePhone(patch.phone);
+    const to = normalizePhone(patch.phone);
+    if (to !== before.phone) {
+      set.phone = to;
+      set.phoneNormalized = to;
+      changes.phone = { from: before.phone, to };
+    }
   }
-  if (patch.email !== undefined) set.email = patch.email?.trim() || null;
+  if (patch.email !== undefined) {
+    const to = patch.email?.trim() || null;
+    if (to !== before.email) {
+      set.email = to;
+      changes.email = { from: before.email, to };
+    }
+  }
   if (patch.fbProfile !== undefined) set.fbProfile = patch.fbProfile?.trim() || null;
   if (patch.productId) set.productId = patch.productId;
-  if (patch.campaignId !== undefined) {
+  if (patch.campaignId !== undefined && patch.campaignId !== before.campaignId) {
     // V05 lại — nếu đổi sang nguồn cấm mà giữ campaign
     const src = before.source as Source;
     if (patch.campaignId && PAID_FORBIDDEN_SOURCES.includes(src)) {
       throw new ServiceError("Nguồn hiện tại không được gán campaign trả phí (V05).", "V05");
     }
     set.campaignId = patch.campaignId;
+    changes.campaign_id = { from: before.campaignId, to: patch.campaignId };
   }
 
   // ---- V01: OPEN + đã có interaction -> phải có next_contact_date ----

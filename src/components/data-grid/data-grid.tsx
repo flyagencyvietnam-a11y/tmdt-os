@@ -535,14 +535,39 @@ function DataRow<Row>({
               c.align === "center" && "text-center",
             )}
             style={ci === 0 && indent ? { paddingLeft: 12 + indent * 16 } : undefined}
+            title={c.editable ? "Nhấp đôi để sửa" : undefined}
             onDoubleClick={() =>
               c.editable && setEditing({ id: rowId, field: c.field })
             }
           >
-            {isEditing ? (
+            {isEditing && c.editKind === "select" ? (
+              <select
+                autoFocus
+                defaultValue={
+                  c.editValue ? c.editValue(row) : String(c.accessor(row) ?? "")
+                }
+                className="h-7 w-full rounded border bg-background px-1 text-sm"
+                onChange={(e) => {
+                  onEditCell?.(rowId, c.field, e.target.value);
+                  setEditing(null);
+                }}
+                onBlur={() => setEditing(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditing(null);
+                }}
+              >
+                {(c.editOptions ?? []).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : isEditing ? (
               <Input
                 autoFocus
-                defaultValue={String(c.accessor(row) ?? "")}
+                defaultValue={
+                  c.editValue ? c.editValue(row) : String(c.accessor(row) ?? "")
+                }
                 className="h-7"
                 onBlur={(e) => {
                   onEditCell?.(rowId, c.field, e.target.value);

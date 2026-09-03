@@ -13,7 +13,7 @@ import {
   type ViewConfig,
 } from "@/components/data-grid";
 import { fmtDate, fmtVnd } from "@/lib/format";
-import { reassignLeadAction } from "./actions";
+import { reassignLeadAction, updateLeadAction } from "./actions";
 
 const STAGE_LABELS: Record<string, string> = {
   NEW: "Mới",
@@ -45,8 +45,11 @@ export interface LeadRow {
   code: string;
   fullName: string;
   phone: string | null;
+  email: string | null;
   productCode: string | null;
+  campaignId: string | null;
   campaignName: string | null;
+  consultNote: string | null;
   source: string;
   stage: string;
   maxStage: string;
@@ -230,15 +233,20 @@ export function LeadTable({
   rows,
   showContact,
   ecUsers,
+  campaigns,
+  canEdit,
   canReassign,
 }: {
   rows: LeadRow[];
   showContact: boolean;
   ecUsers: { id: string; fullName: string }[];
+  campaigns: { id: string; name: string }[];
+  canEdit: boolean;
   canReassign: boolean;
 }) {
   const router = useRouter();
   const [savedViews, setSavedViews] = React.useState<SavedViewLike[]>(PREBUILT);
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     fetch("/api/views?entity=LEADS")
@@ -249,6 +257,33 @@ export function LeadTable({
       })
       .catch(() => {});
   }, []);
+
+  /** Sửa tại chỗ trên grid — chỉ các trường thông tin/ghi chú/campaign.
+   *  Giai đoạn & kết quả KHÔNG sửa ở đây (làm ở trang chi tiết lead). */
+  const onEditCell = React.useCallback(
+    async (rowId: string, field: string, raw: string) => {
+      const v = raw.trim();
+      let patch: Parameters<typeof updateLeadAction>[1] | null = null;
+      if (field === "fullName") {
+        if (!v) return toast.error("Tên khách không được để trống.");
+        patch = { fullName: v };
+      } else if (field === "phone") patch = { phone: v || null };
+      else if (field === "email") patch = { email: v || null };
+      else if (field === "consultNote") patch = { consultNote: v || null };
+      else if (field === "campaignName") patch = { campaignId: v || null };
+      if (!patch) return;
+      setSaving(true);
+      const res = await updateLeadAction(rowId, patch);
+      setSaving(false);
+      if (res.ok) {
+        toast.success("Đã lưu.");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    },
+    [router],
+  );
 
   const columns: GridColumn<LeadRow>[] = React.useMemo(
     () => [
@@ -270,16 +305,27 @@ export function LeadTable({
         header: "Khách",
         kind: "text",
         accessor: (r) => r.fullName,
-        cell: (r) => (
-          <Link href={`/lead/${r.id}`} className="hover:underline">
-            {r.fullName}
-            {r.isCold && (
-              <Badge variant="outline" className="ml-1">
-                Cold
-              </Badge>
-            )}
-          </Link>
-        ),
+        editable: canEdit,
+        cell: (r) => {
+          const inner = (
+            <>
+              {r.fullName}
+              {r.isCold && (
+                <Badge variant="outline" className="ml-1">
+                  Cold
+                </Badge>
+              )}
+            </>
+          );
+          // Khi được phép sửa: bỏ link để nhấp đôi không điều hướng (mở chi tiết qua cột Mã).
+          return canEdit ? (
+            <span>{inner}</span>
+          ) : (
+            <Link href={`/lead/${r.id}`} className="hover:underline">
+              {inner}
+            </Link>
+          );
+        },
         groupable: false,
       },
       ...(showContact
@@ -289,6 +335,15 @@ export function LeadTable({
               header: "SĐT",
               kind: "text" as const,
               accessor: (r: LeadRow) => r.phone,
+              editable: canEdit,
+              groupable: false,
+            },
+            {
+              field: "email",
+              header: "Email",
+              kind: "text" as const,
+              accessor: (r: LeadRow) => r.email,
+              editable: canEdit,
               groupable: false,
             },
           ]
@@ -307,6 +362,29 @@ export function LeadTable({
         header: "Campaign",
         kind: "text",
         accessor: (r) => r.campaignName ?? "—",
+        editable: canEdit,
+        editKind: "select",
+        editOptions: [
+          { value: "", label: "— bỏ campaign —" },
+          ...campaigns.map((c) => ({ value: c.id, label: c.name })),
+        ],
+        editValue: (r) => r.campaignId ?? "",
+      },
+      {
+        field: "consultNote",
+        header: "Ghi chú",
+        kind: "text",
+        accessor: (r) => r.consultNote,
+        editable: canEdit,
+        groupable: false,
+        cell: (r) =>
+          r.consultNote ? (
+            <span className="line-clamp-1" title={r.consultNote}>
+              {r.consultNote}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">–</span>
+          ),
       },
       {
         field: "source",
@@ -433,13 +511,15 @@ export function LeadTable({
         cell: (r) => fmtDate(r.wonAt),
       },
     ],
-    [rows, showContact],
+    [rows, showContact, canEdit, campaigns],
   );
 
   const initialView: ViewConfig = {
     columns: [
       { field: "maxStage", visible: false },
       { field: "wonAt", visible: false },
+      { field: "email", visible: false },
+      { field: "consultNote", visible: false },
       { field: "revenue", aggregate: "sum" },
     ],
     rowHeight: "medium",
@@ -447,7 +527,7 @@ export function LeadTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {PREBUILT.map((v) => (
           <QuickViewButton
             key={v.id}
@@ -457,6 +537,11 @@ export function LeadTable({
             }
           />
         ))}
+        {canEdit && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {saving ? "Đang lưu…" : "Nhấp đôi ô để sửa"}
+          </span>
+        )}
       </div>
       <DataGrid
         entity="LEADS"
@@ -465,6 +550,7 @@ export function LeadTable({
         getRowId={(r) => r.id}
         initialView={initialView}
         savedViews={savedViews}
+        onEditCell={canEdit ? onEditCell : undefined}
         onSaveView={async (name, config) => {
           const res = await fetch("/api/views", {
             method: "POST",

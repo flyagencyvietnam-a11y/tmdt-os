@@ -23,8 +23,11 @@ export default async function Page() {
       code: leads.code,
       fullName: leads.fullName,
       phone: leads.phone,
+      email: leads.email,
       productCode: products.code,
+      campaignId: leads.campaignId,
       campaignName: campaigns.displayName,
+      consultNote: leads.consultNote,
       source: leads.source,
       stage: leads.stage,
       maxStage: leads.maxStage,
@@ -53,6 +56,7 @@ export default async function Page() {
 
   const refs = await getFormRefs(db);
   const canCreate = can(user.role, "lead", "create");
+  const canEdit = can(user.role, "lead", "update");
   const showContact = can(user.role, "lead.contactInfo", "read");
 
   return (
@@ -83,6 +87,8 @@ export default async function Page() {
           });
           return {
             ...r,
+            campaignName: r.campaignName ?? null,
+            consultNote: r.consultNote ?? null,
             receivedAt: r.receivedAt ? new Date(r.receivedAt).toISOString() : null,
             mqlAt: r.mqlAt ? new Date(r.mqlAt).toISOString() : null,
             wonAt: r.wonAt ? new Date(r.wonAt).toISOString() : null,
@@ -97,6 +103,8 @@ export default async function Page() {
         })}
         showContact={showContact}
         ecUsers={refs.ecUsers}
+        campaigns={refs.campaigns.map((c) => ({ id: c.id, name: c.displayName }))}
+        canEdit={canEdit}
         canReassign={can(user.role, "lead.reassign", "update")}
       />
     </div>

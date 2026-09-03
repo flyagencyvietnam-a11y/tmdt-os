@@ -1022,7 +1022,18 @@ Ràng buộc UX cứng: **hoàn thành trong dưới 30 giây.**
 
 ### 11.4. Màn hình danh sách lead
 
-Data Grid đầy đủ (Mục 14). Các view dựng sẵn chia sẻ cho cả đội:
+Data Grid đầy đủ (Mục 16).
+
+**Sửa tại chỗ trên bảng** (nhấp đôi, người có quyền `lead.update`): chỉ các trường
+thông tin/vận hành nhẹ — **họ tên, SĐT, email, ghi chú tư vấn, campaign**. Campaign
+là ô chọn (`<select>`), lưu `campaign_id`; các trường còn lại là ô nhập chữ. Mọi thay
+đổi đi qua service `updateLead` (validate V05 khi đổi campaign) và **ghi audit_logs**
+(`full_name` / `phone` / `email` / `consult_note` / `campaign_id`). **Giai đoạn và
+kết quả KHÔNG sửa ở bảng** — đổi ở trang chi tiết lead để chạy đủ máy trạng thái
+(V01/V03/V04, mốc `mql_at`/`sql_at`, engine escalate). Khi bật quyền sửa, cột "Khách"
+bỏ liên kết (mở chi tiết qua cột "Mã") để nhấp đôi không điều hướng.
+
+Các view dựng sẵn chia sẻ cho cả đội:
 
 | Tên view | Bộ lọc |
 |---|---|
