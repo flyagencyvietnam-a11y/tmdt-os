@@ -41,6 +41,7 @@ export const authConfig = {
       const isPublic =
         pathname === "/login" ||
         pathname.startsWith("/api/auth") ||
+        pathname === "/api/cron" || // tự bảo vệ bằng CRON_SECRET (Vercel Cron gọi, không có session)
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico";
       if (isPublic) return true;
