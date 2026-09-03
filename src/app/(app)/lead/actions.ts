@@ -41,7 +41,7 @@ export async function createLeadAction(input: CreateLeadInput): Promise<Result<{
   try {
     const data = await createLead(db, input, { id: user.id, role: user.role });
     revalidatePath("/lead");
-    revalidatePath("/hom-nay");
+    revalidatePath("/cong-viec");
     return { ok: true, data };
   } catch (e) {
     return fail(e);
@@ -64,7 +64,7 @@ export async function updateLeadAction(
     await updateLead(db, id, patch, { id: user.id, role: user.role });
     revalidatePath("/lead");
     revalidatePath(`/lead/${id}`);
-    revalidatePath("/hom-nay");
+    revalidatePath("/cong-viec");
     return { ok: true };
   } catch (e) {
     return fail(e);
@@ -88,7 +88,7 @@ export async function recordInteractionAction(input: {
   try {
     const res = await recordInteraction(db, input, { id: user.id, role: user.role });
     revalidatePath(`/lead/${input.leadId}`);
-    revalidatePath("/hom-nay");
+    revalidatePath("/cong-viec");
     revalidatePath("/lead");
     return { ok: true, data: res };
   } catch (e) {

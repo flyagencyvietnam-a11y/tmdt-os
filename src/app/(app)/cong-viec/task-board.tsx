@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -49,6 +50,9 @@ interface Task {
   assigneeId: string;
   assigneeName: string | null;
   completedAt: string | null;
+  leadId: string | null;
+  leadCode: string | null;
+  leadStage: string | null;
 }
 
 export function TaskBoard({
@@ -273,14 +277,21 @@ function TaskCard({
       )}
       <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
         {t.type === "RECURRING" && <Badge variant="outline">định kỳ</Badge>}
+        {t.type === "LEAD_CARE" && <Badge variant="outline">chăm sóc lead</Badge>}
         {scope === "team" && <span>{t.assigneeName}</span>}
         {t.dueDate && (
           <span className={overdue ? "text-crit" : ""}>{fmtDate(t.dueDate)}</span>
         )}
-        {t.linkUrl && (
-          <a href={t.linkUrl} target="_blank" rel="noreferrer" className="text-brand">
-            link
-          </a>
+        {t.leadId ? (
+          <Link href={`/lead/${t.leadId}`} className="text-brand hover:underline">
+            {t.leadCode ?? "mở lead"}
+          </Link>
+        ) : (
+          t.linkUrl && (
+            <a href={t.linkUrl} target="_blank" rel="noreferrer" className="text-brand">
+              link
+            </a>
+          )
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">

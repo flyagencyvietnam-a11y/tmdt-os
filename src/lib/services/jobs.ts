@@ -11,6 +11,7 @@ import { COLD_LOST_REASON } from "./escalate";
 import { evaluateCampaignAlerts } from "./metrics";
 import type { AnyDb } from "./metrics";
 import { getManagerIds, notify, notifyMany } from "./notifications";
+import { spawnLeadCareTasks } from "./lead-care-tasks";
 import { spawnRecurringTasks } from "./tasks";
 
 export interface JobResult {
@@ -82,7 +83,7 @@ export async function runOverdueDigest(
         severity: days > 3 ? "WARNING" : "INFO",
         title: `Bạn có ${list.length} khách trễ hẹn chăm sóc`,
         body,
-        linkUrl: "/hom-nay",
+        linkUrl: "/cong-viec",
         dedupeKey: `overdue:${today}`,
       })
     )
@@ -247,6 +248,11 @@ export async function runSpawnRecurring(db: AnyDb, now = new Date()): Promise<Jo
   return { job: "spawn-recurring", createdNotifications: 0, affected: r.created };
 }
 
+export async function runSpawnLeadCare(db: AnyDb, now = new Date()): Promise<JobResult> {
+  const r = await spawnLeadCareTasks(db, now);
+  return { job: "spawn-lead-care", createdNotifications: 0, affected: r.created };
+}
+
 /** Chạy toàn bộ tác vụ buổi sáng (dùng cho nút "chạy ngay" của ADMIN). */
 export async function runAllMorningJobs(db: AnyDb, now = new Date()) {
   return {
@@ -254,5 +260,6 @@ export async function runAllMorningJobs(db: AnyDb, now = new Date()) {
     alerts: await runAlertScan(db, now),
     cold: await runColdDataSweep(db),
     recurring: await runSpawnRecurring(db, now),
+    leadCare: await runSpawnLeadCare(db, now),
   };
 }

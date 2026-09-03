@@ -14,6 +14,7 @@ import {
   nextSilenceCount,
   suggestNextContactDate,
 } from "./escalate";
+import { completeLeadCareTasks } from "./lead-care-tasks";
 import { maxStage, stageRank, type Actor } from "./leads";
 import type { AnyDb } from "./metrics";
 
@@ -170,6 +171,9 @@ export async function recordInteraction(
       changes: audit,
     });
   }
+
+  // 1 task LEAD_CARE = 1 phiên chăm sóc: ghi tương tác xong -> đóng task đang mở.
+  await completeLeadCareTasks(db, lead.id, actor, "Đã ghi nhận 1 phiên chăm sóc");
 
   return {
     interactionId: ir.id,

@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
-import { tasks, users } from "@/lib/db/schema";
+import { leads, tasks, users } from "@/lib/db/schema";
 import { todayVnDayStr } from "@/lib/time";
 import { ServiceError } from "./errors";
 import type { Actor } from "./leads";
@@ -156,9 +156,13 @@ export async function listTasks(
       assigneeId: tasks.assigneeId,
       assigneeName: users.fullName,
       completedAt: tasks.completedAt,
+      leadId: tasks.leadId,
+      leadCode: leads.code,
+      leadStage: leads.stage,
     })
     .from(tasks)
     .leftJoin(users, eq(users.id, tasks.assigneeId))
+    .leftJoin(leads, eq(leads.id, tasks.leadId))
     .where(
       and(
         isNull(tasks.deletedAt),

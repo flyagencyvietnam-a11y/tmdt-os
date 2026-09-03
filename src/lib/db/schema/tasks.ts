@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { auditColumns, pkUuid, softDeleteColumn } from "./_shared";
 import { taskPriorityEnum, taskStatusEnum, taskTypeEnum } from "./enums";
+import { leads } from "./leads";
 import { products } from "./products";
 import { users } from "./users";
 
@@ -39,6 +40,8 @@ export const tasks = pgTable(
     recurrenceRule: text("recurrence_rule"),
     /** Cho task con sinh từ task định kỳ. */
     parentTaskId: uuid("parent_task_id"),
+    /** Lead gắn với việc chăm sóc (type = LEAD_CARE). */
+    leadId: uuid("lead_id").references(() => leads.id),
     /** Link tài liệu ngoài (Canva, Drive). */
     linkUrl: text("link_url"),
     /** Bắt buộc khi status = BLOCKED. */
@@ -52,6 +55,7 @@ export const tasks = pgTable(
     index("tasks_status_idx").on(t.status),
     index("tasks_due_idx").on(t.dueDate),
     index("tasks_parent_idx").on(t.parentTaskId),
+    index("tasks_lead_idx").on(t.leadId),
     check("tasks_progress_range", sql`${t.progressPct} between 0 and 100`),
   ],
 );

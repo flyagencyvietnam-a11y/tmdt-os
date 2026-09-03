@@ -986,9 +986,18 @@ Bố cục: hàng thẻ chỉ số ở trên, biểu đồ ở giữa, hai bản
 
 ## 11. Module 2 - Quản lý lead và hàng đợi công việc của EC
 
-### 11.1. Màn hình "Hôm nay" - trang chủ của EC
+### 11.1. Hàng đợi chăm sóc — gộp vào Module Task (Gói D)
 
-Đây là màn hình quan trọng nhất của hệ thống. Khi EC đăng nhập, đây là thứ họ thấy đầu tiên.
+> **Cập nhật:** không còn màn hình `/hom-nay` riêng. **Mỗi lead đến hẹn chăm sóc =
+> 1 bản ghi `tasks` type `LEAD_CARE`** (`lead_id`, `assignee_id` = người phụ trách,
+> `due_date` = `next_contact_date`, `priority` theo `silence_count` / lead mới). Sinh
+> tự động mỗi sáng (`spawnLeadCareTasks`, trong `runAllMorningJobs`) và bỏ qua lead đã
+> có task đang mở. **1 task = 1 phiên chăm sóc:** ghi 1 tương tác (`recordInteraction`)
+> hoặc lead chuyển WON/LOST/DISQUALIFIED → task tự chuyển `DONE`; sáng hôm sau nếu vẫn
+> đến hẹn thì sinh task mới. Xem và xử lý ở **Công việc** (`/cong-viec`), lọc theo
+> "đến hạn hôm nay / quá hạn". `/hom-nay` redirect sang `/cong-viec`.
+
+Bố cục gốc (giữ để tham chiếu ưu tiên hiển thị trong Công việc):
 
 Bố cục ba khối xếp dọc, theo đúng thứ tự ưu tiên:
 
@@ -1155,8 +1164,8 @@ Thay vào đó:
 
 | Loại | Nơi quản lý | Ví dụ |
 |---|---|---|
-| Việc chăm sóc lead | Hàng đợi "Hôm nay" (Mục 11.1), là **view trên dữ liệu lead** | Gọi lại khách A, nhắn ưu đãi cho khách B |
-| Việc dự án, việc định kỳ | Module Task | Xây sale kit TESOL, nhập số liệu ads hằng ngày, gửi quy trình tư vấn |
+| Việc chăm sóc lead | **task `LEAD_CARE`** sinh tự động từ lead đến hẹn (Mục 11.1) — hiển thị chung ở Công việc | Gọi lại khách A, nhắn ưu đãi cho khách B |
+| Việc dự án, việc định kỳ | Module Task (`PROJECT` / `RECURRING`) | Xây sale kit TESOL, gửi quy trình tư vấn |
 
 Cầu nối giữa hai loại: chỉ số `daily_clear_rate` xuất hiện trên dashboard quản lý như một dòng "công việc" của EC, dù không phải task.
 

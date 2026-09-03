@@ -452,7 +452,7 @@ function ActionTier({
     cards.push({
       title: `${counts.overdueLeads} lead quá hạn chăm sóc`,
       body: "Sắp xếp lead trễ lâu nhất lên đầu, xử lý ngay.",
-      href: "/hom-nay",
+      href: "/cong-viec",
       tone: "crit",
     });
   if (counts.newLeadsStale > 0)

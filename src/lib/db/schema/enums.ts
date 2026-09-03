@@ -92,7 +92,13 @@ export const interactionResultEnum = pgEnum("interaction_result", [
 ]);
 
 /** SPEC Mục 7.9 */
-export const taskTypeEnum = pgEnum("task_type", ["PROJECT", "RECURRING", "SYSTEM"]);
+export const taskTypeEnum = pgEnum("task_type", [
+  "PROJECT",
+  "RECURRING",
+  "SYSTEM",
+  /** Việc chăm sóc 1 lead — 1 task = 1 phiên chăm sóc (gộp màn hình "Hôm nay"). */
+  "LEAD_CARE",
+]);
 
 export const taskStatusEnum = pgEnum("task_status", [
   "TODO",

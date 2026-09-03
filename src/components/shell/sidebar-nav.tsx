@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CalendarClock,
   ClipboardList,
   LayoutDashboard,
   Lock,
@@ -27,7 +26,6 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"] },
-  { href: "/hom-nay", label: "Hôm nay", icon: CalendarClock, roles: ["EC", "ADMIN", "MANAGER"], phase: "P1" },
   { href: "/lead", label: "Lead", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"], phase: "P1" },
   { href: "/campaign", label: "Campaign", icon: Megaphone, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"], phase: "P1" },
   { href: "/cong-viec", label: "Công việc", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },

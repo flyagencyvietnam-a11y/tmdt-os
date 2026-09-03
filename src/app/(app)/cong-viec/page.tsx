@@ -29,8 +29,9 @@ export default async function Page({
       <div>
         <h1 className="text-xl font-semibold">Công việc</h1>
         <p className="text-sm text-muted-foreground">
-          Việc dự án & định kỳ (SPEC Mục 13). Việc chăm sóc lead ở màn hình “Hôm nay”,
-          không tạo task riêng.
+          Việc dự án, định kỳ và <b>chăm sóc lead</b> (SPEC Mục 13). Mỗi lead đến hẹn
+          chăm sóc = 1 task <code>LEAD_CARE</code>; ghi 1 phiên chăm sóc là task hoàn
+          thành. Màn hình “Hôm nay” đã gộp vào đây.
         </p>
       </div>
       <TaskBoard

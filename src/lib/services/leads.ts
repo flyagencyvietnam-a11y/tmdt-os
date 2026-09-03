@@ -426,6 +426,15 @@ export async function updateLead(
       changes: audited,
     });
   }
+
+  // Lead chuyển sang trạng thái đóng -> không cần chăm sóc nữa: đóng task LEAD_CARE.
+  if (
+    set.outcome !== undefined &&
+    ["WON", "LOST", "DISQUALIFIED"].includes(set.outcome as string)
+  ) {
+    const { completeLeadCareTasks } = await import("./lead-care-tasks");
+    await completeLeadCareTasks(db, id, actor, `Lead chuyển ${set.outcome}`);
+  }
 }
 
 /** Phân công lại — SPEC Mục 11.5. Ghi audit + thông báo cả hai bên. */
