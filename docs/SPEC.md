@@ -1325,7 +1325,17 @@ Module này có giá trị thực nhưng **không nên làm ở Phase 1**. Nó c
 
 ### 16.3. Ghi chú kỹ thuật
 
-Dùng TanStack Table v8 làm nền, tự xây lớp giao diện xây bộ lọc. **Không** dùng thư viện grid thương mại nặng nề - quy mô dữ liệu không cần đến, và chi phí bảo trì sẽ vượt lợi ích.
+Component tự xây trên `filter-engine` / `aggregations` thuần (không phụ thuộc TanStack
+Table). **Không** dùng thư viện grid thương mại nặng nề - quy mô dữ liệu không cần đến,
+và chi phí bảo trì sẽ vượt lợi ích.
+
+**Cuộn ảo (đã làm):** dùng `@tanstack/react-virtual`. Cả cây nhóm được **phẳng hoá**
+thành một mảng "dòng nhìn thấy" (tiêu đề nhóm + dòng dữ liệu, bỏ qua con của nhóm đã
+thu), rồi chỉ render cửa sổ đang thấy + overscan. Nhờ vậy gom nhóm trên vài trăm dòng
+không còn giật (trước đây render toàn bộ cây). Bảng dùng `table-layout: fixed` +
+`<colgroup>` (bề rộng lấy từ `view.columns[].width` → `column.defaultWidth` → mặc định
+theo kiểu dữ liệu) để chiều rộng cột ổn định khi các dòng liên tục vào/ra DOM. Vùng
+cuộn cao tối đa `70vh`, header dính (`position: sticky`).
 
 Xây component này **trước** khi xây các màn hình danh sách, vì cả 5 màn hình bảng đều phụ thuộc vào nó. Đây là hạng mục nằm trên đường găng của dự án.
 

@@ -26,6 +26,7 @@
     "@date-fns/tz": "^1.5.0",
     "@electric-sql/pglite": "^0.5.8",
     "@tanstack/react-table": "^9.2.3",
+    "@tanstack/react-virtual": "^3.14.10",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

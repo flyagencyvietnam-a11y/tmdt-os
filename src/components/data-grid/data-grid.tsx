@@ -4,11 +4,13 @@
  * Data Grid dùng chung — SPEC Mục 16. Hand-rolled trên filter-engine/aggregations
  * thuần (có thể thay nền bằng TanStack Table sau mà không đổi API này).
  *
- * v1 đã có: lọc lồng AND/OR, sắp xếp nhiều cấp, gom nhóm tới 3 cấp + dòng tổng hợp,
- * ẩn/hiện cột, chọn nhiều dòng + thao tác hàng loạt, xuất CSV, view lưu được.
- * TODO (Phase sau): cuộn ảo, xuất XLSX, kéo-đổi thứ tự cột, sửa tại chỗ đa kiểu,
- * ghim cột, chia sẻ view bằng link.
+ * Đã có: lọc lồng AND/OR, sắp xếp nhiều cấp, gom nhóm tới 3 cấp + dòng tổng hợp,
+ * ẩn/hiện cột, chọn nhiều dòng + thao tác hàng loạt, xuất CSV/XLSX, view lưu được,
+ * **cuộn ảo** (chỉ render các dòng đang thấy — phẳng hoá cả cây nhóm).
+ * TODO (Phase sau): kéo-đổi thứ tự cột, sửa tại chỗ đa kiểu, ghim cột,
+ * chia sẻ view bằng link.
  */
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDown,
   ArrowUp,
@@ -40,11 +42,17 @@ import { evalGroup } from "./filter-engine";
 import { emptyFilterGroup, FilterBuilder } from "./filter-builder";
 import type {
   AggregateFn,
+  FieldKind,
   GridColumn,
   SavedViewLike,
   SortSpec,
   ViewConfig,
 } from "./types";
+
+/** Một "dòng nhìn thấy" sau khi phẳng hoá cây nhóm — đơn vị để cuộn ảo. */
+type VisualRow<Row> =
+  | { kind: "group"; node: GroupNode<Row> }
+  | { kind: "data"; row: Row; indent: number };
 
 export interface DataGridProps<Row> {
   columns: GridColumn<Row>[];
@@ -69,6 +77,30 @@ const ROW_H: Record<NonNullable<ViewConfig["rowHeight"]>, string> = {
   medium: "h-10 text-sm",
   tall: "h-14 text-sm",
 };
+
+/** Chiều cao dòng tính bằng px — cho ước lượng cuộn ảo (khớp ROW_H). */
+const ROW_PX: Record<NonNullable<ViewConfig["rowHeight"]>, number> = {
+  compact: 32,
+  medium: 40,
+  tall: 56,
+};
+
+/** Bề rộng cột mặc định theo kiểu dữ liệu (khi view/column chưa đặt width). */
+const KIND_W: Record<FieldKind, number> = {
+  text: 180,
+  number: 120,
+  money: 130,
+  date: 120,
+  datetime: 150,
+  enum: 140,
+  boolean: 90,
+};
+
+/** Bề rộng cột ô chọn (checkbox) — cố định. */
+const SELECT_COL_W = 40;
+
+/** Chiều cao tối đa vùng cuộn của grid. */
+const GRID_MAX_H = "70vh";
 
 export function DataGrid<Row>({
   columns,
@@ -141,7 +173,64 @@ export function DataGrid<Row>({
     return buildGroups(sorted, g, accessorOf);
   }, [sorted, view.groupBy, accessorOf]);
 
+  const toggleCollapse = React.useCallback((key: string) => {
+    setCollapsedGroups((prev) => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  }, []);
+
+  // --- phẳng hoá (group header + data row) để cuộn ảo, bỏ qua con của nhóm đã thu ---
+  const visualRows = React.useMemo<VisualRow<Row>[]>(() => {
+    const out: VisualRow<Row>[] = [];
+    if (groups) {
+      const walk = (nodes: GroupNode<Row>[]) => {
+        for (const n of nodes) {
+          out.push({ kind: "group", node: n });
+          if (collapsedGroups.has(n.key)) continue;
+          if (n.children) walk(n.children);
+          else
+            for (const r of n.rows)
+              out.push({ kind: "data", row: r, indent: n.depth + 1 });
+        }
+      };
+      walk(groups);
+    } else {
+      for (const r of sorted) out.push({ kind: "data", row: r, indent: 0 });
+    }
+    return out;
+  }, [groups, sorted, collapsedGroups]);
+
   const rowHeightClass = ROW_H[view.rowHeight ?? "medium"];
+  const rowPx = ROW_PX[view.rowHeight ?? "medium"];
+
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: visualRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowPx,
+    overscan: 12,
+  });
+  const vItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+  const padTop = vItems.length ? vItems[0].start : 0;
+  const padBottom = vItems.length
+    ? totalSize - vItems[vItems.length - 1].end
+    : 0;
+
+  // bề rộng cột cho table-layout: fixed (cuộn ảo cần chiều rộng ổn định)
+  const colWidths = React.useMemo(
+    () =>
+      visibleColumns.map((c) => {
+        const cfg = (view.columns ?? []).find((x) => x.field === c.field);
+        return cfg?.width ?? c.defaultWidth ?? KIND_W[c.kind] ?? 150;
+      }),
+    [visibleColumns, view.columns],
+  );
+  const tableMinWidth =
+    SELECT_COL_W + colWidths.reduce((a, b) => a + b, 0);
   const allChecked = sorted.length > 0 && selected.size === sorted.length;
 
   function toggleAll() {
@@ -227,11 +316,24 @@ export function DataGrid<Row>({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-left">
+      <div
+        ref={scrollRef}
+        className="overflow-auto rounded-md border"
+        style={{ maxHeight: GRID_MAX_H }}
+      >
+        <table
+          className="border-collapse text-left"
+          style={{ tableLayout: "fixed", width: "100%", minWidth: tableMinWidth }}
+        >
+          <colgroup>
+            <col style={{ width: SELECT_COL_W }} />
+            {colWidths.map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-background">
             <tr className="border-b">
-              <th className="w-10 px-2">
+              <th className="px-2">
                 <Checkbox checked={allChecked} onCheckedChange={toggleAll} />
               </th>
               {visibleColumns.map((c) => {
@@ -240,7 +342,7 @@ export function DataGrid<Row>({
                   <th
                     key={c.field}
                     className={cn(
-                      "whitespace-nowrap px-3 py-2 text-xs font-semibold text-muted-foreground",
+                      "truncate px-3 py-2 text-xs font-semibold text-muted-foreground",
                       c.align === "right" && "text-right",
                       c.align === "center" && "text-center",
                       c.sortable !== false && "cursor-pointer select-none",
@@ -263,7 +365,7 @@ export function DataGrid<Row>({
             </tr>
           </thead>
           <tbody>
-            {sorted.length === 0 && (
+            {visualRows.length === 0 && (
               <tr>
                 <td
                   colSpan={visibleColumns.length + 1}
@@ -274,44 +376,49 @@ export function DataGrid<Row>({
               </tr>
             )}
 
-            {groups
-              ? groups.map((g) => (
-                  <GroupRows
-                    key={g.key}
-                    node={g}
-                    columns={visibleColumns}
-                    rowHeightClass={rowHeightClass}
-                    getRowId={getRowId}
-                    selected={selected}
-                    toggleOne={toggleOne}
-                    collapsed={collapsedGroups}
-                    onToggleCollapse={(key) =>
-                      setCollapsedGroups((prev) => {
-                        const n = new Set(prev);
-                        if (n.has(key)) n.delete(key);
-                        else n.add(key);
-                        return n;
-                      })
-                    }
-                    editing={editing}
-                    setEditing={setEditing}
-                    onEditCell={onEditCell}
+            {padTop > 0 && (
+              <tr aria-hidden style={{ height: padTop }}>
+                <td colSpan={visibleColumns.length + 1} />
+              </tr>
+            )}
+
+            {vItems.map((vi) => {
+              const vr = visualRows[vi.index];
+              if (vr.kind === "group") {
+                return (
+                  <GroupHeaderRow
+                    key={`g:${vr.node.key}`}
+                    node={vr.node}
+                    colCount={visibleColumns.length}
+                    collapsed={collapsedGroups.has(vr.node.key)}
+                    onToggle={() => toggleCollapse(vr.node.key)}
+                    rowPx={rowPx}
                   />
-                ))
-              : sorted.map((r) => (
-                  <DataRow
-                    key={getRowId(r)}
-                    row={r}
-                    columns={visibleColumns}
-                    rowHeightClass={rowHeightClass}
-                    checked={selected.has(getRowId(r))}
-                    onToggle={() => toggleOne(getRowId(r))}
-                    editing={editing}
-                    setEditing={setEditing}
-                    rowId={getRowId(r)}
-                    onEditCell={onEditCell}
-                  />
-                ))}
+                );
+              }
+              const id = getRowId(vr.row);
+              return (
+                <DataRow
+                  key={id}
+                  row={vr.row}
+                  rowId={id}
+                  columns={visibleColumns}
+                  rowHeightClass={rowHeightClass}
+                  checked={selected.has(id)}
+                  onToggle={() => toggleOne(id)}
+                  editing={editing}
+                  setEditing={setEditing}
+                  onEditCell={onEditCell}
+                  indent={vr.indent}
+                />
+              );
+            })}
+
+            {padBottom > 0 && (
+              <tr aria-hidden style={{ height: padBottom }}>
+                <td colSpan={visibleColumns.length + 1} />
+              </tr>
+            )}
           </tbody>
           {!groups && sorted.length > 0 && hasAggregates(view) && (
             <tfoot>
@@ -344,6 +451,8 @@ export function DataGrid<Row>({
 
       <p className="text-xs text-muted-foreground">
         {sorted.length} / {rows.length} dòng
+        {visualRows.length !== sorted.length &&
+          ` · ${visualRows.length} dòng hiển thị (đã gom nhóm)`}
       </p>
     </div>
   );
@@ -461,96 +570,47 @@ function DataRow<Row>({
   );
 }
 
-function GroupRows<Row>({
+/** Chỉ render dòng tiêu đề nhóm — thân nhóm do vòng cuộn ảo ở DataGrid render. */
+function GroupHeaderRow<Row>({
   node,
-  columns,
-  rowHeightClass,
-  getRowId,
-  selected,
-  toggleOne,
+  colCount,
   collapsed,
-  onToggleCollapse,
-  editing,
-  setEditing,
-  onEditCell,
+  onToggle,
+  rowPx,
 }: {
   node: GroupNode<Row>;
-  columns: GridColumn<Row>[];
-  rowHeightClass: string;
-  getRowId: (r: Row) => string;
-  selected: Set<string>;
-  toggleOne: (id: string) => void;
-  collapsed: Set<string>;
-  onToggleCollapse: (key: string) => void;
-  editing: { id: string; field: string } | null;
-  setEditing: (e: { id: string; field: string } | null) => void;
-  onEditCell?: (rowId: string, field: string, value: string) => void;
+  colCount: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  rowPx: number;
 }) {
-  const isCollapsed = collapsed.has(node.key);
   const label =
-    node.value == null || node.value === ""
-      ? "(trống)"
-      : String(node.value);
-
+    node.value == null || node.value === "" ? "(trống)" : String(node.value);
   return (
-    <>
-      <tr className="border-b bg-muted/50">
-        <td />
-        <td
-          colSpan={columns.length}
-          className="px-3 py-1.5 text-sm font-medium"
-          style={{ paddingLeft: 12 + node.depth * 16 }}
+    <tr className="border-b bg-muted/50" style={{ height: rowPx }}>
+      <td />
+      <td
+        colSpan={colCount}
+        className="truncate px-3 text-sm font-medium"
+        style={{ paddingLeft: 12 + node.depth * 16 }}
+      >
+        <button
+          type="button"
+          className="inline-flex items-center gap-1"
+          onClick={onToggle}
         >
-          <button
-            className="inline-flex items-center gap-1"
-            onClick={() => onToggleCollapse(node.key)}
-          >
-            {isCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-            {label}
-            <Badge variant="secondary" className="ml-2">
-              {node.rows.length}
-            </Badge>
-          </button>
-        </td>
-      </tr>
-      {!isCollapsed &&
-        (node.children
-          ? node.children.map((child) => (
-              <GroupRows
-                key={child.key}
-                node={child}
-                columns={columns}
-                rowHeightClass={rowHeightClass}
-                getRowId={getRowId}
-                selected={selected}
-                toggleOne={toggleOne}
-                collapsed={collapsed}
-                onToggleCollapse={onToggleCollapse}
-                editing={editing}
-                setEditing={setEditing}
-                onEditCell={onEditCell}
-              />
-            ))
-          : node.rows.map((r) => (
-              <DataRow
-                key={getRowId(r)}
-                row={r}
-                rowId={getRowId(r)}
-                columns={columns}
-                rowHeightClass={rowHeightClass}
-                checked={selected.has(getRowId(r))}
-                onToggle={() => toggleOne(getRowId(r))}
-                editing={editing}
-                setEditing={setEditing}
-                onEditCell={onEditCell}
-                indent={node.depth + 1}
-              />
-            )))}
-    </>
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+          {label}
+          <Badge variant="secondary" className="ml-2">
+            {node.rows.length}
+          </Badge>
+        </button>
+      </td>
+    </tr>
   );
 }
 
