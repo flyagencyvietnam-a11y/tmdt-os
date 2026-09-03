@@ -12,6 +12,7 @@ import { auditColumns, pkUuid, softDeleteColumn } from "./_shared";
 import { campaigns } from "./campaigns";
 import {
   disqualifyReasonEnum,
+  emsStatusEnum,
   interactionChannelEnum,
   interactionDirectionEnum,
   interactionResultEnum,
@@ -86,6 +87,11 @@ export const leads = pgTable(
 
     /** Dữ liệu di chuyển từ sheet — SPEC Mục 19.2 bước 4. */
     migrated: boolean("migrated").notNull().default(false),
+
+    /** Bàn giao DotB EMS (gộp từ tab "Bàn giao EMS" cũ) — SPEC Mục 2.3. */
+    emsStatus: emsStatusEnum("ems_status").notNull().default("CHUA"),
+    /** Link hồ sơ học viên trên EMS. */
+    emsLink: text("ems_link"),
 
     ...auditColumns,
     ...softDeleteColumn,

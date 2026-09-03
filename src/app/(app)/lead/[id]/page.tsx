@@ -61,6 +61,7 @@ export default async function Page({
   const canEditStatus = can(user.role, "lead.statusChange", "update");
   const canRevenue = can(user.role, "lead.revenue", "create");
   const canInteract = can(user.role, "leadInteraction", "create");
+  const canEdit = can(user.role, "lead", "update");
 
   return (
     <div className="space-y-4">
@@ -89,6 +90,8 @@ export default async function Page({
           wonAt: lead.wonAt?.toISOString() ?? null,
           productId: lead.productId,
           source: lead.source,
+          emsStatus: lead.emsStatus,
+          emsLink: lead.emsLink,
         }}
         productLabel={product ? `${product.code} — ${product.name}` : "—"}
         campaignLabel={campaign ? `${campaign.name} (${campaign.code})` : null}
@@ -107,7 +110,7 @@ export default async function Page({
           createdAt: e.createdAt.toISOString(),
         }))}
         refs={refs}
-        perms={{ showContact, canEditStatus, canRevenue, canInteract }}
+        perms={{ showContact, canEditStatus, canRevenue, canInteract, canEdit }}
       />
     </div>
   );

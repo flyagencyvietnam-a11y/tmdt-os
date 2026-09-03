@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowRightLeft,
   BarChart3,
   CalendarClock,
   ClipboardList,
@@ -36,7 +35,6 @@ const ITEMS: NavItem[] = [
   { href: "/kpi", label: "KPI", icon: Target, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"] },
   { href: "/sale-kit", label: "Sale Enablement", icon: Sparkles, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },
   { href: "/bao-cao", label: "Báo cáo", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
-  { href: "/ban-giao", label: "Bàn giao EMS", icon: ArrowRightLeft, roles: ["ADMIN", "MANAGER"] },
   { href: "/cau-hinh", label: "Cấu hình sản phẩm", icon: SlidersHorizontal, roles: ["ADMIN", "MANAGER"] },
   { href: "/khoa-so", label: "Khóa sổ kỳ", icon: Lock, roles: ["ADMIN"] },
   { href: "/nguoi-dung", label: "Người dùng", icon: Users, roles: ["ADMIN"] },

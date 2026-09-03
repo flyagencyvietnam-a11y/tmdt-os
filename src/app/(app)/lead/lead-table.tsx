@@ -29,6 +29,10 @@ const OUTCOME_LABELS: Record<string, string> = {
   LOST: "Không chốt",
   DISQUALIFIED: "Không nhu cầu",
 };
+const EMS_STATUS_LABELS: Record<string, string> = {
+  CHUA: "Chưa nhập",
+  DA_NHAP: "Đã nhập EMS",
+};
 const SOURCE_LABELS: Record<string, string> = {
   FB: "Facebook",
   GOOGLE: "Google",
@@ -50,6 +54,8 @@ export interface LeadRow {
   campaignId: string | null;
   campaignName: string | null;
   consultNote: string | null;
+  emsStatus: string;
+  emsLink: string | null;
   source: string;
   stage: string;
   maxStage: string;
@@ -227,6 +233,27 @@ const PREBUILT: SavedViewLike[] = [
       sorts: [{ field: "score", direction: "desc" }],
     },
   },
+  {
+    id: "v-ems-pending",
+    entity: "LEADS",
+    name: "Chờ bàn giao EMS",
+    visibility: "SHARED",
+    isDefault: false,
+    config: {
+      filters: {
+        conjunction: "and",
+        conditions: [
+          { field: "outcome", operator: "is", value: "WON" },
+          { field: "emsStatus", operator: "is", value: "CHUA" },
+        ],
+      },
+      columns: [
+        { field: "emsStatus", visible: true },
+        { field: "emsLink", visible: true },
+      ],
+      sorts: [{ field: "wonAt", direction: "desc" }],
+    },
+  },
 ];
 
 export function LeadTable({
@@ -271,6 +298,9 @@ export function LeadTable({
       else if (field === "email") patch = { email: v || null };
       else if (field === "consultNote") patch = { consultNote: v || null };
       else if (field === "campaignName") patch = { campaignId: v || null };
+      else if (field === "emsStatus")
+        patch = { emsStatus: v === "DA_NHAP" ? "DA_NHAP" : "CHUA" };
+      else if (field === "emsLink") patch = { emsLink: v || null };
       if (!patch) return;
       setSaving(true);
       const res = await updateLeadAction(rowId, patch);
@@ -382,6 +412,51 @@ export function LeadTable({
             <span className="line-clamp-1" title={r.consultNote}>
               {r.consultNote}
             </span>
+          ) : (
+            <span className="text-muted-foreground">–</span>
+          ),
+      },
+      {
+        field: "emsStatus",
+        header: "EMS",
+        kind: "enum",
+        accessor: (r) => r.emsStatus,
+        enumLabels: EMS_STATUS_LABELS,
+        enumOptions: Object.entries(EMS_STATUS_LABELS).map(([value, label]) => ({
+          value,
+          label,
+        })),
+        editable: canEdit,
+        editKind: "select",
+        editOptions: Object.entries(EMS_STATUS_LABELS).map(([value, label]) => ({
+          value,
+          label,
+        })),
+        editValue: (r) => r.emsStatus,
+        cell: (r) => (
+          <Badge variant={r.emsStatus === "DA_NHAP" ? "secondary" : "outline"}>
+            {EMS_STATUS_LABELS[r.emsStatus] ?? r.emsStatus}
+          </Badge>
+        ),
+      },
+      {
+        field: "emsLink",
+        header: "Link EMS",
+        kind: "text",
+        accessor: (r) => r.emsLink,
+        editable: canEdit,
+        groupable: false,
+        cell: (r) =>
+          r.emsLink ? (
+            <a
+              href={r.emsLink}
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              mở EMS
+            </a>
           ) : (
             <span className="text-muted-foreground">–</span>
           ),
@@ -520,6 +595,8 @@ export function LeadTable({
       { field: "wonAt", visible: false },
       { field: "email", visible: false },
       { field: "consultNote", visible: false },
+      { field: "emsStatus", visible: false },
+      { field: "emsLink", visible: false },
       { field: "revenue", aggregate: "sum" },
     ],
     rowHeight: "medium",

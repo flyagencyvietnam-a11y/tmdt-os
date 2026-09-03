@@ -81,6 +81,8 @@ interface Lead {
   wonAt: string | null;
   productId: string;
   source: string;
+  emsStatus: string;
+  emsLink: string | null;
 }
 
 export function LeadDetail(props: {
@@ -123,6 +125,7 @@ export function LeadDetail(props: {
     canEditStatus: boolean;
     canRevenue: boolean;
     canInteract: boolean;
+    canEdit: boolean;
   };
 }) {
   const { lead, perms } = props;
@@ -205,6 +208,10 @@ export function LeadDetail(props: {
             enrollments={props.enrollments}
             onDone={() => router.refresh()}
           />
+        )}
+
+        {perms.canEdit && lead.outcome === "WON" && (
+          <EmsSection lead={lead} onDone={() => router.refresh()} />
         )}
 
         {/* Lịch sử giai đoạn */}
@@ -734,6 +741,71 @@ function Mini({ label, children }: { label: string; children: React.ReactNode })
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+/** Bàn giao DotB EMS (gộp từ tab "Bàn giao EMS" cũ) — chỉ cho lead đã chốt. */
+function EmsSection({
+  lead,
+  onDone,
+}: {
+  lead: { id: string; emsStatus: string; emsLink: string | null };
+  onDone: () => void;
+}) {
+  const [pending, start] = React.useTransition();
+  const [link, setLink] = React.useState(lead.emsLink ?? "");
+  const done = lead.emsStatus === "DA_NHAP";
+
+  const save = (patch: { emsStatus?: "CHUA" | "DA_NHAP"; emsLink?: string | null }) =>
+    start(async () => {
+      const res = await updateLeadAction(lead.id, patch);
+      if (res.ok) {
+        toast.success("Đã lưu.");
+        onDone();
+      } else toast.error(res.error);
+    });
+
+  return (
+    <div className="rounded-lg border p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Bàn giao DotB EMS</h2>
+        <Badge variant={done ? "secondary" : "outline"}>
+          {done ? "Đã nhập EMS" : "Chưa nhập"}
+        </Badge>
+      </div>
+      <div className="space-y-2">
+        <Mini label="Link hồ sơ EMS của học viên">
+          <div className="flex gap-2">
+            <Input
+              value={link}
+              placeholder="https://ems.dotb..."
+              onChange={(e) => setLink(e.target.value)}
+              onBlur={() => {
+                if ((link.trim() || null) !== (lead.emsLink ?? null))
+                  save({ emsLink: link.trim() || null });
+              }}
+            />
+            {lead.emsLink && (
+              <Button
+                variant="outline"
+                render={
+                  <a href={lead.emsLink} target="_blank" rel="noreferrer">
+                    Mở
+                  </a>
+                }
+              />
+            )}
+          </div>
+        </Mini>
+        <Button
+          variant={done ? "outline" : "default"}
+          disabled={pending}
+          onClick={() => save({ emsStatus: done ? "CHUA" : "DA_NHAP" })}
+        >
+          {done ? "Đánh dấu chưa nhập" : "Đánh dấu đã nhập EMS"}
+        </Button>
+      </div>
     </div>
   );
 }

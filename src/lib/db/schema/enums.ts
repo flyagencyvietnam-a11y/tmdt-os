@@ -168,6 +168,9 @@ export const otherCostTypeEnum = pgEnum("other_cost_type", [
 /** Nguồn số liệu ads: nhập tay hay tự kéo từ API (QĐ08 — sẵn sàng cho Phase 4). */
 export const metricSourceEnum = pgEnum("metric_source", ["MANUAL", "API"]);
 
+/** Trạng thái bàn giao học viên sang DotB EMS — gộp vào lead (bỏ tab Bàn giao). */
+export const emsStatusEnum = pgEnum("ems_status", ["CHUA", "DA_NHAP"]);
+
 /** Thứ hạng giai đoạn để so sánh trong TypeScript (khớp thứ tự enum Postgres). */
 export const STAGE_RANK: Record<
   (typeof leadStageEnum.enumValues)[number],

@@ -472,8 +472,16 @@ Bảng trung tâm của hệ thống.
 | `class_assigned` | text | | Lớp được xếp |
 | `preferred_schedule` | text | | Lịch rảnh |
 | `desired_start_date` | date | | Ngày muốn học |
+| `ems_status` | enum | NOT NULL, default `CHUA` | `CHUA` \| `DA_NHAP` — bàn giao DotB EMS (gộp từ tab "Bàn giao EMS" cũ) |
+| `ems_link` | text | | Link hồ sơ học viên trên EMS |
 | `duplicate_of` | uuid | FK leads, NULL | Nếu được xác nhận là trùng |
 | `deleted_at` | timestamptz | | |
+
+> **Bàn giao EMS** (SPEC Mục 2.3 — "chỉ export"): không còn tab riêng. `ems_status` /
+> `ems_link` nằm trên chính lead, chỉ có nghĩa cho lead đã chốt (`outcome = WON`). Sửa
+> tại chỗ trên bảng `/lead` (view dựng sẵn "Chờ bàn giao EMS" = `WON AND ems_status =
+> CHUA`) hoặc ở trang chi tiết lead. Cột `enrollments.ems_student_id` giữ nguyên cho
+> tương thích, không dùng ở giao diện nữa.
 
 **Chỉ mục cần thiết:** `(next_contact_date, outcome)` cho hàng đợi quá hạn, `(campaign_id, max_stage)` cho tính chỉ số campaign, `(assigned_to, next_contact_date)` cho work queue cá nhân, `(mql_at)`, `(won_at)` cho báo cáo theo kỳ.
 

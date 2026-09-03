@@ -161,6 +161,8 @@ export interface UpdateLeadPatch {
   classAssigned?: string | null;
   preferredSchedule?: string | null;
   desiredStartDate?: string | null;
+  emsStatus?: "CHUA" | "DA_NHAP";
+  emsLink?: string | null;
   /** lý do khi hạ giai đoạn / đổi WON — SPEC 8.1. */
   reason?: string;
   /** nội bộ: cho phép đặt WON (chỉ enrollments.ts gọi). */
@@ -209,6 +211,8 @@ export async function updateLead(
     "email",
     "consult_note",
     "campaign_id",
+    "ems_status",
+    "ems_link",
   ];
 
   let curStage = before.stage as Stage;
@@ -329,6 +333,17 @@ export async function updateLead(
   }
   if (patch.desiredStartDate !== undefined)
     set.desiredStartDate = patch.desiredStartDate;
+  if (patch.emsStatus !== undefined && patch.emsStatus !== before.emsStatus) {
+    set.emsStatus = patch.emsStatus;
+    changes.ems_status = { from: before.emsStatus, to: patch.emsStatus };
+  }
+  if (patch.emsLink !== undefined) {
+    const to = patch.emsLink?.trim() || null;
+    if (to !== before.emsLink) {
+      set.emsLink = to;
+      changes.ems_link = { from: before.emsLink, to };
+    }
+  }
   if (patch.fullName) {
     const to = patch.fullName.trim();
     if (to && to !== before.fullName) {
