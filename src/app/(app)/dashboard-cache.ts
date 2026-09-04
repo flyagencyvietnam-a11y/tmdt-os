@@ -2,11 +2,14 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import {
+  adsEntryStatusToday,
   breakdownByCampaign,
   breakdownByProduct,
   breakdownByUser,
+  campaignWeeklyPerf,
   getActionCounts,
   getHealth,
+  recentReportWeekStarts,
   weeklyTrend,
 } from "@/lib/services/dashboard";
 import {
@@ -77,6 +80,20 @@ export const getKpiFollowCached = unstable_cache(
     return { kpis, budget };
   },
   ["dashboard-kpi-v1"],
+  { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
+);
+
+/** Trang "Theo dõi Ads" (Gói L) — tình trạng nhập liệu + cảnh báo + ma trận tuần. */
+export const getAdsMonitorCached = unstable_cache(
+  async () => {
+    const [entry, alerts, campaignWeeks] = await Promise.all([
+      adsEntryStatusToday(db),
+      evaluateCampaignAlerts(db),
+      campaignWeeklyPerf(db, recentReportWeekStarts(8)),
+    ]);
+    return { entry, alerts, campaignWeeks };
+  },
+  ["ads-monitor-v1"],
   { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
 );
 

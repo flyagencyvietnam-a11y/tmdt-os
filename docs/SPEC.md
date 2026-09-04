@@ -971,6 +971,21 @@ lai (nút "sao chép từ hôm qua").
 Lý do gộp: đội 4–6 người, một bảng Campaign có đủ lọc/sắp xếp/nhập là đủ nhanh;
 bớt một tab, bớt một chỗ dữ liệu lệch nhau.
 
+### 10.4. Trang "Theo dõi Ads" — `/ads` (Gói L)
+
+Trang giám sát riêng cho vận hành ads (MARKETING / MANAGER / ADMIN). *(Route `/ads`
+trước đây redirect sang `/campaign` — nay là trang thật, không còn redirect.)*
+
+- **Nhập liệu hôm nay:** `X/Y` campaign ON đã có `campaign_daily_metrics` của hôm nay
+  + danh sách campaign còn thiếu (link sang `/campaign?date=<hôm nay>`). Cùng nguồn với
+  task tự tạo ở Mục 13.4.
+- **Cảnh báo campaign:** gom R1–R5 từ `evaluateCampaignAlerts` theo nhóm KILL / cần tối
+  ưu / đang tốt.
+- **Hiệu suất theo tuần:** ma trận campaign × 8 tuần báo cáo VMG, ô = CPMQL tuần đó, tô
+  màu theo `target_cpmql` của sản phẩm (≤ target xanh, ≤ 1,5× vàng, > 1,5× đỏ; ô trống
+  = 0 MQL). Helper `campaignWeeklyPerf` (2 truy vấn gộp) + `recentReportWeekStarts`
+  trong `dashboard.ts`; cache 60s (`getAdsMonitorCached`).
+
 ### 10.3. Màn hình chi tiết campaign
 
 Bố cục: hàng thẻ chỉ số ở trên, biểu đồ ở giữa, hai bảng ở dưới.

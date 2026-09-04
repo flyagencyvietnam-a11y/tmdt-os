@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   ClipboardList,
   LayoutDashboard,
   Lock,
@@ -28,6 +29,7 @@ const ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"] },
   { href: "/lead", label: "Lead", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"], phase: "P1" },
   { href: "/campaign", label: "Campaign", icon: Megaphone, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"], phase: "P1" },
+  { href: "/ads", label: "Theo dõi Ads", icon: Activity, roles: ["ADMIN", "MANAGER", "MARKETING"] },
   { href: "/cong-viec", label: "Công việc", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },
   { href: "/kpi", label: "KPI", icon: Target, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"] },
   { href: "/sale-kit", label: "Sale Enablement", icon: Sparkles, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },

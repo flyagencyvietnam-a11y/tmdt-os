@@ -8,6 +8,7 @@
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import {
   appSettings,
+  campaignDailyMetrics,
   campaigns,
   leadInteractions,
   leads,
@@ -415,6 +416,188 @@ export async function weeklyTrend(
     won: p.won,
     cpmql: safeDiv(p.spend, p.mql),
   }));
+}
+
+/** Danh sách các Thứ 7 (mốc tuần báo cáo VMG) lùi `weeks` tuần tính từ hôm nay. */
+export function recentReportWeekStarts(weeks: number, end?: string): string[] {
+  const e = end ?? new Date().toISOString().slice(0, 10);
+  const endDow = new Date(`${e}T00:00:00Z`).getUTCDay();
+  const thisSat = addDaysStr(e, -((endDow + 1) % 7));
+  const out: string[] = [];
+  for (let i = 0; i < weeks; i++) out.unshift(addDaysStr(thisSat, -7 * i));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+//  Hiệu suất campaign theo tuần (SPEC 10.x — trang "Theo dõi Ads", Gói L)
+// ---------------------------------------------------------------------------
+
+export interface CampaignWeekRow {
+  campaignId: string;
+  displayName: string;
+  targetCpmql: number | null;
+  weeks: { weekStart: string; spend: number; mql: number; cpmql: number | null }[];
+}
+
+/**
+ * Ma trận campaign × tuần: spend / MQL / CPMQL cho `weekStarts` tuần gần nhất.
+ * 2 truy vấn gộp (spend theo campaign×metric_date, MQL theo campaign×mql_at với
+ * cửa sổ quy kết 90 ngày — khớp `breakdownByCampaign`), gom bucket trong JS.
+ */
+export async function campaignWeeklyPerf(
+  db: AnyDb,
+  weekStarts: string[],
+): Promise<CampaignWeekRow[]> {
+  if (weekStarts.length === 0) return [];
+  const rangeFrom = weekStarts[0];
+  const rangeTo = addDaysStr(weekStarts[weekStarts.length - 1], 6);
+  const [startUtc, endUtc] = [
+    vnDayBoundsUtc(rangeFrom)[0],
+    vnDayBoundsUtc(rangeTo)[1],
+  ];
+
+  const [list, spendRows, mqlRows] = await Promise.all([
+    db
+      .select({
+        id: campaigns.id,
+        displayName: campaigns.displayName,
+        status: campaigns.status,
+        targetCpmql: products.targetCpmql,
+      })
+      .from(campaigns)
+      .innerJoin(products, eq(products.id, campaigns.productId))
+      .where(isNull(campaigns.deletedAt)),
+    db
+      .select({
+        cid: campaignDailyMetrics.campaignId,
+        d: campaignDailyMetrics.metricDate,
+        spend: sql<number>`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
+      })
+      .from(campaignDailyMetrics)
+      .where(
+        and(
+          gte(campaignDailyMetrics.metricDate, rangeFrom),
+          lte(campaignDailyMetrics.metricDate, rangeTo),
+        ),
+      )
+      .groupBy(campaignDailyMetrics.campaignId, campaignDailyMetrics.metricDate),
+    db
+      .select({
+        cid: leads.campaignId,
+        d: sql<string>`(${leads.mqlAt} at time zone 'Asia/Ho_Chi_Minh')::date`,
+        c: sql<number>`count(*)`,
+      })
+      .from(leads)
+      .where(
+        and(
+          isNull(leads.deletedAt),
+          isNull(leads.duplicateOf),
+          isNotNull(leads.campaignId),
+          gte(leads.maxStage, "MQL"),
+          gte(leads.mqlAt, startUtc),
+          lt(leads.mqlAt, endUtc),
+          sql`(${leads.mqlAt} is null or ${leads.mqlAt} - ${leads.receivedAt} <= interval '90 days')`,
+        ),
+      )
+      .groupBy(leads.campaignId, sql`(${leads.mqlAt} at time zone 'Asia/Ho_Chi_Minh')::date`),
+  ]);
+
+  const bucketOf = (dayStr: string): number => {
+    for (let i = weekStarts.length - 1; i >= 0; i--)
+      if (dayStr >= weekStarts[i]) return i;
+    return -1;
+  };
+  const asDay = (v: unknown): string =>
+    v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+
+  const perCid = new Map<
+    string,
+    { spend: number[]; mql: number[] }
+  >();
+  const ensure = (cid: string) => {
+    let v = perCid.get(cid);
+    if (!v) {
+      v = {
+        spend: Array(weekStarts.length).fill(0),
+        mql: Array(weekStarts.length).fill(0),
+      };
+      perCid.set(cid, v);
+    }
+    return v;
+  };
+  for (const r of spendRows) {
+    if (!r.cid) continue;
+    const i = bucketOf(asDay(r.d));
+    if (i >= 0) ensure(r.cid).spend[i] += Number(r.spend);
+  }
+  for (const r of mqlRows) {
+    if (!r.cid) continue;
+    const i = bucketOf(asDay(r.d));
+    if (i >= 0) ensure(r.cid).mql[i] += Number(r.c);
+  }
+
+  const rows: CampaignWeekRow[] = list
+    .filter((c) => c.status !== "OFF" || perCid.has(c.id))
+    .map((c) => {
+      const agg = perCid.get(c.id) ?? {
+        spend: Array(weekStarts.length).fill(0),
+        mql: Array(weekStarts.length).fill(0),
+      };
+      return {
+        campaignId: c.id,
+        displayName: c.displayName,
+        targetCpmql: c.targetCpmql != null ? Number(c.targetCpmql) : null,
+        weeks: weekStarts.map((weekStart, i) => ({
+          weekStart,
+          spend: agg.spend[i],
+          mql: agg.mql[i],
+          cpmql: safeDiv(agg.spend[i], agg.mql[i]),
+        })),
+      };
+    });
+  // sắp theo tổng spend trong cửa sổ, giảm dần
+  rows.sort(
+    (a, b) =>
+      b.weeks.reduce((s, w) => s + w.spend, 0) -
+      a.weeks.reduce((s, w) => s + w.spend, 0),
+  );
+  return rows;
+}
+
+/** Tình trạng nhập số liệu ads hôm nay (SPEC 12.3 / Gói L). */
+export async function adsEntryStatusToday(
+  db: AnyDb,
+  now = new Date(),
+): Promise<{
+  total: number;
+  entered: number;
+  missing: { id: string; displayName: string }[];
+}> {
+  const today = todayVnDayStr(now);
+  const [onList, enteredRows] = await Promise.all([
+    db
+      .select({ id: campaigns.id, displayName: campaigns.displayName })
+      .from(campaigns)
+      .where(
+        and(
+          isNull(campaigns.deletedAt),
+          eq(campaigns.status, "ON"),
+          lte(campaigns.startedOn, today),
+          sql`(${campaigns.endedOn} is null or ${campaigns.endedOn} >= ${today}::date)`,
+        ),
+      ),
+    db
+      .selectDistinct({ id: campaignDailyMetrics.campaignId })
+      .from(campaignDailyMetrics)
+      .where(eq(campaignDailyMetrics.metricDate, today)),
+  ]);
+  const has = new Set(enteredRows.map((r) => r.id));
+  const missing = onList.filter((c) => !has.has(c.id));
+  return {
+    total: onList.length,
+    entered: onList.length - missing.length,
+    missing,
+  };
 }
 
 // ---------------------------------------------------------------------------

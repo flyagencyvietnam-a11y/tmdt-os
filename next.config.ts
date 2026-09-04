@@ -8,9 +8,8 @@ const nextConfig: NextConfig = {
     return [
       // "Hôm nay" đã gộp vào Công việc (Gói D) — giữ redirect cho bookmark & thông báo cũ.
       { source: "/hom-nay", destination: "/cong-viec", permanent: false },
-      // "Nhập số liệu ads" gộp vào Campaign (Gói B); "Bàn giao EMS" gộp vào Lead (Gói C);
-      // "Báo cáo" gộp vào Dashboard (Gói A).
-      { source: "/ads", destination: "/campaign", permanent: false },
+      // "Bàn giao EMS" gộp vào Lead (Gói C); "Báo cáo" gộp vào Dashboard (Gói A).
+      // (/ads nay là trang "Theo dõi Ads" — Gói L, không còn redirect.)
       { source: "/ban-giao", destination: "/lead", permanent: false },
       { source: "/bao-cao", destination: "/", permanent: false },
     ];
