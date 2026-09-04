@@ -24,13 +24,21 @@ import {
 } from "@/lib/format";
 import { getBaseMetrics } from "@/lib/services/metrics";
 import { getKpiProgressForPeriod } from "@/lib/services/kpi";
+import {
+  SCORE_BANDS,
+  SCORE_BAND_COLOR,
+  SCORE_BAND_LABEL,
+} from "@/lib/services/lead-score";
+import type { TempBands } from "@/lib/services/lead-temp";
 import { quarterBounds, resolveRange, todayVnDayStr } from "@/lib/time";
+import { Tag, type TagColor } from "@/components/data-grid/tag";
 import { DashboardFilters } from "./dashboard-filters";
 import { TeamProgressTable } from "./team-progress-table";
 import {
   getBreakdownsCached,
   getHealthBundleCached,
   getKpiFollowCached,
+  getLeadTempCached,
 } from "./dashboard-cache";
 import { RunJobsButton } from "./run-jobs-button";
 import { TrendChart } from "./trend-chart";
@@ -45,12 +53,13 @@ async function loadViewerData() {
   }`;
   const qFilter = { from: qs, to: qe };
   try {
-    const [b, bp, tr, kpis, bu] = await Promise.all([
+    const [b, bp, tr, kpis, bu, temp] = await Promise.all([
       getBaseMetrics(db, qFilter),
       breakdownByProduct(db, qFilter),
       weeklyTrend(db, { weeks: 12, filter: qFilter }),
       getKpiProgressForPeriod(db, { periodStart: qs, periodEnd: qe }),
       breakdownByUser(db, qFilter),
+      getLeadTempCached(),
     ]);
     return {
       quarterLabel: qLabel,
@@ -68,6 +77,10 @@ async function loadViewerData() {
       })),
       trend: tr,
       teamProgress: bu,
+      leadTempTotal: temp.total,
+      teamTempByUser: Object.fromEntries(
+        temp.byUser.map((u) => [u.userId, u.bands]),
+      ),
     };
   } catch {
     return null;
@@ -266,6 +279,10 @@ export default async function DashboardPage({
         <ActionHealthSection filter={filter} cmpMode={cmpMode} />
       </Suspense>
 
+      <Suspense fallback={<SkeletonBlock label="Đang chấm nhiệt độ pipeline…" rows={1} />}>
+        <TempPipelineSection />
+      </Suspense>
+
       <Suspense key={`k-${bkey}`} fallback={<SkeletonBlock label="Đang tính tiến độ KPI…" rows={2} />}>
         <KpiFollowSection from={from} to={to} label={label} />
       </Suspense>
@@ -353,6 +370,91 @@ async function ActionHealthSection({
           {health.compare && <Funnel title="Phễu kỳ so sánh" m={health.compare} muted />}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ---------- NHIỆT ĐỘ PIPELINE — lead OPEN theo Nóng/Ấm/Nguội/Lạnh (Gói U) ----------
+async function TempPipelineSection() {
+  let temp;
+  try {
+    temp = await getLeadTempCached();
+  } catch (e) {
+    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
+  }
+  const t = temp.total;
+  if (t.total === 0) return null;
+
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-muted-foreground">
+          Nhiệt độ pipeline · {fmtInt(t.total)} lead đang theo
+        </h2>
+        {temp.hotNoSchedule > 0 && (
+          <Link
+            href="/lead"
+            className="text-xs font-medium text-crit hover:underline"
+          >
+            🔥 {temp.hotNoSchedule} lead Nóng chưa đặt Ngày LH lại →
+          </Link>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {SCORE_BANDS.map((b) => (
+          <Link
+            key={b}
+            href="/lead"
+            className="rounded-lg border p-3 hover:bg-muted/40"
+          >
+            <Tag color={SCORE_BAND_COLOR[b] as TagColor}>
+              {SCORE_BAND_LABEL[b]}
+            </Tag>
+            <div className="mt-1 text-lg font-semibold tabular-nums">
+              {fmtInt(t[b])}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t.total > 0 ? `${Math.round((t[b] / t.total) * 100)}%` : "–"}
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      <TempBar bands={t} className="mt-2" />
+    </section>
+  );
+}
+
+/** Thanh tỉ lệ ngang xếp chồng theo nhiệt độ. */
+function TempBar({
+  bands,
+  className,
+}: {
+  bands: { hot: number; warm: number; cool: number; cold: number; total: number };
+  className?: string;
+}) {
+  if (bands.total === 0) return null;
+  const seg: Record<string, string> = {
+    hot: "bg-rose-400",
+    warm: "bg-amber-400",
+    cool: "bg-slate-400",
+    cold: "bg-gray-400",
+  };
+  return (
+    <div className={"flex h-2.5 overflow-hidden rounded-full " + (className ?? "")}>
+      {SCORE_BANDS.map((b) => {
+        const w = (bands[b] / bands.total) * 100;
+        if (w === 0) return null;
+        return (
+          <div
+            key={b}
+            className={seg[b]}
+            style={{ width: `${w}%` }}
+            title={`${SCORE_BAND_LABEL[b]}: ${bands[b]}`}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -526,14 +628,24 @@ async function BreakdownsSection({
   canExport: boolean;
 }) {
   let byProduct, byCampaign, byUser, trend;
+  let tempByUser: Record<string, TempBands> = {};
+  let tempByProduct: Record<string, TempBands> = {};
   try {
-    ({ byProduct, byCampaign, byUser, trend } = await getBreakdownsCached(
-      from,
-      to,
-      (filter.productIds ?? []).join(","),
-      (filter.channels ?? []).join(","),
-      !isViewer,
-    ));
+    const [bd, temp] = await Promise.all([
+      getBreakdownsCached(
+        from,
+        to,
+        (filter.productIds ?? []).join(","),
+        (filter.channels ?? []).join(","),
+        !isViewer,
+      ),
+      getLeadTempCached(),
+    ]);
+    ({ byProduct, byCampaign, byUser, trend } = bd);
+    tempByUser = Object.fromEntries(temp.byUser.map((u) => [u.userId, u.bands]));
+    tempByProduct = Object.fromEntries(
+      temp.byProduct.map((p) => [p.productId, p.bands]),
+    );
   } catch (e) {
     return <DbError msg={e instanceof Error ? e.message : String(e)} />;
   }
@@ -552,9 +664,11 @@ async function BreakdownsSection({
         )}
       </div>
 
-      <ProductTable data={byProduct} />
+      <ProductTable data={byProduct} tempByProduct={tempByProduct} />
 
-      {!isViewer && byUser.length > 0 && <TeamProgressTable rows={byUser} />}
+      {!isViewer && byUser.length > 0 && (
+        <TeamProgressTable rows={byUser} tempByUser={tempByUser} />
+      )}
 
       <div className="rounded-lg border p-4">
         <h3 className="mb-2 text-sm font-semibold">
@@ -742,8 +856,10 @@ function Funnel({
 
 function ProductTable({
   data,
+  tempByProduct,
 }: {
   data: Awaited<ReturnType<typeof breakdownByProduct>>;
+  tempByProduct?: Record<string, TempBands>;
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -761,6 +877,7 @@ function ProductTable({
             <th className="px-3 py-2 text-right">Doanh thu</th>
             <th className="px-3 py-2 text-right">CPMQL</th>
             <th className="px-3 py-2 text-right">ROAS</th>
+            <th className="px-3 py-2 text-right">Nhiệt độ (đang theo)</th>
             <th className="px-3 py-2 text-right">% NS thực tế / phân bổ</th>
           </tr>
         </thead>
@@ -794,6 +911,20 @@ function ProductTable({
                 <td className="px-3 py-1.5 text-right tabular-nums">
                   {fmtRatioX(r.metrics.roas)}
                 </td>
+                <td className="px-3 py-1.5">
+                  {tempByProduct?.[r.key] && tempByProduct[r.key].total > 0 ? (
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className="text-xs text-rose-600">
+                        🔥{tempByProduct[r.key].hot}
+                      </span>
+                      <span className="w-16">
+                        <TempBar bands={tempByProduct[r.key]} />
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">–</span>
+                  )}
+                </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">
                   {r.budgetShareActualPct == null
                     ? "–"
@@ -816,7 +947,7 @@ function ProductTable({
           })}
           {data.rows.length === 0 && (
             <tr>
-              <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
+              <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
                 Không có dữ liệu trong kỳ.
               </td>
             </tr>

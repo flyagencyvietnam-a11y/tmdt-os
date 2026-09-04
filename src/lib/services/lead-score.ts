@@ -87,3 +87,13 @@ export const SCORE_BAND_LABEL: Record<LeadScore["band"], string> = {
   cool: "Nguội",
   cold: "Lạnh",
 };
+
+/** Tên màu (bảng TagColor ở components/data-grid/tag.tsx) cho từng band nhiệt độ. */
+export const SCORE_BAND_COLOR: Record<LeadScore["band"], string> = {
+  hot: "rose",
+  warm: "amber",
+  cool: "slate",
+  cold: "gray",
+};
+
+export const SCORE_BANDS: LeadScore["band"][] = ["hot", "warm", "cool", "cold"];

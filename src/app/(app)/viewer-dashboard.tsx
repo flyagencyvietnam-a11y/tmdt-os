@@ -1,5 +1,12 @@
 import type { breakdownByUser } from "@/lib/services/dashboard";
-import { fmtPct, fmtRatioX, fmtVnd } from "@/lib/format";
+import {
+  SCORE_BANDS,
+  SCORE_BAND_COLOR,
+  SCORE_BAND_LABEL,
+} from "@/lib/services/lead-score";
+import type { TempBands } from "@/lib/services/lead-temp";
+import { fmtInt, fmtPct, fmtRatioX, fmtVnd } from "@/lib/format";
+import { Tag, type TagColor } from "@/components/data-grid/tag";
 import { TeamProgressTable } from "./team-progress-table";
 import { TrendChart } from "./trend-chart";
 
@@ -21,6 +28,8 @@ interface Props {
     cpmql: number | null;
   }[];
   teamProgress: Awaited<ReturnType<typeof breakdownByUser>>;
+  leadTempTotal: TempBands;
+  teamTempByUser: Record<string, TempBands>;
 }
 
 /** Dashboard rút gọn cho VIEWER (BOD) — SPEC Mục 12.6. Một màn hình, không dữ liệu cá nhân. */
@@ -54,6 +63,29 @@ export function ViewerDashboard(p: Props) {
           ))}
       </div>
 
+      {p.leadTempTotal.total > 0 && (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+            Nhiệt độ pipeline · {fmtInt(p.leadTempTotal.total)} lead đang theo
+          </h2>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {SCORE_BANDS.map((b) => (
+              <div key={b} className="rounded-lg border p-3">
+                <Tag color={SCORE_BAND_COLOR[b] as TagColor}>
+                  {SCORE_BAND_LABEL[b]}
+                </Tag>
+                <div className="mt-1 text-lg font-semibold tabular-nums">
+                  {fmtInt(p.leadTempTotal[b])}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {Math.round((p.leadTempTotal[b] / p.leadTempTotal.total) * 100)}%
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border p-4">
         <h2 className="mb-2 text-sm font-semibold">Xu hướng 12 tuần</h2>
         <TrendChart data={p.trend} />
@@ -64,7 +96,10 @@ export function ViewerDashboard(p: Props) {
           <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
             Tiến độ đội — quý {p.quarterLabel}
           </h2>
-          <TeamProgressTable rows={p.teamProgress} />
+          <TeamProgressTable
+            rows={p.teamProgress}
+            tempByUser={p.teamTempByUser}
+          />
         </div>
       )}
     </div>

@@ -26,6 +26,7 @@ import {
   getBudgetProgressForPeriod,
   getKpiProgressForPeriod,
 } from "@/lib/services/kpi";
+import { getLeadTempBreakdown } from "@/lib/services/lead-temp";
 
 /**
  * "Bóc tách" và "Sức khỏe" là số tổng hợp, không riêng theo người xem — cache 60s
@@ -50,6 +51,13 @@ export const getCampaignAlertsCached = unstable_cache(
   async () => evaluateCampaignAlerts(db),
   ["campaign-alerts-v1"],
   { revalidate: 120, tags: ["dashboard"] },
+);
+
+/** Nhiệt độ pipeline lead (OPEN theo Nóng/Ấm/Nguội/Lạnh) — trạng thái hiện tại, không khóa theo kỳ. */
+export const getLeadTempCached = unstable_cache(
+  async () => getLeadTempBreakdown(db),
+  ["lead-temperature-v1"],
+  { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
 );
 
 function toFilter(

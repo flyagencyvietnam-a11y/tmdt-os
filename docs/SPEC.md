@@ -1235,6 +1235,14 @@ Dòng cuối **TỔNG ĐỘI** (cộng các số đếm; CR & %task tính lại 
 để "–"). Mục đích: BOD/quản lý nhìn ra ai đang tải nặng / chậm việc / chăm sóc ít.
 Grouped queries trong `dashboard.ts` (`getTeamAux` + `breakdownByUser`), cache 60s.
 
+**Nhiệt độ pipeline (Gói U).** Ngay dưới "Sức khỏe": 4 thẻ đếm lead **đang OPEN**
+theo `scoreLead().band` — 🔥 Nóng / Ấm / Nguội / ❄️ Lạnh (kèm % và thanh tỉ lệ xếp
+chồng, màu theo bảng TagColor). Cảnh báo "🔥 N lead Nóng chưa đặt Ngày LH lại". Bảng
+"Theo sản phẩm" và "Tiến độ đội" có thêm cột **Nhiệt độ (đang theo)** — thanh tỉ lệ
+nhỏ + số Nóng/Lạnh của từng sản phẩm / từng người. Nguồn: `getLeadTempBreakdown`
+(`src/lib/services/lead-temp.ts`, 1 truy vấn, không khóa theo kỳ, cache 60s
+`getLeadTempCached`).
+
 **Biểu đồ xu hướng:** đường theo tuần cho Spend, MQL, HV Chốt, CPMQL trong 12 tuần gần nhất.
 
 ### 12.6. Dashboard riêng cho vai trò VIEWER (BOD)
@@ -1248,6 +1256,8 @@ Bản rút gọn, một màn hình:
   BOD được xem tiến độ **theo từng người có tên** (task, chăm sóc, chuyển đổi, trễ hẹn)
   kèm dòng TỔNG ĐỘI. Đây là dữ liệu hiệu suất công việc, không phải dữ liệu cá nhân
   của khách hàng.
+- **Nhiệt độ pipeline** (Gói U) — 4 thẻ đếm lead OPEN theo Nóng/Ấm/Nguội/Lạnh, và
+  cột Nhiệt độ trong bảng "Tiến độ đội".
 - **Vẫn không** hiển thị thông tin liên hệ khách hàng cho VIEWER.
 
 ---
