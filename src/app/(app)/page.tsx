@@ -24,15 +24,7 @@ import {
 } from "@/lib/format";
 import { getBaseMetrics } from "@/lib/services/metrics";
 import { getKpiProgressForPeriod } from "@/lib/services/kpi";
-import {
-  monthBounds,
-  quarterBounds,
-  todayVnDayStr,
-  addDaysStr,
-  reportWeekBounds,
-  reportWeekLabel,
-  resolvePeriodValue,
-} from "@/lib/time";
+import { quarterBounds, resolveRange, todayVnDayStr } from "@/lib/time";
 import { DashboardFilters } from "./dashboard-filters";
 import { TeamProgressTable } from "./team-progress-table";
 import {
@@ -83,54 +75,6 @@ async function loadViewerData() {
 }
 
 export const dynamic = "force-dynamic";
-
-function resolveRange(range: string): { from: string; to: string; label: string } {
-  const today = todayVnDayStr();
-
-  // Kỳ cụ thể do người dùng chọn: week:YYYY-MM-DD | month:YYYY-MM | quarter:YYYY-Q#
-  if (range.includes(":")) {
-    const r = resolvePeriodValue(range);
-    if (r) {
-      const [kind, rest] = range.split(":");
-      const label =
-        kind === "year"
-          ? `Năm ${rest}`
-          : kind === "week"
-            ? `Tuần ${reportWeekLabel(rest)}`
-            : kind === "month"
-              ? `Tháng ${rest.slice(5)}/${rest.slice(0, 4)}`
-              : `Q${rest.slice(-1)}/${rest.slice(0, 4)}`;
-      return { ...r, label };
-    }
-  }
-
-  switch (range) {
-    case "today":
-      return { from: today, to: today, label: "Hôm nay" };
-    case "7d":
-      return { from: addDaysStr(today, -6), to: today, label: "7 ngày" };
-    case "14d":
-      return { from: addDaysStr(today, -13), to: today, label: "14 ngày" };
-    case "this_week": {
-      const [s, e] = reportWeekBounds(today);
-      return { from: s, to: e, label: `Tuần ${reportWeekLabel(s)}` };
-    }
-    case "last_month": {
-      const [s] = monthBounds(today);
-      const [fs, fe] = monthBounds(addDaysStr(s, -1));
-      return { from: fs, to: fe, label: "Tháng trước" };
-    }
-    case "this_quarter": {
-      const [s, e] = quarterBounds(today);
-      return { from: s, to: e, label: "Quý này" };
-    }
-    case "this_month":
-    default: {
-      const [s, e] = monthBounds(today);
-      return { from: s, to: e, label: "Tháng này" };
-    }
-  }
-}
 
 type Breakdowns = {
   byProduct: Awaited<ReturnType<typeof breakdownByProduct>>;

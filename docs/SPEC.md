@@ -987,6 +987,13 @@ bớt một tab, bớt một chỗ dữ liệu lệch nhau.
 Trang giám sát riêng cho vận hành ads (MARKETING / MANAGER / ADMIN). *(Route `/ads`
 trước đây redirect sang `/campaign` — nay là trang thật, không còn redirect.)*
 
+**Bộ lọc thời gian (Gói R):** cùng bộ **Nhanh · Năm · Quý · Tháng · Tuần** với
+Dashboard (component dùng chung `src/components/period-selects.tsx`; helper
+`resolveRange` trong `src/lib/time.ts`). Tất cả khối *theo kỳ* (thẻ tổng, xu hướng
+theo ngày, theo kênh, theo sản phẩm, ma trận 8 tuần gần nhất tính đến hết kỳ) đổi
+theo bộ lọc; "Nhập liệu hôm nay" và "Nhịp ngân sách" luôn tính cho **hôm nay**. Thẻ
+tổng so với **kỳ liền trước cùng độ dài**.
+
 - **Nhập liệu hôm nay:** `X/Y` campaign ON đã có `campaign_daily_metrics` của hôm nay
   + danh sách campaign còn thiếu (link sang `/campaign?date=<hôm nay>`). Cùng nguồn với
   task tự tạo ở Mục 13.4.

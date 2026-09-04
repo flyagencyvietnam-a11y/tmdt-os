@@ -284,3 +284,60 @@ export function resolvePeriodValue(
   }
   return null;
 }
+
+/**
+ * Giải mã giá trị `range` của bộ lọc thời gian (Dashboard & Theo dõi Ads) thành
+ * `{ from, to, label }`. Nhận: `year:YYYY` | `quarter:YYYY-Q#` | `month:YYYY-MM` |
+ * `week:YYYY-MM-DD`, hoặc preset `today` `7d` `14d` `this_week` `this_month`
+ * `last_month` `this_quarter`. Mặc định = tháng này.
+ */
+export function resolveRange(range: string): {
+  from: string;
+  to: string;
+  label: string;
+} {
+  const today = todayVnDayStr();
+
+  if (range.includes(":")) {
+    const r = resolvePeriodValue(range);
+    if (r) {
+      const [kind, rest] = range.split(":");
+      const label =
+        kind === "year"
+          ? `Năm ${rest}`
+          : kind === "week"
+            ? `Tuần ${reportWeekLabel(rest)}`
+            : kind === "month"
+              ? `Tháng ${rest.slice(5)}/${rest.slice(0, 4)}`
+              : `Q${rest.slice(-1)}/${rest.slice(0, 4)}`;
+      return { ...r, label };
+    }
+  }
+
+  switch (range) {
+    case "today":
+      return { from: today, to: today, label: "Hôm nay" };
+    case "7d":
+      return { from: addDaysStr(today, -6), to: today, label: "7 ngày" };
+    case "14d":
+      return { from: addDaysStr(today, -13), to: today, label: "14 ngày" };
+    case "this_week": {
+      const [s, e] = reportWeekBounds(today);
+      return { from: s, to: e, label: `Tuần ${reportWeekLabel(s)}` };
+    }
+    case "last_month": {
+      const [s] = monthBounds(today);
+      const [fs, fe] = monthBounds(addDaysStr(s, -1));
+      return { from: fs, to: fe, label: "Tháng trước" };
+    }
+    case "this_quarter": {
+      const [s, e] = quarterBounds(today);
+      return { from: s, to: e, label: "Quý này" };
+    }
+    case "this_month":
+    default: {
+      const [s, e] = monthBounds(today);
+      return { from: s, to: e, label: "Tháng này" };
+    }
+  }
+}

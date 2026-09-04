@@ -18,6 +18,7 @@ import {
 } from "@/lib/db/schema";
 import {
   addDaysStr,
+  diffDaysStr,
   monthBounds,
   quarterBounds,
   todayVnDayStr,
@@ -612,14 +613,14 @@ export interface AdsDaily {
   cpmql: number | null;
 }
 
-/** Spend / tin nhắn / MQL / CPMQL theo NGÀY cho `days` ngày gần nhất. */
+/** Spend / tin nhắn / MQL / CPMQL theo NGÀY trong kỳ (tối đa 370 ngày). */
 export async function adsDailySeries(
   db: AnyDb,
-  opts: { days?: number; end?: string } = {},
+  opts: { from: string; to: string },
 ): Promise<AdsDaily[]> {
-  const days = opts.days ?? 30;
-  const end = opts.end ?? new Date().toISOString().slice(0, 10);
-  const from = addDaysStr(end, -(days - 1));
+  const from = opts.from;
+  const end = opts.to;
+  const days = Math.min(370, Math.max(1, diffDaysStr(from, end) + 1));
   const [startUtc, endUtc] = [vnDayBoundsUtc(from)[0], vnDayBoundsUtc(end)[1]];
 
   const [slRows, mqlRows] = await Promise.all([

@@ -3,9 +3,10 @@ import { AlertTriangle, ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { requireUser } from "@/lib/auth/session";
 import { fmtInt, fmtPct, fmtRatioX, fmtVnd } from "@/lib/format";
-import { todayVnDayStr } from "@/lib/time";
+import { resolveRange, todayVnDayStr } from "@/lib/time";
 import { getAdsMonitorCached } from "../dashboard-cache";
 import { AdsDailyChart } from "./ads-daily-chart";
+import { AdsFilters } from "./ads-filters";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Theo dõi Ads — VMG TMĐT OS" };
@@ -18,14 +19,20 @@ const CHANNEL_LABEL: Record<string, string> = {
   KHAC: "Khác",
 };
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
   const user = await requireUser();
   if (!["ADMIN", "MANAGER", "MARKETING"].includes(user.role))
     return <p className="text-sm">Không có quyền xem trang này.</p>;
 
   const today = todayVnDayStr();
+  const sp = await searchParams;
+  const { from, to, label } = resolveRange(sp.range ?? "this_month");
   const { entry, alerts, campaignWeeks, tiles, pacing, daily, byChannel, byProduct } =
-    await getAdsMonitorCached();
+    await getAdsMonitorCached(from, to);
 
   const kill = alerts.filter((a) => a.rule === "R1" || a.rule === "R2");
   const warn = alerts.filter((a) => a.rule === "R3" || a.rule === "R4");
@@ -40,8 +47,7 @@ export default async function Page() {
         <div>
           <h1 className="text-xl font-semibold">Theo dõi Ads</h1>
           <p className="text-sm text-muted-foreground">
-            Tổng 14 ngày, nhịp ngân sách, xu hướng theo ngày, theo kênh / sản phẩm,
-            cảnh báo, hiệu suất theo tuần.
+            {label}: {from} → {to} · so với kỳ liền trước
           </p>
         </div>
         <Link
@@ -52,14 +58,16 @@ export default async function Page() {
         </Link>
       </div>
 
-      {/* Thẻ tổng 14 ngày + nhịp ngân sách */}
+      <AdsFilters />
+
+      {/* Thẻ tổng kỳ + nhịp ngân sách */}
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <AdTile name="Spend 14n" value={fmtVnd(tiles.spend.v)} delta={tiles.spend.d} />
-        <AdTile name="Tin nhắn 14n" value={fmtInt(tiles.messages.v)} delta={tiles.messages.d} />
-        <AdTile name="MQL 14n" value={fmtInt(tiles.mql.v)} delta={tiles.mql.d} />
-        <AdTile name="CPMQL 14n" value={fmtVnd(tiles.cpmql.v)} delta={tiles.cpmql.d} lowerBetter />
-        <AdTile name="CAC 14n" value={fmtVnd(tiles.cac.v)} delta={tiles.cac.d} lowerBetter />
-        <AdTile name="ROAS 14n" value={fmtRatioX(tiles.roas.v)} delta={tiles.roas.d} />
+        <AdTile name="Spend" value={fmtVnd(tiles.spend.v)} delta={tiles.spend.d} />
+        <AdTile name="Tin nhắn" value={fmtInt(tiles.messages.v)} delta={tiles.messages.d} />
+        <AdTile name="MQL" value={fmtInt(tiles.mql.v)} delta={tiles.mql.d} />
+        <AdTile name="CPMQL" value={fmtVnd(tiles.cpmql.v)} delta={tiles.cpmql.d} lowerBetter />
+        <AdTile name="CAC" value={fmtVnd(tiles.cac.v)} delta={tiles.cac.d} lowerBetter />
+        <AdTile name="ROAS" value={fmtRatioX(tiles.roas.v)} delta={tiles.roas.d} />
       </section>
 
       <section className="grid grid-cols-2 gap-2 rounded-lg border p-3 sm:grid-cols-4">
@@ -172,7 +180,7 @@ export default async function Page() {
       {/* Xu hướng 30 ngày */}
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-          Xu hướng 30 ngày — Spend / Tin nhắn / MQL / CPMQL
+          Xu hướng theo ngày — Spend / Tin nhắn / MQL / CPMQL
         </h2>
         <div className="rounded-lg border p-4">
           <AdsDailyChart data={daily} />
@@ -184,7 +192,7 @@ export default async function Page() {
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-left text-sm">
             <caption className="px-3 py-2 text-left text-sm font-semibold">
-              Theo kênh · 30 ngày
+              Theo kênh
             </caption>
             <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
               <tr>
@@ -233,7 +241,7 @@ export default async function Page() {
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-left text-sm">
             <caption className="px-3 py-2 text-left text-sm font-semibold">
-              Theo sản phẩm · 30 ngày
+              Theo sản phẩm
             </caption>
             <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
               <tr>

@@ -7,29 +7,14 @@ import { SimpleSelect } from "@/components/ui/simple-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { buttonVariants } from "@/components/ui/button";
+import { DEFAULT_RANGE, PeriodSelects } from "@/components/period-selects";
 import { cn } from "@/lib/utils";
-import {
-  monthsOfYear,
-  parsePeriodParts,
-  recentYears,
-  weeksOfMonth,
-} from "@/lib/time";
-
-const QUICK = [
-  { v: "", l: "Nhanh…" },
-  { v: "today", l: "Hôm nay" },
-  { v: "7d", l: "7 ngày" },
-  { v: "14d", l: "14 ngày" },
-];
-const QUICK_VALUES = ["today", "7d", "14d"];
 
 const COMPARE = [
   { v: "prev", l: "Kỳ liền trước" },
   { v: "yoy", l: "Cùng kỳ năm trước" },
   { v: "none", l: "Không so sánh" },
 ];
-
-const DEFAULT_RANGE = "this_month";
 
 export function DashboardFilters({
   products,
@@ -51,32 +36,6 @@ export function DashboardFilters({
   const range =
     opt && opt.spStr === spStr ? opt.range : (sp.get("range") ?? DEFAULT_RANGE);
   const cmp = sp.get("cmp") ?? "prev";
-
-  // Năm › Quý › Tháng › Tuần — suy ra từ `range`.
-  const parts = React.useMemo(() => parsePeriodParts(range), [range]);
-  const years = React.useMemo(() => recentYears(4), []);
-  const quickValue = QUICK_VALUES.includes(range) ? range : "";
-
-  const monthOpts = React.useMemo(() => {
-    const all = monthsOfYear(parts.year);
-    const inQuarter = parts.quarter
-      ? all.filter(
-          (m) => Math.floor((Number(m.value.slice(5)) - 1) / 3) + 1 === parts.quarter,
-        )
-      : all;
-    return [{ value: "", label: "Cả kỳ" }, ...inQuarter];
-  }, [parts.year, parts.quarter]);
-
-  const weekOpts = React.useMemo(() => {
-    if (!parts.month) return [{ value: "", label: "— chọn tháng —" }];
-    return [
-      { value: "", label: "Cả tháng" },
-      ...weeksOfMonth(parts.year, parts.month).map((w) => ({
-        value: w.value,
-        label: w.label,
-      })),
-    ];
-  }, [parts.year, parts.month]);
 
   const selProducts = new Set(
     (sp.get("products") ?? "").split(",").filter(Boolean),
@@ -119,8 +78,6 @@ export function DashboardFilters({
     push({ [key]: [...nextSet].join(",") });
   }
 
-  const mm = (m: number) => String(m).padStart(2, "0");
-
   return (
     <div
       aria-busy={pending}
@@ -129,69 +86,7 @@ export function DashboardFilters({
         pending && "opacity-60",
       )}
     >
-      {/* Nhanh */}
-      <SimpleSelect
-        triggerClassName="h-8 w-24"
-        value={quickValue}
-        onValueChange={(v) =>
-          push({ range: v || `year:${years[0]}` })
-        }
-        options={QUICK.map((q) => ({ value: q.v, label: q.l }))}
-      />
-
-      {/* Năm */}
-      <SimpleSelect
-        triggerClassName="h-8 w-[4.5rem]"
-        value={String(parts.year)}
-        onValueChange={(y) => push({ range: `year:${y}` })}
-        options={years.map((y) => ({ value: String(y), label: String(y) }))}
-      />
-
-      {/* Quý */}
-      <SimpleSelect
-        triggerClassName="h-8 w-24"
-        value={parts.quarter ? `Q${parts.quarter}` : ""}
-        onValueChange={(q) =>
-          push({
-            range: q
-              ? `quarter:${parts.year}-${q}`
-              : `year:${parts.year}`,
-          })
-        }
-        options={[
-          { value: "", label: "Cả năm" },
-          ...[1, 2, 3, 4].map((q) => ({ value: `Q${q}`, label: `Quý ${q}` })),
-        ]}
-      />
-
-      {/* Tháng */}
-      <SimpleSelect
-        triggerClassName="h-8 w-28"
-        value={parts.month ? `${parts.year}-${mm(parts.month)}` : ""}
-        onValueChange={(v) =>
-          push({
-            range: v
-              ? `month:${v}`
-              : parts.quarter
-                ? `quarter:${parts.year}-Q${parts.quarter}`
-                : `year:${parts.year}`,
-          })
-        }
-        options={monthOpts}
-      />
-
-      {/* Tuần */}
-      <SimpleSelect
-        triggerClassName="h-8 w-40"
-        disabled={!parts.month}
-        value={parts.weekFrom ? `week:${parts.weekFrom}` : ""}
-        onValueChange={(v) =>
-          push({
-            range: v || `month:${parts.year}-${mm(parts.month ?? 1)}`,
-          })
-        }
-        options={weekOpts}
-      />
+      <PeriodSelects range={range} onRange={(v) => push({ range: v })} />
 
       <SimpleSelect
         triggerClassName="h-8 w-44"

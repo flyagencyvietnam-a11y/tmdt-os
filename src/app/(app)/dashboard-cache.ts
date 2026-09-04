@@ -10,6 +10,7 @@ import {
   breakdownByProduct,
   breakdownByUser,
   campaignWeeklyPerf,
+  comparePeriod,
   getActionCounts,
   getHealth,
   recentReportWeekStarts,
@@ -21,7 +22,6 @@ import {
   deriveMetrics,
   type MetricsFilter,
 } from "@/lib/services/metrics";
-import { addDaysStr, todayVnDayStr } from "@/lib/time";
 import {
   getBudgetProgressForPeriod,
   getKpiProgressForPeriod,
@@ -94,20 +94,15 @@ export const getKpiFollowCached = unstable_cache(
  * nhịp ngân sách, chuỗi theo ngày, theo kênh, theo sản phẩm, cảnh báo, ma trận tuần.
  */
 export const getAdsMonitorCached = unstable_cache(
-  async () => {
-    const today = todayVnDayStr();
-    const f14: MetricsFilter = { from: addDaysStr(today, -13), to: today };
-    const fPrev: MetricsFilter = {
-      from: addDaysStr(today, -27),
-      to: addDaysStr(today, -14),
-    };
-    const f30 = { from: addDaysStr(today, -29), to: today };
+  async (from: string, to: string) => {
+    const f: MetricsFilter = { from, to };
+    const prev = comparePeriod(from, to, "prev"); // kỳ liền trước cùng độ dài
 
     const [
       entry,
       alerts,
       campaignWeeks,
-      base14,
+      base,
       basePrev,
       pacing,
       daily,
@@ -116,25 +111,28 @@ export const getAdsMonitorCached = unstable_cache(
     ] = await Promise.all([
       adsEntryStatusToday(db),
       evaluateCampaignAlerts(db),
-      campaignWeeklyPerf(db, recentReportWeekStarts(8)),
-      getBaseMetrics(db, f14),
-      getBaseMetrics(db, fPrev),
+      campaignWeeklyPerf(db, recentReportWeekStarts(8, to)),
+      getBaseMetrics(db, f),
+      prev
+        ? getBaseMetrics(db, { from: prev.from, to: prev.to })
+        : Promise.resolve(null),
       adsBudgetPacing(db),
-      adsDailySeries(db, { days: 30 }),
-      adsByChannel(db, f30),
-      breakdownByProduct(db, f30),
+      adsDailySeries(db, { from, to }),
+      adsByChannel(db, f),
+      breakdownByProduct(db, f),
     ]);
 
-    const m14 = { ...base14, ...deriveMetrics(base14) };
-    const mPrev = { ...basePrev, ...deriveMetrics(basePrev) };
-    const delta = (a: number, b: number) => (b === 0 ? null : (a - b) / b);
+    const m = { ...base, ...deriveMetrics(base) };
+    const mPrev = basePrev ? { ...basePrev, ...deriveMetrics(basePrev) } : null;
+    const delta = (a: number, b: number | undefined) =>
+      b == null || b === 0 ? null : (a - b) / b;
     const tiles = {
-      spend: { v: m14.spend, d: delta(m14.spend, mPrev.spend) },
-      messages: { v: m14.leads, d: delta(m14.leads, mPrev.leads) },
-      mql: { v: m14.mql, d: delta(m14.mql, mPrev.mql) },
-      cpmql: { v: m14.cpmql, d: delta(m14.cpmql ?? 0, mPrev.cpmql ?? 0) },
-      cac: { v: m14.cac, d: delta(m14.cac ?? 0, mPrev.cac ?? 0) },
-      roas: { v: m14.roas, d: delta(m14.roas ?? 0, mPrev.roas ?? 0) },
+      spend: { v: m.spend, d: delta(m.spend, mPrev?.spend) },
+      messages: { v: m.leads, d: delta(m.leads, mPrev?.leads) },
+      mql: { v: m.mql, d: delta(m.mql, mPrev?.mql) },
+      cpmql: { v: m.cpmql, d: delta(m.cpmql ?? 0, mPrev?.cpmql ?? undefined) },
+      cac: { v: m.cac, d: delta(m.cac ?? 0, mPrev?.cac ?? undefined) },
+      roas: { v: m.roas, d: delta(m.roas ?? 0, mPrev?.roas ?? undefined) },
     };
 
     return {
@@ -148,7 +146,7 @@ export const getAdsMonitorCached = unstable_cache(
       byProduct: byProduct.rows,
     };
   },
-  ["ads-monitor-v2"],
+  ["ads-monitor-v3"],
   { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
 );
 
