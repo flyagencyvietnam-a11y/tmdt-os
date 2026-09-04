@@ -87,11 +87,13 @@ function resolveRange(range: string): { from: string; to: string; label: string 
     if (r) {
       const [kind, rest] = range.split(":");
       const label =
-        kind === "week"
-          ? `Tuần ${reportWeekLabel(rest)}`
-          : kind === "month"
-            ? `Tháng ${rest.slice(5)}/${rest.slice(0, 4)}`
-            : `Q${rest.slice(-1)}/${rest.slice(0, 4)}`;
+        kind === "year"
+          ? `Năm ${rest}`
+          : kind === "week"
+            ? `Tuần ${reportWeekLabel(rest)}`
+            : kind === "month"
+              ? `Tháng ${rest.slice(5)}/${rest.slice(0, 4)}`
+              : `Q${rest.slice(-1)}/${rest.slice(0, 4)}`;
       return { ...r, label };
     }
   }

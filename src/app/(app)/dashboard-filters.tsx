@@ -8,36 +8,28 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { recentPeriods } from "@/lib/time";
+import {
+  monthsOfYear,
+  parsePeriodParts,
+  recentYears,
+  weeksOfMonth,
+} from "@/lib/time";
 
-const FAST_RANGES = [
+const QUICK = [
+  { v: "", l: "Nhanh…" },
   { v: "today", l: "Hôm nay" },
   { v: "7d", l: "7 ngày" },
   { v: "14d", l: "14 ngày" },
-  { v: "this_month", l: "Tháng này" },
-  { v: "last_month", l: "Tháng trước" },
-  { v: "this_quarter", l: "Quý này" },
 ];
+const QUICK_VALUES = ["today", "7d", "14d"];
 
-const GRAINS = [
-  { v: "fast", l: "Nhanh" },
-  { v: "week", l: "Tuần" },
-  { v: "month", l: "Tháng" },
-  { v: "quarter", l: "Quý" },
-];
-
-/** Từ giá trị `range` suy ra độ mịn đang chọn. */
-function grainOf(range: string): "fast" | "week" | "month" | "quarter" {
-  if (range.startsWith("week:") || range === "this_week") return "week";
-  if (range.startsWith("month:")) return "month";
-  if (range.startsWith("quarter:")) return "quarter";
-  return "fast";
-}
 const COMPARE = [
   { v: "prev", l: "Kỳ liền trước" },
   { v: "yoy", l: "Cùng kỳ năm trước" },
   { v: "none", l: "Không so sánh" },
 ];
+
+const DEFAULT_RANGE = "this_month";
 
 export function DashboardFilters({
   products,
@@ -53,23 +45,45 @@ export function DashboardFilters({
   const [pending, startTransition] = React.useTransition();
 
   // Giá trị "lạc quan": select nhảy ngay khi bấm, không chờ server render xong.
-  // Gắn với spStr lúc bấm; khi URL cập nhật xong (spStr đổi) thì tự bỏ qua.
-  const [opt, setOpt] = React.useState<{ spStr: string; range: string } | null>(null);
+  const [opt, setOpt] = React.useState<{ spStr: string; range: string } | null>(
+    null,
+  );
   const range =
-    opt && opt.spStr === spStr ? opt.range : (sp.get("range") ?? "this_month");
-  const grain = grainOf(range);
+    opt && opt.spStr === spStr ? opt.range : (sp.get("range") ?? DEFAULT_RANGE);
   const cmp = sp.get("cmp") ?? "prev";
 
-  // Danh sách kỳ cụ thể (12 kỳ gần nhất) cho Tuần / Tháng / Quý.
-  const periodOpts = React.useMemo(
-    () =>
-      grain === "fast"
-        ? []
-        : recentPeriods(grain, 12).map((p) => ({ value: p.value, label: p.label })),
-    [grain],
+  // Năm › Quý › Tháng › Tuần — suy ra từ `range`.
+  const parts = React.useMemo(() => parsePeriodParts(range), [range]);
+  const years = React.useMemo(() => recentYears(4), []);
+  const quickValue = QUICK_VALUES.includes(range) ? range : "";
+
+  const monthOpts = React.useMemo(() => {
+    const all = monthsOfYear(parts.year);
+    const inQuarter = parts.quarter
+      ? all.filter(
+          (m) => Math.floor((Number(m.value.slice(5)) - 1) / 3) + 1 === parts.quarter,
+        )
+      : all;
+    return [{ value: "", label: "Cả kỳ" }, ...inQuarter];
+  }, [parts.year, parts.quarter]);
+
+  const weekOpts = React.useMemo(() => {
+    if (!parts.month) return [{ value: "", label: "— chọn tháng —" }];
+    return [
+      { value: "", label: "Cả tháng" },
+      ...weeksOfMonth(parts.year, parts.month).map((w) => ({
+        value: w.value,
+        label: w.label,
+      })),
+    ];
+  }, [parts.year, parts.month]);
+
+  const selProducts = new Set(
+    (sp.get("products") ?? "").split(",").filter(Boolean),
   );
-  const selProducts = new Set((sp.get("products") ?? "").split(",").filter(Boolean));
-  const selChannels = new Set((sp.get("channels") ?? "").split(",").filter(Boolean));
+  const selChannels = new Set(
+    (sp.get("channels") ?? "").split(",").filter(Boolean),
+  );
 
   function push(next: Record<string, string | null>) {
     const p = new URLSearchParams(sp.toString());
@@ -78,7 +92,7 @@ export function DashboardFilters({
       else p.set(k, v);
     }
     const qs = p.toString();
-    if ("range" in next) setOpt({ spStr, range: next.range ?? "this_month" });
+    if ("range" in next) setOpt({ spStr, range: next.range ?? DEFAULT_RANGE });
     try {
       localStorage.setItem("vmg.dashboard.filters", qs);
     } catch {}
@@ -105,6 +119,8 @@ export function DashboardFilters({
     push({ [key]: [...nextSet].join(",") });
   }
 
+  const mm = (m: number) => String(m).padStart(2, "0");
+
   return (
     <div
       aria-busy={pending}
@@ -113,34 +129,69 @@ export function DashboardFilters({
         pending && "opacity-60",
       )}
     >
+      {/* Nhanh */}
       <SimpleSelect
         triggerClassName="h-8 w-24"
-        value={grain}
-        onValueChange={(g) => {
-          if (g === "fast") push({ range: "this_month" });
-          else {
-            const first = recentPeriods(g as "week" | "month" | "quarter", 1)[0];
-            push({ range: first.value });
-          }
-        }}
-        options={GRAINS.map((g) => ({ value: g.v, label: g.l }))}
+        value={quickValue}
+        onValueChange={(v) =>
+          push({ range: v || `year:${years[0]}` })
+        }
+        options={QUICK.map((q) => ({ value: q.v, label: q.l }))}
       />
 
-      {grain === "fast" ? (
-        <SimpleSelect
-          triggerClassName="h-8 w-36"
-          value={range}
-          onValueChange={(v) => push({ range: v })}
-          options={FAST_RANGES.map((r) => ({ value: r.v, label: r.l }))}
-        />
-      ) : (
-        <SimpleSelect
-          triggerClassName="h-8 w-52"
-          value={range === "this_week" ? periodOpts[0]?.value : range}
-          onValueChange={(v) => push({ range: v })}
-          options={periodOpts}
-        />
-      )}
+      {/* Năm */}
+      <SimpleSelect
+        triggerClassName="h-8 w-[4.5rem]"
+        value={String(parts.year)}
+        onValueChange={(y) => push({ range: `year:${y}` })}
+        options={years.map((y) => ({ value: String(y), label: String(y) }))}
+      />
+
+      {/* Quý */}
+      <SimpleSelect
+        triggerClassName="h-8 w-24"
+        value={parts.quarter ? `Q${parts.quarter}` : ""}
+        onValueChange={(q) =>
+          push({
+            range: q
+              ? `quarter:${parts.year}-${q}`
+              : `year:${parts.year}`,
+          })
+        }
+        options={[
+          { value: "", label: "Cả năm" },
+          ...[1, 2, 3, 4].map((q) => ({ value: `Q${q}`, label: `Quý ${q}` })),
+        ]}
+      />
+
+      {/* Tháng */}
+      <SimpleSelect
+        triggerClassName="h-8 w-28"
+        value={parts.month ? `${parts.year}-${mm(parts.month)}` : ""}
+        onValueChange={(v) =>
+          push({
+            range: v
+              ? `month:${v}`
+              : parts.quarter
+                ? `quarter:${parts.year}-Q${parts.quarter}`
+                : `year:${parts.year}`,
+          })
+        }
+        options={monthOpts}
+      />
+
+      {/* Tuần */}
+      <SimpleSelect
+        triggerClassName="h-8 w-40"
+        disabled={!parts.month}
+        value={parts.weekFrom ? `week:${parts.weekFrom}` : ""}
+        onValueChange={(v) =>
+          push({
+            range: v || `month:${parts.year}-${mm(parts.month ?? 1)}`,
+          })
+        }
+        options={weekOpts}
+      />
 
       <SimpleSelect
         triggerClassName="h-8 w-44"
@@ -150,7 +201,9 @@ export function DashboardFilters({
       />
 
       <Popover>
-        <PopoverTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+        <PopoverTrigger
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+        >
           Sản phẩm{selProducts.size ? ` (${selProducts.size})` : ""}
         </PopoverTrigger>
         <PopoverContent align="start" className="w-52">
@@ -169,7 +222,9 @@ export function DashboardFilters({
       </Popover>
 
       <Popover>
-        <PopoverTrigger className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+        <PopoverTrigger
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+        >
           Kênh{selChannels.size ? ` (${selChannels.size})` : ""}
         </PopoverTrigger>
         <PopoverContent align="start" className="w-40">
@@ -187,19 +242,21 @@ export function DashboardFilters({
         </PopoverContent>
       </Popover>
 
-      {(selProducts.size > 0 || selChannels.size > 0 || range !== "this_month") && (
+      {(selProducts.size > 0 ||
+        selChannels.size > 0 ||
+        range !== DEFAULT_RANGE) && (
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => push({ range: null, cmp: null, products: null, channels: null })}
+          onClick={() =>
+            push({ range: null, cmp: null, products: null, channels: null })
+          }
         >
           Xóa lọc
         </Button>
       )}
 
-      {pending && (
-        <span className="text-xs text-muted-foreground">đang tải…</span>
-      )}
+      {pending && <span className="text-xs text-muted-foreground">đang tải…</span>}
     </div>
   );
 }

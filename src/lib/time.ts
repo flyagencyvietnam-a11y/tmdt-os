@@ -49,6 +49,13 @@ export function monthBounds(dayStr: string): [string, string] {
   return [first, last];
 }
 
+/** Năm chứa dayStr / năm Y, dạng [YYYY-01-01, YYYY-12-31]. */
+export function yearBounds(yearOrDay: string | number): [string, string] {
+  const y =
+    typeof yearOrDay === "number" ? yearOrDay : Number(String(yearOrDay).slice(0, 4));
+  return [`${y}-01-01`, `${y}-12-31`];
+}
+
 /** Quý chứa dayStr, dạng [start, end]. */
 export function quarterBounds(dayStr: string): [string, string] {
   const [y, m] = dayStr.split("-").map(Number);
@@ -156,11 +163,107 @@ export function recentPeriods(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+//  Bộ chọn thời gian 4 cấp: Năm › Quý › Tháng › Tuần (SPEC 12.2)
+// ---------------------------------------------------------------------------
+
+/** N năm gần nhất (i=0 là năm hiện tại). */
+export function recentYears(count: number, now: Date = new Date()): number[] {
+  const y = Number(vnDayStr(now).slice(0, 4));
+  return Array.from({ length: count }, (_, i) => y - i);
+}
+
+/** 12 tháng của năm y: [{ value: "YYYY-MM", label: "Tháng M" }]. */
+export function monthsOfYear(y: number): { value: string; label: string }[] {
+  return Array.from({ length: 12 }, (_, i) => ({
+    value: `${y}-${String(i + 1).padStart(2, "0")}`,
+    label: `Tháng ${i + 1}`,
+  }));
+}
+
+/** Các tuần báo cáo VMG (T7→T6) có phần giao với tháng y-m. */
+export function weeksOfMonth(y: number, m: number): PeriodOption[] {
+  const [mFirst, mLast] = monthBounds(`${y}-${String(m).padStart(2, "0")}-01`);
+  const out: PeriodOption[] = [];
+  let [satFrom] = reportWeekBounds(mFirst);
+  // Bắt đầu từ tuần chứa ngày 1; đi tới khi qua hết tháng.
+  for (let guard = 0; guard < 8; guard++) {
+    const [from, to] = reportWeekBounds(satFrom);
+    if (from > mLast) break;
+    out.push({ value: `week:${from}`, label: reportWeekLabel(from), from, to });
+    satFrom = addDaysStr(from, 7);
+  }
+  return out;
+}
+
+/** Phân tích giá trị `range` 4 cấp thành các mảnh đã chọn. */
+export function parsePeriodParts(range: string): {
+  year: number;
+  quarter: number | null;
+  month: number | null;
+  weekFrom: string | null;
+} {
+  const today = vnDayStr();
+  const nowY = Number(today.slice(0, 4));
+
+  // Preset "nhanh" có phạm vi rõ ràng theo tháng/tuần → phản chiếu lên bộ chọn.
+  if (range === "this_month" || range === "last_month") {
+    const base =
+      range === "this_month"
+        ? today
+        : addDaysStr(monthBounds(today)[0], -1);
+    const [y, m] = base.split("-").map(Number);
+    return { year: y, quarter: Math.floor((m - 1) / 3) + 1, month: m, weekFrom: null };
+  }
+  if (range === "this_quarter") {
+    const [y, m] = today.split("-").map(Number);
+    return { year: y, quarter: Math.floor((m - 1) / 3) + 1, month: null, weekFrom: null };
+  }
+  if (range === "this_week") {
+    const [sat] = reportWeekBounds(today);
+    const [y, m] = sat.split("-").map(Number);
+    return {
+      year: y,
+      quarter: Math.floor((m - 1) / 3) + 1,
+      month: m,
+      weekFrom: sat,
+    };
+  }
+
+  const [kind, rest] = range.split(":");
+  if (kind === "year" && /^\d{4}$/.test(rest ?? ""))
+    return { year: Number(rest), quarter: null, month: null, weekFrom: null };
+  if (kind === "quarter") {
+    const mq = /^(\d{4})-Q([1-4])$/.exec(rest ?? "");
+    if (mq)
+      return { year: Number(mq[1]), quarter: Number(mq[2]), month: null, weekFrom: null };
+  }
+  if (kind === "month" && /^(\d{4})-(\d{2})$/.test(rest ?? "")) {
+    const [yy, mm] = rest.split("-").map(Number);
+    return { year: yy, quarter: Math.floor((mm - 1) / 3) + 1, month: mm, weekFrom: null };
+  }
+  if (kind === "week" && /^\d{4}-\d{2}-\d{2}$/.test(rest ?? "")) {
+    // Tuần thuộc tháng chứa ngày Thứ 7 bắt đầu tuần.
+    const [yy, mm] = rest.split("-").map(Number);
+    return {
+      year: yy,
+      quarter: Math.floor((mm - 1) / 3) + 1,
+      month: mm,
+      weekFrom: rest,
+    };
+  }
+  return { year: nowY, quarter: null, month: null, weekFrom: null };
+}
+
 /** Giải mã 1 giá trị period (từ recentPeriods.value) thành [from, to]. */
 export function resolvePeriodValue(
   value: string,
 ): { from: string; to: string } | null {
   const [kind, rest] = value.split(":");
+  if (kind === "year" && /^\d{4}$/.test(rest ?? "")) {
+    const [from, to] = yearBounds(Number(rest));
+    return { from, to };
+  }
   if (kind === "week" && /^\d{4}-\d{2}-\d{2}$/.test(rest ?? "")) {
     const [from, to] = reportWeekBounds(rest);
     return { from, to };

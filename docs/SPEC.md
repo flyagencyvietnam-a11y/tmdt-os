@@ -1098,13 +1098,19 @@ Ba tầng, từ trên xuống:
 ### 12.2. Bộ lọc toàn cục
 
 Áp dụng cho toàn bộ dashboard, ghi nhớ theo người dùng (localStorage):
-- **Độ mịn thời gian:** Nhanh / Tuần / Tháng / Quý.
-  - *Nhanh:* Hôm nay / 7 ngày / 14 ngày / Tháng này / Tháng trước / Quý này.
-  - *Tuần / Tháng / Quý:* kèm ô chọn **kỳ cụ thể** — liệt kê 12 kỳ gần nhất
-    (`week:YYYY-MM-DD` | `month:YYYY-MM` | `quarter:YYYY-Q#`).
+- **Bộ chọn thời gian 4 cấp (Gói H):** 5 ô chọn cạnh nhau — **Nhanh · Năm · Quý ·
+  Tháng · Tuần** — kiểu phân cấp, chọn tới đâu áp phạm vi tới đó:
+  - *Nhanh:* Hôm nay / 7 ngày / 14 ngày (preset ngắn, độc lập với 4 cấp dưới).
+  - *Năm:* 4 năm gần nhất → `year:YYYY` = cả năm.
+  - *Quý:* Cả năm | Quý 1–4 → `quarter:YYYY-Q#`.
+  - *Tháng:* Cả kỳ | các tháng (bó theo quý nếu đã chọn quý) → `month:YYYY-MM`.
+  - *Tuần:* khóa cho tới khi chọn Tháng; sau đó liệt kê các **tuần báo cáo VMG**
+    giao với tháng → `week:YYYY-MM-DD` (ngày Thứ 7 bắt đầu tuần).
+  - Chọn cấp sâu hơn ghi đè cấp trên; bỏ (`Cả …`) lùi về cấp cha.
   - **Tuần báo cáo VMG = Thứ 7 tuần trước → Thứ 6 tuần này** (7 ngày). `weeklyTrend`
-    và ô chọn tuần đều theo mốc này. Helper: `reportWeekBounds` / `recentPeriods` /
-    `resolvePeriodValue` trong `src/lib/time.ts`.
+    và ô chọn tuần đều theo mốc này. Helper trong `src/lib/time.ts`:
+    `reportWeekBounds` / `yearBounds` / `monthsOfYear` / `weeksOfMonth` /
+    `parsePeriodParts` / `resolvePeriodValue` (kèm cấp `year:`).
 - So sánh với: kỳ liền trước / cùng kỳ năm trước / không so sánh
 - Sản phẩm (nhiều lựa chọn)
 - Kênh (nhiều lựa chọn)
