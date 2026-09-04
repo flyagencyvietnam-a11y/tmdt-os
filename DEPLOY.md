@@ -35,6 +35,10 @@ Vercel account đã có: **team `flyagencyvietnam-2039's projects`** (hobby).
 
 ## 3. Áp schema + seed + nạp dữ liệu thật lên DB production
 
+> **Region:** tạo project Supabase ở **Singapore (`ap-southeast-1`)** để cùng vùng với
+> Vercel `sin1` — người dùng ở VN chịu ~30–60 ms/round-trip thay vì ~150–200 ms (Sydney).
+> Nếu đã lỡ tạo ở Sydney: xem "Đổi vùng Supabase" cuối file.
+
 Lấy connection string production (Supabase → **Connect** → Transaction pooler, hoặc
 Vercel → Storage → Neon). Đặt vào `.env.local` (các script tự đọc file này):
 
@@ -57,9 +61,32 @@ vẫn còn theo yêu cầu — đổi mật khẩu hoặc xoá trong `scripts/se
 
 ## Vùng máy chủ
 
-`vercel.json` đặt `regions: ["syd1"]` để serverless function chạy **cùng vùng
-Sydney với Supabase** — mỗi round-trip DB ~1–5 ms thay vì ~150–250 ms. Nếu đổi
-vùng Supabase, sửa `regions` cho khớp (vd. `sin1` cho Singapore).
+`vercel.json` đặt `regions: ["sin1"]` (Singapore) — phải **cùng vùng với project
+Supabase**. Cùng vùng: round-trip function↔DB ~1–5 ms. Khác vùng: +150–200 ms **mỗi
+query**, tệ hơn cả để nguyên. Đổi vùng một bên thì đổi luôn bên kia.
+
+Người dùng ở VN: Singapore (`sin1` / `ap-southeast-1`) gần hơn Sydney rõ rệt
+(~30–60 ms so với ~150–200 ms cho mỗi lần tải trang, vì trang có auth nên SSR động,
+không cache).
+
+### Đổi vùng Supabase (Sydney → Singapore)
+
+Supabase không cho đổi region tại chỗ — phải tạo project mới:
+
+1. Tạo project Supabase mới, region **Southeast Asia (Singapore) `ap-southeast-1`**.
+2. `.env.local` → `DATABASE_URL` trỏ connection string mới (Transaction pooler, port
+   `6543`; URL-encode ký tự đặc biệt trong mật khẩu, `%` → `%25`).
+3. Nạp lại schema + dữ liệu:
+   ```bash
+   npm run db:migrate
+   npm run db:seed -- --no-demo
+   npm run xlsx:migrate -- --commit      # nếu cần lại dữ liệu thật từ xlsx
+   ```
+   (hoặc `pg_dump` project cũ rồi `psql` restore sang project mới nếu muốn giữ
+   nguyên các thay đổi đã nhập trên production.)
+4. Vercel → Settings → Environment Variables → sửa `DATABASE_URL` = string mới →
+   **Redeploy**.
+5. Xoá / pause project Supabase Sydney cũ.
 
 ## Vercel Cron
 
