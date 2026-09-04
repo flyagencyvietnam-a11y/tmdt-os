@@ -1120,8 +1120,16 @@ bộ lọc — đổi kỳ thì khối cũ hiện skeleton lại ngay, phần nh
 nặng (Bóc tách) về sau. Bộ lọc dùng `useTransition`: select nhảy giá trị ngay khi bấm
 (giá trị lạc quan), hiện "đang tải…" trong lúc server render. Nhóm `(app)` có
 `loading.tsx` chung để mọi lần điều hướng thấy phản hồi ngay thay vì đứng ở trang cũ.
-*(E2 — còn treo: thay fan-out `getBaseMetrics` N×M trong `dashboard.ts` bằng truy vấn
-`GROUP BY` gộp ở `metrics.ts` để giảm số round-trip DB.)*
+
+**Gộp truy vấn breakdown (Gói E2).** Các hàm bóc tách (`breakdownByProduct` /
+`ByCampaign` / `ByUser`, `weeklyTrend`) **không** gọi `getBaseMetrics` lặp theo từng
+id/tuần nữa. Thay bằng 3 hàm gộp trong `metrics.ts` (vẫn là nguồn công thức duy nhất,
+có test đối chiếu `metrics-breakdown.test.ts` chốt "gộp == lặp"):
+`getBaseMetricsGrouped(filter, "product"|"campaign"|"assignee")` → `Map<id, BaseMetrics>`
+bằng 3–4 `GROUP BY` / bảng nguồn; `getTrendSeries(weekStarts, filter)` → chuỗi tuần
+bằng 3 truy vấn; `getOpsDisciplineGrouped({from,to})` → overdue/first-response theo
+người bằng 2 truy vấn. Mỗi lần tải "Bóc tách" giảm từ ~vài trăm round-trip xuống ~15.
+Chỉ số phái sinh vẫn đi qua `deriveMetrics` duy nhất.
 
 ### 12.3. Tầng 1 - Khối cần hành động
 

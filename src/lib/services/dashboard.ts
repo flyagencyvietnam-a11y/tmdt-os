@@ -5,10 +5,9 @@
  * getBaseMetrics / deriveMetrics / getOpsDiscipline / evaluateCampaignAlerts
  * trong metrics.ts (nguồn công thức duy nhất) rồi gom nhóm / so sánh / xếp chuỗi.
  */
-import { and, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import {
   appSettings,
-  campaignDailyMetrics,
   campaigns,
   leads,
   products,
@@ -23,13 +22,29 @@ import {
 import {
   deriveMetrics,
   getBaseMetrics,
-  getOpsDiscipline,
+  getBaseMetricsGrouped,
+  getOpsDisciplineGrouped,
+  getTrendSeries,
   safeDiv,
   type AnyDb,
   type BaseMetrics,
   type DerivedMetrics,
   type MetricsFilter,
 } from "./metrics";
+
+const ZERO_BASE: BaseMetrics = {
+  spend: 0,
+  leads: 0,
+  leadsRecorded: 0,
+  mql: 0,
+  sql: 0,
+  won: 0,
+  hvm: 0,
+  revenueGross: 0,
+  revenueNet: 0,
+  cashCollected: 0,
+  kolCost: 0,
+};
 
 // ---------------------------------------------------------------------------
 //  Kỳ so sánh (SPEC Mục 12.2)
@@ -153,17 +168,16 @@ export async function breakdownByProduct(
     .where(eq(appSettings.key, "budget_share_plan"));
   const plan = (planRow[0]?.value ?? {}) as Record<string, number>;
 
-  // N sản phẩm — chạy song song (mỗi lần gọi metrics là nhiều round-trip DB).
-  const rows: BreakdownRow[] = await Promise.all(
-    list.map(async (p) => {
-      const b = await getBaseMetrics(db, { ...filter, productIds: [p.id] });
-      return {
-        key: p.id,
-        label: `${p.code} — ${p.name}`,
-        metrics: { ...b, ...deriveMetrics(b) },
-      };
-    }),
-  );
+  // 1 truy vấn GROUP BY / bảng nguồn thay vì N lần gọi getBaseMetrics.
+  const grouped = await getBaseMetricsGrouped(db, filter, "product");
+  const rows: BreakdownRow[] = list.map((p) => {
+    const b = grouped.get(p.id) ?? ZERO_BASE;
+    return {
+      key: p.id,
+      label: `${p.code} — ${p.name}`,
+      metrics: { ...b, ...deriveMetrics(b) },
+    };
+  });
   const totalSpend = rows.reduce((s, r) => s + r.metrics.spend, 0);
 
   const enriched = rows.map((r) => {
@@ -188,70 +202,32 @@ export async function breakdownByCampaign(
   filter: MetricsFilter,
   limit = 20,
 ): Promise<BreakdownRow[]> {
-  // Chỉ xét campaign có hoạt động trong kỳ: có số liệu spend theo ngày HOẶC có
-  // lead đạt MQL trong kỳ (khớp bộ lọc "spend=0 && mql=0 -> bỏ" bên dưới).
-  // Tránh fan-out getBaseMetrics cho toàn bộ campaign.
-  const [startUtc, endUtc] = [
-    vnDayBoundsUtc(filter.from)[0],
-    vnDayBoundsUtc(filter.to)[1],
-  ];
-  const [spendCids, mqlCids] = await Promise.all([
-    db
-      .selectDistinct({ id: campaignDailyMetrics.campaignId })
-      .from(campaignDailyMetrics)
-      .where(
-        and(
-          gte(campaignDailyMetrics.metricDate, filter.from),
-          lte(campaignDailyMetrics.metricDate, filter.to),
-        ),
-      ),
-    db
-      .selectDistinct({ id: leads.campaignId })
-      .from(leads)
-      .where(
-        and(
-          isNull(leads.deletedAt),
-          isNull(leads.duplicateOf),
-          gte(leads.mqlAt, startUtc),
-          lt(leads.mqlAt, endUtc),
-        ),
-      ),
-  ]);
-  const activeIds = [
-    ...new Set(
-      [...spendCids, ...mqlCids]
-        .map((r) => r.id)
-        .filter((v): v is string => !!v),
-    ),
-  ];
-  if (activeIds.length === 0) return [];
+  // 1 lượt GROUP BY (áp cửa sổ quy kết 90 ngày cho mql/sql) — keys = campaign có
+  // dữ liệu trong kỳ. Không còn fan-out getBaseMetrics theo từng campaign.
+  const grouped = await getBaseMetricsGrouped(
+    db,
+    { ...filter, campaignAttribution: true },
+    "campaign",
+  );
+  if (grouped.size === 0) return [];
 
   const list = await db
-    .select({
-      id: campaigns.id,
-      internalCode: campaigns.internalCode,
-      displayName: campaigns.displayName,
-    })
+    .select({ id: campaigns.id, displayName: campaigns.displayName })
     .from(campaigns)
-    .where(and(isNull(campaigns.deletedAt), inArray(campaigns.id, activeIds)));
+    .where(
+      and(isNull(campaigns.deletedAt), inArray(campaigns.id, [...grouped.keys()])),
+    );
 
-  const computed = await Promise.all(
-    list.map(async (c) => {
-      const b = await getBaseMetrics(db, {
-        ...filter,
-        campaignIds: [c.id],
-        campaignAttribution: true,
-      });
-      return { c, b };
-    }),
-  );
-  const rows: BreakdownRow[] = computed
-    .filter(({ b }) => !(b.spend === 0 && b.mql === 0))
-    .map(({ c, b }) => ({
-      key: c.id,
-      label: c.displayName,
-      metrics: { ...b, ...deriveMetrics(b) },
-    }));
+  const rows: BreakdownRow[] = list
+    .map((c) => {
+      const b = grouped.get(c.id) ?? ZERO_BASE;
+      return {
+        key: c.id,
+        label: c.displayName,
+        metrics: { ...b, ...deriveMetrics(b) },
+      };
+    })
+    .filter((r) => !(r.metrics.spend === 0 && r.metrics.mql === 0));
   rows.sort((a, b) => b.metrics.spend - a.metrics.spend);
   return rows.slice(0, limit);
 }
@@ -268,53 +244,40 @@ export async function breakdownByUser(
     firstResponseRate: number | null;
   })[]
 > {
-  const ecs = await db
-    .select({ id: users.id, fullName: users.fullName })
-    .from(users)
-    .where(and(eq(users.isActive, true), sql`${users.role} in ('EC','MANAGER','ADMIN')`));
+  const [ecs, funnel, ops] = await Promise.all([
+    db
+      .select({ id: users.id, fullName: users.fullName })
+      .from(users)
+      .where(
+        and(
+          eq(users.isActive, true),
+          sql`${users.role} in ('EC','MANAGER','ADMIN')`,
+        ),
+      ),
+    getBaseMetricsGrouped(db, filter, "assignee"),
+    getOpsDisciplineGrouped(db, { from: filter.from, to: filter.to }),
+  ]);
 
-  const [startUtc, endUtc] = [
-    vnDayBoundsUtc(filter.from)[0],
-    vnDayBoundsUtc(filter.to)[1],
-  ];
-
-  const out = (
-    await Promise.all(
-      ecs.map(async (u) => {
-        const b = await getBaseMetrics(db, { ...filter, assignedTo: [u.id] });
-        const [assignedRow] = await db
-          .select({ c: sql<number>`count(*)` })
-          .from(leads)
-          .where(
-            and(
-              eq(leads.assignedTo, u.id),
-              isNull(leads.deletedAt),
-              isNull(leads.duplicateOf),
-              gte(leads.receivedAt, startUtc),
-              lt(leads.receivedAt, endUtc),
-            ),
-          );
-        const leadsAssigned = Number(assignedRow?.c ?? 0);
-        if (leadsAssigned === 0 && b.mql === 0 && b.won === 0) return null;
-
-        const ops = await getOpsDiscipline(db, {
-          assignedTo: [u.id],
-          from: filter.from,
-          to: filter.to,
-        });
-
-        return {
-          key: u.id,
-          label: u.fullName,
-          metrics: { ...b, ...deriveMetrics(b) },
-          leadsAssigned,
-          crMqlWon: safeDiv(b.won, b.mql),
-          overdueRate: ops.overdueRate,
-          firstResponseRate: ops.firstResponseRate,
-        };
-      }),
-    )
-  ).filter((x): x is NonNullable<typeof x> => x !== null);
+  const out = ecs
+    .map((u) => {
+      const b = funnel.get(u.id) ?? ZERO_BASE;
+      const o = ops.get(u.id) ?? {
+        leadsAssigned: 0,
+        overdueRate: null,
+        firstResponseRate: null,
+      };
+      if (o.leadsAssigned === 0 && b.mql === 0 && b.won === 0) return null;
+      return {
+        key: u.id,
+        label: u.fullName,
+        metrics: { ...b, ...deriveMetrics(b) },
+        leadsAssigned: o.leadsAssigned,
+        crMqlWon: safeDiv(b.won, b.mql),
+        overdueRate: o.overdueRate,
+        firstResponseRate: o.firstResponseRate,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
   return out;
 }
 
@@ -339,32 +302,22 @@ export async function weeklyTrend(
   // Tuần báo cáo VMG: bắt đầu Thứ 7 (T7 tuần trước → T6 tuần này).
   const endDow = new Date(`${end}T00:00:00Z`).getUTCDay(); // 0=CN … 6=T7
   const satOffset = (endDow + 1) % 7; // T7->0, CN->1, … T6->6
-  let weekStart = addDaysStr(end, -satOffset);
+  const weekStart = addDaysStr(end, -satOffset);
 
   const starts: string[] = [];
   for (let i = 0; i < weeks; i++) {
     starts.unshift(addDaysStr(weekStart, -7 * i));
   }
-  weekStart = starts[0];
 
-  const points: WeekPoint[] = await Promise.all(
-    starts.map(async (ws) => {
-      const we = addDaysStr(ws, 6);
-      const b = await getBaseMetrics(db, {
-        ...(opts.filter as MetricsFilter),
-        from: ws,
-        to: we,
-      });
-      return {
-        weekStart: ws,
-        spend: b.spend,
-        mql: b.mql,
-        won: b.won,
-        cpmql: safeDiv(b.spend, b.mql),
-      };
-    }),
-  );
-  return points;
+  // 3 truy vấn cho cả 12 tuần thay vì 12 × getBaseMetrics.
+  const series = await getTrendSeries(db, starts, opts.filter ?? {});
+  return series.map((p) => ({
+    weekStart: p.weekStart,
+    spend: p.spend,
+    mql: p.mql,
+    won: p.won,
+    cpmql: safeDiv(p.spend, p.mql),
+  }));
 }
 
 export interface CohortRow {
