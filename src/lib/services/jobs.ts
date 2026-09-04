@@ -12,6 +12,10 @@ import { evaluateCampaignAlerts } from "./metrics";
 import type { AnyDb } from "./metrics";
 import { getManagerIds, notify, notifyMany } from "./notifications";
 import { spawnLeadCareTasks } from "./lead-care-tasks";
+import {
+  completeAdsEntryTasksIfDone,
+  spawnAdsEntryTasks,
+} from "./ads-entry-tasks";
 import { spawnRecurringTasks } from "./tasks";
 
 export interface JobResult {
@@ -253,6 +257,18 @@ export async function runSpawnLeadCare(db: AnyDb, now = new Date()): Promise<Job
   return { job: "spawn-lead-care", createdNotifications: 0, affected: r.created };
 }
 
+/** 08:00 — mỗi Marketing Executive 1 task "nhập số liệu ads hôm nay" (SPEC 12.3). */
+export async function runSpawnAdsEntry(db: AnyDb, now = new Date()): Promise<JobResult> {
+  const s = await spawnAdsEntryTasks(db, now);
+  const c = await completeAdsEntryTasksIfDone(db, now);
+  return {
+    job: "spawn-ads-entry",
+    createdNotifications: 0,
+    affected: s.created,
+    detail: c.completed ? `${c.completed} task tự đóng (đã nhập đủ)` : undefined,
+  };
+}
+
 /** Chạy toàn bộ tác vụ buổi sáng (dùng cho nút "chạy ngay" của ADMIN). */
 export async function runAllMorningJobs(db: AnyDb, now = new Date()) {
   return {
@@ -261,5 +277,6 @@ export async function runAllMorningJobs(db: AnyDb, now = new Date()) {
     cold: await runColdDataSweep(db),
     recurring: await runSpawnRecurring(db, now),
     leadCare: await runSpawnLeadCare(db, now),
+    adsEntry: await runSpawnAdsEntry(db, now),
   };
 }

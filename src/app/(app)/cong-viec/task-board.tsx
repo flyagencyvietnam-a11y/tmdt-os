@@ -317,6 +317,7 @@ function TaskCard({
       <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
         {t.type === "RECURRING" && <Badge variant="outline">định kỳ</Badge>}
         {t.type === "LEAD_CARE" && <Badge variant="outline">chăm sóc lead</Badge>}
+        {t.groupCode === "ADS" && <Badge variant="outline">nhập ads</Badge>}
         {scope === "team" && <span>{t.assigneeName}</span>}
         {t.dueDate && (
           <span className={overdue ? "text-crit" : ""}>{fmtDate(t.dueDate)}</span>

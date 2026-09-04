@@ -86,6 +86,7 @@ export async function upsertDailyMetricAction(input: {
   try {
     const res = await upsertDailyMetric(db, input, { id: user.id, role: user.role });
     revalidatePath("/campaign");
+    await afterAdsEntry();
     return { ok: true, data: res };
   } catch (e) {
     return fail(e);
@@ -111,8 +112,22 @@ export async function copyYesterdayAction(
         copied++;
     }
     revalidatePath("/campaign");
+    await afterAdsEntry();
     return { ok: true, data: { copied } };
   } catch (e) {
     return fail(e);
+  }
+}
+
+/** Sau khi lưu số liệu ads: nếu hôm nay đã đủ, tự đóng task "nhập số liệu ads". */
+async function afterAdsEntry() {
+  try {
+    const { completeAdsEntryTasksIfDone } = await import(
+      "@/lib/services/ads-entry-tasks"
+    );
+    const r = await completeAdsEntryTasksIfDone(db);
+    if (r.completed > 0) revalidatePath("/cong-viec");
+  } catch {
+    // không chặn luồng nhập số liệu nếu bước phụ này lỗi
   }
 }

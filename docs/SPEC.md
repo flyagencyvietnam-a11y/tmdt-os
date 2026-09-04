@@ -1245,6 +1245,15 @@ Chỉ số `% hoàn thành` tính giống sheet Kế hoạch T9: `số task DONE
 
 ### 13.4. Việc định kỳ cần cấu hình sẵn
 
+**Task "Nhập số liệu ads hôm nay" (Gói K).** Job sáng (`runSpawnAdsEntry` trong
+`runAllMorningJobs`) tạo **1 task/ngày cho mỗi user vai trò `MARKETING`** đang hoạt
+động — `type = SYSTEM`, `group_code = 'ADS'`, `due_date = hôm nay`, link `/ads`.
+Idempotent trong ngày (bỏ qua nếu người đó đã có task ADS `due_date = hôm nay`).
+Task **tự chuyển DONE** (`completeAdsEntryTasksIfDone`) khi trong ngày mọi campaign
+đang ON đều đã có bản ghi `campaign_daily_metrics` — gọi sau mỗi lần lưu số liệu
+campaign và trong job sáng. Không cần bảng template; logic ở
+`src/lib/services/ads-entry-tasks.ts`.
+
 | Việc | Người | Tần suất | Hạn trong ngày |
 |---|---|---|---|
 | Nhập spend và messages các campaign | Marketing Executive | Hằng ngày (T2-T7) | 10:00 |
