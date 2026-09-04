@@ -112,8 +112,7 @@ function buildReportSheets(d: Breakdowns) {
         { header: "CPMQL", key: "cpmql" },
         { header: "CAC", key: "cac" },
         { header: "ROAS", key: "roas" },
-        { header: "% NS thực tế", key: "actualPct" },
-        { header: "% NS phân bổ", key: "planPct" },
+        { header: "% ngân sách", key: "actualPct" },
       ],
       rows: d.byProduct.rows.map((r) => ({
         sp: r.label,
@@ -127,7 +126,6 @@ function buildReportSheets(d: Breakdowns) {
         cac: r.metrics.cac ?? "",
         roas: r.metrics.roas ?? "",
         actualPct: r.budgetShareActualPct?.toFixed(1) ?? "",
-        planPct: r.budgetSharePlanPct ?? "",
       })),
     },
     {
@@ -136,6 +134,7 @@ function buildReportSheets(d: Breakdowns) {
         { header: "Campaign", key: "c" },
         { header: "Spend", key: "spend" },
         { header: "MQL", key: "mql" },
+        { header: "SQL", key: "sql" },
         { header: "HV", key: "won" },
         { header: "CPMQL", key: "cpmql" },
         { header: "CAC", key: "cac" },
@@ -145,6 +144,7 @@ function buildReportSheets(d: Breakdowns) {
         c: r.label,
         spend: r.metrics.spend,
         mql: r.metrics.mql,
+        sql: r.metrics.sql,
         won: r.metrics.won,
         cpmql: r.metrics.cpmql ?? "",
         cac: r.metrics.cac ?? "",
@@ -157,6 +157,7 @@ function buildReportSheets(d: Breakdowns) {
         { header: "Nhân sự", key: "u" },
         { header: "Lead giao", key: "assigned" },
         { header: "MQL", key: "mql" },
+        { header: "SQL", key: "sql" },
         { header: "HV", key: "won" },
         { header: "HVM", key: "hvm" },
         { header: "Doanh thu", key: "rev" },
@@ -173,6 +174,7 @@ function buildReportSheets(d: Breakdowns) {
         u: r.label,
         assigned: r.leadsAssigned,
         mql: r.metrics.mql,
+        sql: r.metrics.sql,
         won: r.metrics.won,
         hvm: r.metrics.hvm,
         rev: r.metrics.revenueGross,
@@ -873,20 +875,17 @@ function ProductTable({
             <th className="px-3 py-2 text-right">Spend</th>
             <th className="px-3 py-2 text-right">Lead</th>
             <th className="px-3 py-2 text-right">MQL</th>
+            <th className="px-3 py-2 text-right">SQL</th>
             <th className="px-3 py-2 text-right">HV</th>
             <th className="px-3 py-2 text-right">Doanh thu</th>
             <th className="px-3 py-2 text-right">CPMQL</th>
             <th className="px-3 py-2 text-right">ROAS</th>
             <th className="px-3 py-2 text-right">Nhiệt độ (đang theo)</th>
-            <th className="px-3 py-2 text-right">% NS thực tế / phân bổ</th>
+            <th className="px-3 py-2 text-right">% ngân sách</th>
           </tr>
         </thead>
         <tbody>
           {data.rows.map((r) => {
-            const variance =
-              r.budgetShareActualPct != null && r.budgetSharePlanPct != null
-                ? r.budgetShareActualPct - r.budgetSharePlanPct
-                : null;
             return (
               <tr key={r.key} className="border-b">
                 <td className="px-3 py-1.5 font-medium">{r.label}</td>
@@ -898,6 +897,9 @@ function ProductTable({
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">
                   {fmtInt(r.metrics.mql)}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums">
+                  {fmtInt(r.metrics.sql)}
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">
                   {fmtInt(r.metrics.won)}
@@ -929,25 +931,13 @@ function ProductTable({
                   {r.budgetShareActualPct == null
                     ? "–"
                     : `${r.budgetShareActualPct.toFixed(0)}%`}
-                  {r.budgetSharePlanPct != null && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      / {r.budgetSharePlanPct.toFixed(0)}%
-                    </span>
-                  )}
-                  {variance != null && Math.abs(variance) > 10 && (
-                    <Badge variant="outline" className="ml-1 text-crit">
-                      lệch {variance > 0 ? "+" : ""}
-                      {variance.toFixed(0)} điểm
-                    </Badge>
-                  )}
                 </td>
               </tr>
             );
           })}
           {data.rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
+              <td colSpan={11} className="px-3 py-6 text-center text-muted-foreground">
                 Không có dữ liệu trong kỳ.
               </td>
             </tr>
@@ -974,6 +964,7 @@ function CampaignTable({
             <th className="px-3 py-2">Campaign</th>
             <th className="px-3 py-2 text-right">Spend</th>
             <th className="px-3 py-2 text-right">MQL</th>
+            <th className="px-3 py-2 text-right">SQL</th>
             <th className="px-3 py-2 text-right">HV</th>
             <th className="px-3 py-2 text-right">CPMQL</th>
             <th className="px-3 py-2 text-right">CAC</th>
@@ -991,6 +982,9 @@ function CampaignTable({
                 {fmtInt(r.metrics.mql)}
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums">
+                {fmtInt(r.metrics.sql)}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums">
                 {fmtInt(r.metrics.won)}
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums">
@@ -1006,7 +1000,7 @@ function CampaignTable({
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+              <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
                 Không có campaign nào có dữ liệu trong kỳ.
               </td>
             </tr>

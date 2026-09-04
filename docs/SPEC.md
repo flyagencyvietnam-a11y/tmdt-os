@@ -1219,12 +1219,13 @@ Dưới đó, phễu tổng quan dạng ngang với tỷ lệ chuyển đổi t�
 
 ### 12.5. Tầng 3 - Bóc tách
 
-**Bảng theo sản phẩm** (thay thế Section 2 và 3B của sheet):
-Sản phẩm | Spend | Lead | MQL | SQL | HV Chốt | HVM | Doanh thu | CPL | CPMQL | CAC | CR | ROAS | % ngân sách thực tế vs phân bổ
+**Bảng theo sản phẩm:**
+Sản phẩm | Spend | Lead | **MQL | SQL** | HV Chốt | Doanh thu | CPMQL | ROAS | Nhiệt độ | **% ngân sách** (tỷ trọng spend thực tế của sản phẩm trong tổng spend kỳ).
 
-Cột cuối rất quan trọng: đối chiếu tỷ trọng chi tiêu thực tế với tỷ trọng phân bổ đã duyệt (TESOL 50%, VSTEP 20%, Tiếng Trung 10%, FT15 10%, FlexTrack 10%). Lệch trên 10 điểm phần trăm thì tô cảnh báo. Sheet hiện tại không có đối chiếu này, nên việc chi lệch kế hoạch không ai phát hiện.
+*(Bỏ cột "% phân bổ" / cảnh báo lệch — Gói V: tỷ trọng phân bổ gốc không cố định,
+tùy plan và thời điểm nên không dùng làm mốc đối chiếu cứng.)*
 
-**Bảng theo campaign:** như Mục 10.1, giới hạn top 20 theo spend.
+**Bảng theo campaign:** như Mục 10.1, giới hạn top 20 theo spend. Có cột **SQL**.
 
 **Bảng "Tiến độ đội"** (Gói M — thay bảng "theo nhân sự" cũ; **bỏ bảng cohort**):
 mỗi hàng một nhân sự (EC + MARKETING), cột:

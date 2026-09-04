@@ -45,6 +45,7 @@ export function TeamProgressTable({
 }) {
   const sum = (f: (r: Row) => number) => rows.reduce((s, r) => s + f(r), 0);
   const tMql = sum((r) => r.metrics.mql);
+  const tSql = sum((r) => r.metrics.sql);
   const tWon = sum((r) => r.metrics.won);
   const tTaskDone = sum((r) => r.taskDone);
   const tTaskTotal = sum((r) => r.taskTotal);
@@ -75,6 +76,7 @@ export function TeamProgressTable({
             <th className="px-3 py-2 text-right">Lead giao</th>
             <th className="px-3 py-2 text-right">Đang theo · nhiệt độ</th>
             <th className="px-3 py-2 text-right">MQL</th>
+            <th className="px-3 py-2 text-right">SQL</th>
             <th className="px-3 py-2 text-right">HV</th>
             <th className="px-3 py-2 text-right">HVM</th>
             <th className="px-3 py-2 text-right">Doanh thu</th>
@@ -100,6 +102,9 @@ export function TeamProgressTable({
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">
                   {fmtInt(r.metrics.mql)}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums">
+                  {fmtInt(r.metrics.sql)}
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">
                   {fmtInt(r.metrics.won)}
@@ -156,6 +161,7 @@ export function TeamProgressTable({
               <TempCell b={totalBands} />
             </td>
             <td className="px-3 py-1.5 text-right tabular-nums">{fmtInt(tMql)}</td>
+            <td className="px-3 py-1.5 text-right tabular-nums">{fmtInt(tSql)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums">{fmtInt(tWon)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums">
               {fmtInt(sum((r) => r.metrics.hvm))}

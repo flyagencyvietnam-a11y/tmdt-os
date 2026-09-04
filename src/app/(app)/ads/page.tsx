@@ -289,53 +289,39 @@ async function PeriodBlock({ from, to }: { from: string; to: string }) {
                 <th className="px-3 py-2">Sản phẩm</th>
                 <th className="px-3 py-2 text-right">Spend</th>
                 <th className="px-3 py-2 text-right">MQL</th>
+                <th className="px-3 py-2 text-right">SQL</th>
                 <th className="px-3 py-2 text-right">CPMQL</th>
-                <th className="px-3 py-2 text-right">% NS thực tế / phân bổ</th>
+                <th className="px-3 py-2 text-right">% ngân sách</th>
               </tr>
             </thead>
             <tbody>
-              {byProduct.map((r) => {
-                const variance =
-                  r.budgetShareActualPct != null && r.budgetSharePlanPct != null
-                    ? r.budgetShareActualPct - r.budgetSharePlanPct
-                    : null;
-                return (
-                  <tr key={r.key} className="border-b">
-                    <td className="px-3 py-1.5 font-medium">
-                      {r.label.split(" — ")[0]}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {fmtVnd(r.metrics.spend)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {fmtInt(r.metrics.mql)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {fmtVnd(r.metrics.cpmql)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {r.budgetShareActualPct == null
-                        ? "–"
-                        : `${r.budgetShareActualPct.toFixed(0)}%`}
-                      {r.budgetSharePlanPct != null && (
-                        <span className="text-muted-foreground">
-                          {" "}
-                          / {r.budgetSharePlanPct.toFixed(0)}%
-                        </span>
-                      )}
-                      {variance != null && Math.abs(variance) > 10 && (
-                        <span className="ml-1 text-crit">
-                          (lệch {variance > 0 ? "+" : ""}
-                          {variance.toFixed(0)})
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {byProduct.map((r) => (
+                <tr key={r.key} className="border-b">
+                  <td className="px-3 py-1.5 font-medium">
+                    {r.label.split(" — ")[0]}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtVnd(r.metrics.spend)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtInt(r.metrics.mql)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtInt(r.metrics.sql)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtVnd(r.metrics.cpmql)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {r.budgetShareActualPct == null
+                      ? "–"
+                      : `${r.budgetShareActualPct.toFixed(0)}%`}
+                  </td>
+                </tr>
+              ))}
               {byProduct.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                     Chưa có dữ liệu.
                   </td>
                 </tr>
