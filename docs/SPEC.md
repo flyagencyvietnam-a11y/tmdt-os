@@ -1116,9 +1116,17 @@ Các view dựng sẵn chia sẻ cho cả đội:
 | Thiếu Ngày LH lại | `outcome = OPEN AND next_contact_date IS NULL AND có ít nhất 1 interaction` |
 | Đang nóng | `max_stage = SQL AND outcome = OPEN` |
 | Sắp thành Cold | `silence_count >= 4 AND outcome = OPEN` |
+| 🔥 Nhiệt độ: Nóng | `score_band = hot` (sắp xếp điểm giảm dần) |
+| Nhiệt độ: Ấm / Nguội | `score_band ∈ {warm, cool}` |
+| ❄️ Nhiệt độ: Lạnh | `score_band = cold` |
 | Chốt tháng này | `outcome = WON AND won_at trong tháng` |
 | Kho remarketing | `outcome = LOST AND next_contact_date <= hôm nay` |
 | Thiếu SĐT nhưng là MQL | `max_stage >= MQL AND phone IS NULL` |
+
+**Cột "Nhiệt độ" (Gói T).** Cột enum tô màu (Gói P) lấy từ `scoreLead()` (SPEC 21):
+🔥 **Nóng** (điểm ≥ 70, rose) · **Ấm** (≥ 45, amber) · **Nguội** (≥ 20, slate) ·
+❄️ **Lạnh** (< 20 hoặc `is_cold` / `DISQUALIFIED`, gray; `WON` → Nóng). Lọc / gom
+nhóm / xem nhanh theo cột này. `is_cold` (5 phiên im lặng — Mục 8.2) luôn ép về Lạnh.
 
 ### 11.5. Phân công và chuyển giao lead
 

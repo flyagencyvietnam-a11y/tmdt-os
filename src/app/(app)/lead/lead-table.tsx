@@ -77,6 +77,19 @@ const SOURCE_COLORS: Record<string, TagColor> = {
   REFERRAL: "violet",
   KHAC: "gray",
 };
+// Nhiệt độ lead (từ scoreLead — SPEC 21).
+const TEMP_LABELS: Record<string, string> = {
+  hot: "🔥 Nóng",
+  warm: "Ấm",
+  cool: "Nguội",
+  cold: "❄️ Lạnh",
+};
+const TEMP_COLORS: Record<string, TagColor> = {
+  hot: "rose",
+  warm: "amber",
+  cool: "slate",
+  cold: "gray",
+};
 
 export interface LeadRow {
   id: string;
@@ -185,6 +198,49 @@ const PREBUILT: SavedViewLike[] = [
           { field: "maxStage", operator: "is", value: "SQL" },
           { field: "outcome", operator: "is", value: "OPEN" },
         ],
+      },
+    },
+  },
+  {
+    id: "v-temp-hot",
+    entity: "LEADS",
+    name: "🔥 Nhiệt độ: Nóng",
+    visibility: "SHARED",
+    isDefault: false,
+    config: {
+      filters: {
+        conjunction: "and",
+        conditions: [{ field: "scoreBand", operator: "is", value: "hot" }],
+      },
+      sorts: [{ field: "score", direction: "desc" }],
+    },
+  },
+  {
+    id: "v-temp-warm",
+    entity: "LEADS",
+    name: "Nhiệt độ: Ấm / Nguội",
+    visibility: "SHARED",
+    isDefault: false,
+    config: {
+      filters: {
+        conjunction: "and",
+        conditions: [
+          { field: "scoreBand", operator: "any_of", value: ["warm", "cool"] },
+        ],
+      },
+      sorts: [{ field: "score", direction: "desc" }],
+    },
+  },
+  {
+    id: "v-temp-cold",
+    entity: "LEADS",
+    name: "❄️ Nhiệt độ: Lạnh",
+    visibility: "SHARED",
+    isDefault: false,
+    config: {
+      filters: {
+        conjunction: "and",
+        conditions: [{ field: "scoreBand", operator: "is", value: "cold" }],
       },
     },
   },
@@ -670,6 +726,18 @@ export function LeadTable({
             </span>
           );
         },
+      },
+      {
+        field: "scoreBand",
+        header: "Nhiệt độ",
+        kind: "enum",
+        accessor: (r) => r.scoreBand,
+        enumLabels: TEMP_LABELS,
+        enumColors: TEMP_COLORS,
+        enumOptions: Object.entries(TEMP_LABELS).map(([value, label]) => ({
+          value,
+          label,
+        })),
       },
       {
         field: "score",
