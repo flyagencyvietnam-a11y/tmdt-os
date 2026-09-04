@@ -35,7 +35,11 @@ import {
   resolvePeriodValue,
 } from "@/lib/time";
 import { DashboardFilters } from "./dashboard-filters";
-import { getBreakdownsCached, getHealthBundleCached } from "./dashboard-cache";
+import {
+  getBreakdownsCached,
+  getHealthBundleCached,
+  getKpiFollowCached,
+} from "./dashboard-cache";
 import { RunJobsButton } from "./run-jobs-button";
 import { TrendChart } from "./trend-chart";
 import { ReportExport } from "./report-export";
@@ -322,9 +326,13 @@ export default async function DashboardPage({
         channels={["FB", "GOOGLE", "TIKTOK", "KHAC"]}
       />
 
-      {/* Shell + bộ lọc hiển thị tức thì; hai khối dưới chảy vào khi tính xong. */}
+      {/* Shell + bộ lọc hiển thị tức thì; các khối dưới chảy vào khi tính xong. */}
       <Suspense key={`h-${bkey}`} fallback={<SkeletonBlock label="Đang tính sức khỏe kỳ…" rows={2} />}>
         <ActionHealthSection filter={filter} cmpMode={cmpMode} />
+      </Suspense>
+
+      <Suspense key={`k-${bkey}`} fallback={<SkeletonBlock label="Đang tính tiến độ KPI…" rows={2} />}>
+        <KpiFollowSection from={from} to={to} label={label} />
       </Suspense>
 
       <Suspense
@@ -410,6 +418,158 @@ async function ActionHealthSection({
           {health.compare && <Funnel title="Phễu kỳ so sánh" m={health.compare} muted />}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ---------- THEO KPI — chỉ tiêu + ngân sách của kỳ đang chọn (Gói J) ----------
+async function KpiFollowSection({
+  from,
+  to,
+  label,
+}: {
+  from: string;
+  to: string;
+  label: string;
+}) {
+  let kpis, budget;
+  try {
+    ({ kpis, budget } = await getKpiFollowCached(from, to));
+  } catch (e) {
+    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
+  }
+
+  const hasKpi = kpis.length > 0;
+  const hasBudget = budget.allocated != null;
+  if (!hasKpi && !hasBudget) {
+    return (
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Theo KPI</h2>
+        <p className="rounded-lg border p-4 text-sm text-muted-foreground">
+          Chưa có chỉ tiêu / ngân sách cho kỳ này. Giao ở{" "}
+          <Link href="/kpi" className="text-brand hover:underline">
+            trang KPI
+          </Link>{" "}
+          — chọn đúng <b>Tháng</b> hoặc <b>Quý</b> khớp kỳ đang xem ({label}).
+        </p>
+      </section>
+    );
+  }
+
+  const pacePct = budget.timeProgressPct;
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold text-muted-foreground">
+        Theo KPI · {label}
+      </h2>
+
+      {hasBudget && (
+        <div className="grid grid-cols-2 gap-2 rounded-lg border p-3 sm:grid-cols-5">
+          <MiniStat label="Ngân sách giao" value={fmtVnd(budget.allocated)} />
+          <MiniStat label="Đã giải ngân" value={fmtVnd(budget.spend)} />
+          <MiniStat
+            label="Còn lại"
+            value={fmtVnd(budget.remaining)}
+            tone={budget.remaining != null && budget.remaining < 0 ? "crit" : undefined}
+          />
+          <MiniStat
+            label="% giải ngân"
+            value={fmtPct(budget.disbursedPct)}
+            tone={
+              budget.disbursedPct != null && budget.disbursedPct > pacePct + 0.1
+                ? "crit"
+                : undefined
+            }
+          />
+          <MiniStat label="Nhịp kỳ" value={fmtPct(pacePct)} />
+        </div>
+      )}
+
+      {hasKpi && (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2">Chỉ tiêu</th>
+                <th className="px-3 py-2">Phạm vi</th>
+                <th className="px-3 py-2 text-right">Mục tiêu</th>
+                <th className="px-3 py-2 text-right">Thực tế</th>
+                <th className="px-3 py-2 text-right">% hoàn thành</th>
+                <th className="px-3 py-2 text-right">Trọng số</th>
+                <th className="px-3 py-2">Nhịp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kpis.map((k) => (
+                <tr key={k.id} className="border-b">
+                  <td className="px-3 py-1.5 font-medium">{k.code}</td>
+                  <td className="px-3 py-1.5 text-muted-foreground">
+                    {k.userName ?? k.scopeType}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtInt(k.target)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {k.actual == null ? "–" : fmtInt(k.actual)}
+                  </td>
+                  <td
+                    className={
+                      "px-3 py-1.5 text-right tabular-nums " +
+                      (k.completionPct == null
+                        ? ""
+                        : k.completionPct >= 1
+                          ? "text-ok font-medium"
+                          : k.atRisk
+                            ? "text-crit font-medium"
+                            : "")
+                    }
+                  >
+                    {fmtPct(k.completionPct)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {k.weightPct}%
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {k.atRisk ? (
+                      <Badge variant="outline" className="text-crit">
+                        trễ nhịp
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        {fmtPct(k.timeProgressPct)} kỳ
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "crit";
+}) {
+  return (
+    <div className="rounded-md border p-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div
+        className={
+          "text-sm font-semibold tabular-nums " + (tone === "crit" ? "text-crit" : "")
+        }
+      >
+        {value}
+      </div>
     </div>
   );
 }

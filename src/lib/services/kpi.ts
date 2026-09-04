@@ -1,10 +1,11 @@
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import { kpiAssignments, kpiDefinitions, otherCosts, users } from "@/lib/db/schema";
 import { ServiceError } from "./errors";
 import type { Actor } from "./leads";
 import {
   computeKpiActual,
+  getBaseMetrics,
   type AnyDb,
   type FormulaKey,
   type MetricsFilter,
@@ -29,6 +30,8 @@ export interface KpiAssignmentInput {
   userId?: string | null;
   productId?: string | null;
   targetValue: number;
+  /** Ngân sách BOD phê duyệt cho chỉ tiêu/kỳ này (đồng). */
+  allocatedBudget?: number | null;
   weightPct: number;
   thresholdTiers?: { pct: number }[];
   manualActual?: number | null;
@@ -58,6 +61,8 @@ export async function createKpiAssignment(
       userId: input.userId ?? null,
       productId: input.productId ?? null,
       targetValue: String(input.targetValue),
+      allocatedBudget:
+        input.allocatedBudget != null ? Math.round(input.allocatedBudget) : null,
       weightPct: String(input.weightPct),
       thresholdTiers: input.thresholdTiers ?? [{ pct: 85 }, { pct: 90 }, { pct: 100 }],
       manualActual: input.manualActual != null ? String(input.manualActual) : null,
@@ -74,6 +79,9 @@ export async function createKpiAssignment(
     changes: {
       target_value: { from: null, to: input.targetValue },
       weight_pct: { from: null, to: input.weightPct },
+      ...(input.allocatedBudget != null
+        ? { allocated_budget: { from: null, to: input.allocatedBudget } }
+        : {}),
     },
   });
 
@@ -93,7 +101,12 @@ export async function createKpiAssignment(
 export async function updateKpiAssignment(
   db: AnyDb,
   id: string,
-  patch: Partial<Pick<KpiAssignmentInput, "targetValue" | "weightPct" | "manualActual" | "note">>,
+  patch: Partial<
+    Pick<
+      KpiAssignmentInput,
+      "targetValue" | "weightPct" | "manualActual" | "note" | "allocatedBudget"
+    >
+  >,
   actor: Actor,
   reason?: string,
 ): Promise<void> {
@@ -123,6 +136,9 @@ export async function updateKpiAssignment(
   if (patch.weightPct !== undefined) set.weightPct = String(patch.weightPct);
   if (patch.manualActual !== undefined)
     set.manualActual = patch.manualActual == null ? null : String(patch.manualActual);
+  if (patch.allocatedBudget !== undefined)
+    set.allocatedBudget =
+      patch.allocatedBudget == null ? null : Math.round(patch.allocatedBudget);
   if (patch.note !== undefined) set.note = patch.note;
   if (Object.keys(set).length === 0) return;
 
@@ -138,6 +154,14 @@ export async function updateKpiAssignment(
         : {}),
       ...(patch.weightPct !== undefined
         ? { weight_pct: { from: before.weightPct, to: patch.weightPct } }
+        : {}),
+      ...(patch.allocatedBudget !== undefined
+        ? {
+            allocated_budget: {
+              from: before.allocatedBudget,
+              to: patch.allocatedBudget,
+            },
+          }
         : {}),
       ...(reason ? { reason: { from: null, to: reason } } : {}),
     },
@@ -291,6 +315,66 @@ export function totalKpiScore(items: KpiProgress[]): number | null {
   if (sw === 0) return null;
   const ss = items.reduce((s, i) => s + (i.scoreContribution ?? 0), 0);
   return ss / sw;
+}
+
+// ---------------------------------------------------------------------------
+//  Ngân sách đã giao vs giải ngân (SPEC Mục 14.4)
+// ---------------------------------------------------------------------------
+
+export interface BudgetProgress {
+  /** Σ allocated_budget các chỉ tiêu trùng đúng kỳ. NULL nếu kỳ chưa giao ngân sách. */
+  allocated: number | null;
+  /** Spend ads thực tế toàn kỳ (getBaseMetrics — nguồn công thức duy nhất). */
+  spend: number;
+  remaining: number | null;
+  /** spend / allocated. */
+  disbursedPct: number | null;
+  /** % thời gian kỳ đã trôi qua (để đối chiếu nhịp giải ngân). */
+  timeProgressPct: number;
+}
+
+export async function getBudgetProgressForPeriod(
+  db: AnyDb,
+  opts: { periodStart: string; periodEnd: string },
+  now = new Date(),
+): Promise<BudgetProgress> {
+  const [row] = await db
+    .select({
+      s: sql<number>`coalesce(sum(${kpiAssignments.allocatedBudget}), 0)`,
+      c: sql<number>`count(${kpiAssignments.allocatedBudget})`,
+    })
+    .from(kpiAssignments)
+    .where(
+      and(
+        eq(kpiAssignments.periodStart, opts.periodStart),
+        eq(kpiAssignments.periodEnd, opts.periodEnd),
+      ),
+    );
+  const hasBudget = Number(row?.c ?? 0) > 0;
+  const allocated = hasBudget ? Number(row?.s ?? 0) : null;
+
+  const base = await getBaseMetrics(db, {
+    from: opts.periodStart,
+    to: opts.periodEnd,
+  });
+  const spend = base.spend;
+
+  const day = (s: string) => Date.parse(`${s}T00:00:00Z`);
+  const totalDays =
+    Math.round((day(opts.periodEnd) - day(opts.periodStart)) / 86_400_000) + 1;
+  const today = new Date(now.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  const elapsed = Math.min(
+    totalDays,
+    Math.max(0, Math.round((day(today) - day(opts.periodStart)) / 86_400_000) + 1),
+  );
+
+  return {
+    allocated,
+    spend,
+    remaining: allocated == null ? null : allocated - spend,
+    disbursedPct: allocated && allocated > 0 ? spend / allocated : null,
+    timeProgressPct: totalDays > 0 ? elapsed / totalDays : 0,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -57,6 +57,13 @@
       "when": 1788497862379,
       "tag": "0007_striped_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788505386533,
+      "tag": "0008_melodic_nightcrawler",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import type { KpiProgress } from "@/lib/services/kpi";
 import { fmtInt, fmtPct, fmtVnd } from "@/lib/format";
+import { monthBounds, todayVnDayStr } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
   addOtherCostAction,
@@ -308,10 +309,12 @@ function AssignForm({
   const [pending, start] = React.useTransition();
   const [f, setF] = React.useState({
     kpiDefinitionId: definitions[0]?.id ?? "",
+    periodType: "QUARTER",
     scopeType: "USER",
     userId: users.find((u) => u.role === "EC")?.id ?? users[0]?.id ?? "",
     productId: products[0]?.id ?? "",
     targetValue: "",
+    allocatedBudget: "",
     weightPct: "30",
   });
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -336,6 +339,16 @@ function AssignForm({
               value: d.id,
               label: `${d.code} — ${d.name}`,
             }))}
+          />
+        </Field>
+        <Field label="Kỳ">
+          <SimpleSelect
+            value={f.periodType}
+            onValueChange={(v) => set("periodType", v)}
+            options={[
+              { value: "QUARTER", label: `Quý (${quarterKey})` },
+              { value: "MONTH", label: "Tháng này" },
+            ]}
           />
         </Field>
         <Field label="Phạm vi">
@@ -388,6 +401,14 @@ function AssignForm({
             onChange={(e) => set("weightPct", e.target.value)}
           />
         </Field>
+        <Field label="Ngân sách đã giao (đ)">
+          <Input
+            type="number"
+            placeholder="để trống nếu không gắn ngân sách"
+            value={f.allocatedBudget}
+            onChange={(e) => set("allocatedBudget", e.target.value)}
+          />
+        </Field>
       </div>
 
       {f.scopeType === "USER" && weightByUser.has(f.userId) && (
@@ -410,20 +431,27 @@ function AssignForm({
         disabled={pending || !f.targetValue}
         onClick={() =>
           start(async () => {
+            const [ps, pe] =
+              f.periodType === "MONTH"
+                ? monthBounds(todayVnDayStr())
+                : [periodStart, periodEnd];
             const res = await createKpiAssignmentAction({
               kpiDefinitionId: f.kpiDefinitionId,
-              periodType: "QUARTER",
-              periodStart,
-              periodEnd,
+              periodType: f.periodType as never,
+              periodStart: ps,
+              periodEnd: pe,
               scopeType: f.scopeType as never,
               userId: f.scopeType === "USER" ? f.userId : null,
               productId: f.scopeType === "PRODUCT" ? f.productId : null,
               targetValue: Number(f.targetValue),
+              allocatedBudget: f.allocatedBudget
+                ? Number(f.allocatedBudget)
+                : null,
               weightPct: Number(f.weightPct || 0),
             });
             if (res.ok) {
               toast.success("Đã giao chỉ tiêu.");
-              setF((p) => ({ ...p, targetValue: "" }));
+              setF((p) => ({ ...p, targetValue: "", allocatedBudget: "" }));
               router.refresh();
             } else toast.error(res.error);
           })

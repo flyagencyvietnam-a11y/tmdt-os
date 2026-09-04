@@ -50,6 +50,8 @@ export const kpiAssignments = pgTable(
     userId: uuid("user_id").references(() => users.id),
     productId: uuid("product_id").references(() => products.id),
     targetValue: numeric("target_value").notNull(),
+    /** Ngân sách BOD phê duyệt cho chỉ tiêu/kỳ này (đồng). NULL nếu KPI không gắn ngân sách. */
+    allocatedBudget: bigint("allocated_budget", { mode: "number" }),
     /** Trọng số trong tổng KPI của người đó. Tổng mỗi người mỗi kỳ nên = 100 (cảnh báo, không chặn). */
     weightPct: numeric("weight_pct", { precision: 5, scale: 2 }).notNull(),
     /** Các mốc hoàn thành, ví dụ [{"pct":85},{"pct":90},{"pct":100}]. */

@@ -14,6 +14,10 @@ import {
   evaluateCampaignAlerts,
   type MetricsFilter,
 } from "@/lib/services/metrics";
+import {
+  getBudgetProgressForPeriod,
+  getKpiProgressForPeriod,
+} from "@/lib/services/kpi";
 
 /**
  * "Bóc tách" và "Sức khỏe" là số tổng hợp, không riêng theo người xem — cache 60s
@@ -58,6 +62,23 @@ export const getBreakdownsCached = unstable_cache(
     return { byProduct, byCampaign, byUser, trend, cohort };
   },
   ["dashboard-breakdowns-v1"],
+  { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
+);
+
+/**
+ * "Theo KPI" — chỉ tiêu + ngân sách của kỳ đang chọn. Khớp kỳ theo (from,to) đúng
+ * mốc bắt đầu/kết thúc của kpi_assignments (Tháng hoặc Quý). Kỳ khác (tuần/năm/
+ * nhanh) không có chỉ tiêu trùng → trả rỗng, UI hiện gợi ý chọn Tháng/Quý.
+ */
+export const getKpiFollowCached = unstable_cache(
+  async (from: string, to: string) => {
+    const [kpis, budget] = await Promise.all([
+      getKpiProgressForPeriod(db, { periodStart: from, periodEnd: to }),
+      getBudgetProgressForPeriod(db, { periodStart: from, periodEnd: to }),
+    ]);
+    return { kpis, budget };
+  },
+  ["dashboard-kpi-v1"],
   { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
 );
 

@@ -1281,8 +1281,11 @@ Hệ thống không hard-code các con số này. Chúng là dữ liệu trong `
 
 ### 14.3. Màn hình giao KPI
 
-- Chọn kỳ, chọn phạm vi (cá nhân / đội / sản phẩm)
-- Thêm từng dòng chỉ tiêu: loại KPI, chỉ tiêu, trọng số
+- Chọn kỳ (**Quý** hoặc **Tháng** — Gói J; BOD phê duyệt KPI theo cả 2 nhịp),
+  chọn phạm vi (cá nhân / đội / sản phẩm)
+- Thêm từng dòng chỉ tiêu: loại KPI, chỉ tiêu, trọng số, **Ngân sách đã giao (đ)**
+  — số BOD phê duyệt cho chỉ tiêu/kỳ đó (`kpi_assignments.allocated_budget`, cho
+  trống nếu KPI không gắn ngân sách). Ghi audit key `allocated_budget`.
 - Thanh kiểm tra tổng trọng số, cảnh báo khi khác 100%
 - Nút "Sao chép từ kỳ trước"
 - Sau khi lưu, hệ thống gửi thông báo cho người được giao
@@ -1298,6 +1301,15 @@ Bên cạnh mỗi thanh có **vạch tiến độ thời gian**: nếu hôm nay 
 Dòng cuối: **Điểm KPI tổng** = `Σ (% hoàn thành từng chỉ tiêu × trọng số)`, giới hạn trần 100% cho mỗi chỉ tiêu khi cộng dồn (tránh việc vượt mạnh một chỉ tiêu bù cho việc trượt hoàn toàn chỉ tiêu khác).
 
 **Cho quản lý:** bảng tất cả người, mỗi hàng một người, các cột là từng chỉ tiêu, ô hiển thị % và tô màu. Cột cuối là điểm tổng.
+
+**Trên Dashboard — mục "Theo KPI" (Gói J).** Khi bộ lọc thời gian đang ở một Tháng
+hoặc Quý khớp đúng mốc `kpi_assignments.period_start/period_end`: hiện bảng chỉ tiêu
+(mã · phạm vi · mục tiêu · thực tế · % hoàn thành · trọng số · cờ *trễ nhịp*) và dải
+**ngân sách**: giao (`Σ allocated_budget` các chỉ tiêu trùng kỳ) · đã giải ngân
+(`getBaseMetrics(kỳ).spend` — nguồn công thức duy nhất) · còn lại · % giải ngân ·
+nhịp kỳ. Kỳ không khớp (tuần / năm / nhanh) → hiện gợi ý chọn Tháng/Quý. Dữ liệu
+cache 60s như các khối khác (`getKpiFollowCached`). Helper `getBudgetProgressForPeriod`
+trong `src/lib/services/kpi.ts`.
 
 ### 14.5. Phản biện về thiết kế KPI
 
