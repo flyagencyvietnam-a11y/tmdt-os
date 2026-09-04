@@ -1,9 +1,17 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import * as React from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { cn } from "@/lib/utils";
 import { OPERATORS_BY_KIND } from "./filter-engine";
 import type {
   Conjunction,
@@ -20,10 +28,41 @@ export function emptyFilterGroup(): FilterGroup {
   return structuredClone(EMPTY_GROUP);
 }
 
+/** Ngưỡng: cột có <= ngần này giá trị khác nhau thì coi là danh mục (hiện dropdown). */
+const PICKLIST_MAX = 60;
+
+/** Danh sách lựa chọn để lọc 1 cột (value khớp accessor). null = không phải danh mục. */
+function optionsFor<Row>(
+  col: GridColumn<Row>,
+  distinct?: (field: string) => string[],
+): { value: string; label: string }[] | null {
+  if (col.filterOptions?.length) return col.filterOptions;
+  if (col.enumOptions?.length) {
+    return col.enumOptions.map((o) => ({
+      value: o.value,
+      label: col.enumLabels?.[o.value] ?? o.label,
+    }));
+  }
+  if ((col.kind === "enum" || col.kind === "text") && distinct) {
+    const vals = distinct(col.field);
+    if (vals.length > 0 && vals.length <= PICKLIST_MAX)
+      return vals.map((v) => ({ value: v, label: v }));
+  }
+  return null;
+}
+
+function opsFor<Row>(
+  col: GridColumn<Row>,
+  isPicklist: boolean,
+): { value: FilterOperator; label: string; args: 0 | 1 | 2 }[] {
+  return isPicklist ? OPERATORS_BY_KIND.enum : OPERATORS_BY_KIND[col.kind];
+}
+
 interface Props<Row> {
   columns: GridColumn<Row>[];
   value: FilterGroup;
   onChange: (g: FilterGroup) => void;
+  distinct?: (field: string) => string[];
   depth?: number;
 }
 
@@ -31,9 +70,14 @@ export function FilterBuilder<Row>({
   columns,
   value,
   onChange,
+  distinct,
   depth = 0,
 }: Props<Row>) {
   const colByField = (f: string) => columns.find((c) => c.field === f);
+
+  function defaultOp(col: GridColumn<Row>): FilterOperator {
+    return opsFor(col, !!optionsFor(col, distinct))[0].value;
+  }
 
   function update(idx: number, next: FilterCondition | FilterGroup) {
     const conditions = value.conditions.slice();
@@ -52,7 +96,7 @@ export function FilterBuilder<Row>({
       ...value,
       conditions: [
         ...value.conditions,
-        { field: first.field, operator: OPERATORS_BY_KIND[first.kind][0].value },
+        { field: first.field, operator: defaultOp(first) },
       ],
     });
   }
@@ -95,6 +139,7 @@ export function FilterBuilder<Row>({
                 columns={columns}
                 value={c}
                 onChange={(g) => update(idx, g)}
+                distinct={distinct}
                 depth={depth + 1}
               />
             </div>
@@ -113,6 +158,8 @@ export function FilterBuilder<Row>({
             columns={columns}
             colByField={colByField}
             condition={c}
+            distinct={distinct}
+            defaultOp={defaultOp}
             onChange={(next) => update(idx, next)}
             onRemove={() => remove(idx)}
           />
@@ -137,18 +184,26 @@ function ConditionRow<Row>({
   columns,
   colByField,
   condition,
+  distinct,
+  defaultOp,
   onChange,
   onRemove,
 }: {
   columns: GridColumn<Row>[];
   colByField: (f: string) => GridColumn<Row> | undefined;
   condition: FilterCondition;
+  distinct?: (field: string) => string[];
+  defaultOp: (col: GridColumn<Row>) => FilterOperator;
   onChange: (c: FilterCondition) => void;
   onRemove: () => void;
 }) {
   const col = colByField(condition.field) ?? columns[0];
-  const ops = OPERATORS_BY_KIND[col.kind];
+  const opts = optionsFor(col, distinct);
+  const isPicklist = !!opts;
+  const ops = opsFor(col, isPicklist);
   const opMeta = ops.find((o) => o.value === condition.operator) ?? ops[0];
+  const isMulti =
+    condition.operator === "any_of" || condition.operator === "none_of";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -158,10 +213,7 @@ function ConditionRow<Row>({
         onValueChange={(field) => {
           const nextCol = colByField(field);
           if (!nextCol) return;
-          onChange({
-            field,
-            operator: OPERATORS_BY_KIND[nextCol.kind][0].value,
-          });
+          onChange({ field, operator: defaultOp(nextCol) });
         }}
         options={columns.map((c) => ({ value: c.field, label: c.header }))}
       />
@@ -170,19 +222,33 @@ function ConditionRow<Row>({
         triggerClassName="h-7 w-40"
         value={condition.operator}
         onValueChange={(operator) =>
-          onChange({ ...condition, operator: operator as FilterOperator })
+          onChange({
+            ...condition,
+            operator: operator as FilterOperator,
+            // đổi giữa 1 giá trị <-> nhiều giá trị thì reset value cho đúng kiểu
+            value:
+              (operator === "any_of" || operator === "none_of") !== isMulti
+                ? undefined
+                : condition.value,
+          })
         }
         options={ops.map((o) => ({ value: o.value, label: o.label }))}
       />
 
       {opMeta.args >= 1 &&
-        (col.kind === "enum" && col.enumOptions ? (
+        (isMulti ? (
+          <MultiPick
+            options={opts ?? []}
+            value={Array.isArray(condition.value) ? (condition.value as string[]) : []}
+            onChange={(v) => onChange({ ...condition, value: v })}
+          />
+        ) : opts ? (
           <SimpleSelect
-            triggerClassName="h-7 w-40"
+            triggerClassName="h-7 w-44"
             placeholder="Chọn…"
             value={String(condition.value ?? "")}
             onValueChange={(v) => onChange({ ...condition, value: v })}
-            options={col.enumOptions.map((o) => ({ value: o.value, label: o.label }))}
+            options={opts}
           />
         ) : (
           <Input
@@ -212,5 +278,78 @@ function ConditionRow<Row>({
         <Trash2 className="h-4 w-4" />
       </Button>
     </div>
+  );
+}
+
+/** Chọn nhiều giá trị (cho toán tử "là một trong" / "không là một trong"). */
+function MultiPick({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string }[];
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const set = new Set(value);
+  const toggle = (v: string) => {
+    const n = new Set(set);
+    if (n.has(v)) n.delete(v);
+    else n.add(v);
+    onChange([...n]);
+  };
+  const label =
+    value.length === 0
+      ? "Chọn…"
+      : value.length <= 2
+        ? value
+            .map((v) => options.find((o) => o.value === v)?.label ?? v)
+            .join(", ")
+        : `${value.length} giá trị`;
+
+  if (options.length === 0)
+    return (
+      <Input
+        className="h-7 w-44"
+        placeholder="a, b, c"
+        value={value.join(", ")}
+        onChange={(e) =>
+          onChange(
+            e.target.value
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          )
+        }
+      />
+    );
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        className={cn(
+          buttonVariants({ variant: "outline", size: "sm" }),
+          "h-7 w-44 justify-start truncate font-normal",
+        )}
+      >
+        {label}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="max-h-72 w-56 overflow-y-auto">
+        <div className="space-y-1">
+          {options.map((o) => (
+            <label
+              key={o.value}
+              className="flex items-center gap-2 text-sm"
+            >
+              <Checkbox
+                checked={set.has(o.value)}
+                onCheckedChange={() => toggle(o.value)}
+              />
+              <span className="truncate">{o.label}</span>
+            </label>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

@@ -53,6 +53,38 @@ describe("evalGroup — nested AND/OR (SPEC 16.1)", () => {
   it("nhóm rỗng => khớp tất cả", () => {
     expect(rows.filter((r) => evalGroup(r, undefined, acc)).length).toBe(4);
   });
+
+  it("any_of — nhận mảng HOẶC chuỗi phân tách phẩy", () => {
+    const asArr: FilterGroup = {
+      conjunction: "and",
+      conditions: [{ field: "stage", operator: "any_of", value: ["MQL", "SQL"] }],
+    };
+    const asStr: FilterGroup = {
+      conjunction: "and",
+      conditions: [{ field: "stage", operator: "any_of", value: "MQL, SQL" }],
+    };
+    expect(rows.filter((r) => evalGroup(r, asArr, acc)).map((r) => r.name).sort())
+      .toEqual(["Nguyễn Văn An", "Trần Thị Bình"].sort());
+    expect(rows.filter((r) => evalGroup(r, asStr, acc)).length).toBe(2);
+  });
+
+  it("none_of — loại các giá trị đã chọn", () => {
+    const g: FilterGroup = {
+      conjunction: "and",
+      conditions: [{ field: "outcome", operator: "none_of", value: ["WON"] }],
+    };
+    expect(rows.filter((r) => evalGroup(r, g, acc)).length).toBe(3);
+  });
+
+  it("is — so khớp bỏ dấu (chọn từ dropdown danh mục)", () => {
+    const g: FilterGroup = {
+      conjunction: "and",
+      conditions: [{ field: "name", operator: "is", value: "le cuong" }],
+    };
+    expect(rows.filter((r) => evalGroup(r, g, acc)).map((r) => r.name)).toEqual([
+      "Lê Cường",
+    ]);
+  });
 });
 
 describe("aggregate", () => {

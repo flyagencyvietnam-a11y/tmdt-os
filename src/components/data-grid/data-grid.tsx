@@ -135,6 +135,33 @@ export function DataGrid<Row>({
     [columns],
   );
 
+  // Giá trị khác nhau của 1 cột (cho bộ lọc dạng danh mục kiểu Airtable). Cache reset khi `rows` đổi.
+  const distinctCache = React.useMemo(
+    () => new Map<string, string[]>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows],
+  );
+  const distinct = React.useCallback(
+    (field: string) => {
+      const hit = distinctCache.get(field);
+      if (hit) return hit;
+      const col = columns.find((c) => c.field === field);
+      const set = new Set<string>();
+      if (col) {
+        for (const r of rows) {
+          const v = col.accessor(r);
+          if (v == null || v === "") continue;
+          set.add(String(v));
+          if (set.size > 200) break;
+        }
+      }
+      const arr = [...set].sort((a, b) => a.localeCompare(b, "vi"));
+      distinctCache.set(field, arr);
+      return arr;
+    },
+    [rows, columns, distinctCache],
+  );
+
   const visibleColumns = React.useMemo(() => {
     const cfg = view.columns ?? [];
     const hidden = new Set(
@@ -254,9 +281,34 @@ export function DataGrid<Row>({
     <div className="flex flex-col gap-2">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <FilterButton view={view} columns={columns} onChange={patchView} />
+        <FilterButton
+          view={view}
+          columns={columns}
+          distinct={distinct}
+          onChange={patchView}
+        />
         <SortButton view={view} columns={columns} onChange={patchView} />
         <GroupButton view={view} columns={columns} onChange={patchView} />
+        {groups && (
+          <div className="flex items-center rounded-md border text-xs">
+            <button
+              type="button"
+              className="px-2 py-1 hover:bg-muted"
+              onClick={() =>
+                setCollapsedGroups(new Set(allGroupKeys(groups)))
+              }
+            >
+              Thu gọn tất cả
+            </button>
+            <button
+              type="button"
+              className="border-l px-2 py-1 hover:bg-muted"
+              onClick={() => setCollapsedGroups(new Set())}
+            >
+              Mở tất cả
+            </button>
+          </div>
+        )}
         <ColumnsButton view={view} columns={columns} onChange={patchView} />
 
         <div className="ml-auto flex items-center gap-2">
@@ -596,6 +648,19 @@ function DataRow<Row>({
   );
 }
 
+/** Mọi khóa nhóm (đệ quy) — cho nút "Thu gọn tất cả". */
+function allGroupKeys<Row>(nodes: GroupNode<Row>[]): string[] {
+  const out: string[] = [];
+  const walk = (ns: GroupNode<Row>[]) => {
+    for (const n of ns) {
+      out.push(n.key);
+      if (n.children) walk(n.children);
+    }
+  };
+  walk(nodes);
+  return out;
+}
+
 /** Chỉ render dòng tiêu đề nhóm — thân nhóm do vòng cuộn ảo ở DataGrid render. */
 function GroupHeaderRow<Row>({
   node,
@@ -647,10 +712,12 @@ function GroupHeaderRow<Row>({
 function FilterButton<Row>({
   view,
   columns,
+  distinct,
   onChange,
 }: {
   view: ViewConfig;
   columns: GridColumn<Row>[];
+  distinct?: (field: string) => string[];
   onChange: (p: Partial<ViewConfig>) => void;
 }) {
   const count = countConditions(view.filters);
@@ -670,6 +737,7 @@ function FilterButton<Row>({
         <FilterBuilder
           columns={columns}
           value={view.filters ?? emptyFilterGroup()}
+          distinct={distinct}
           onChange={(g) => onChange({ filters: g })}
         />
         <div className="mt-2 flex justify-end">

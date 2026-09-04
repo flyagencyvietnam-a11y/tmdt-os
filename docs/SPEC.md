@@ -1397,10 +1397,18 @@ Module này có giá trị thực nhưng **không nên làm ở Phase 1**. Nó c
   - Ngày: đúng ngày, trước, sau, trong khoảng, hôm nay, hôm qua, 7 ngày qua, 30 ngày qua, tháng này, tháng trước, quý này, **quá hạn**, trong X ngày tới
   - Danh mục: là, không là, là một trong, không là một trong
   - Có/không: đúng, sai
+- **Ô nhập giá trị khớp kiểu cột (Gói N).** Cột danh mục hiển thị **dropdown** đúng
+  tập giá trị của cột đó — không phải ô chữ tự do. Nguồn tập giá trị: `enumOptions`
+  của cột, hoặc `filterOptions` khai báo riêng (khi giá trị hiển thị khác mã lưu — ví
+  dụ Campaign, Người phụ trách), hoặc grid **tự suy ra** từ dữ liệu đang có khi số
+  giá trị khác nhau ≤ 60. Toán tử "là một trong / không là một trong" hiển thị
+  **chọn nhiều** (checkbox). Cột số → ô số, cột ngày → lịch. Cột chữ tự do (tên,
+  SĐT, mã…) giữ ô chữ + "chứa".
 
 **Gom nhóm:**
 - Tối đa 3 cấp
-- Nhóm mở rộng và thu gọn được, ghi nhớ trạng thái
+- Nhóm mở rộng và thu gọn được, ghi nhớ trạng thái. **Nút "Thu gọn tất cả" /
+  "Mở tất cả"** trên thanh công cụ (Gói N).
 - Mỗi nhóm hiển thị dòng tổng hợp: đếm, tổng, trung bình, nhỏ nhất, lớn nhất - cấu hình được theo từng cột
 - Ví dụ dùng thực tế: gom lead theo Campaign rồi theo Giai đoạn, xem tổng doanh thu từng nhóm
 

@@ -471,6 +471,7 @@ export function LeadTable({
         header: "Campaign",
         kind: "text",
         accessor: (r) => r.campaignName ?? "—",
+        filterOptions: campaigns.map((c) => ({ value: c.name, label: c.name })),
         editable: canEdit,
         editKind: "select",
         editOptions: [
@@ -611,6 +612,10 @@ export function LeadTable({
         header: "Phụ trách",
         kind: "text",
         accessor: (r) => r.assignedName ?? "—",
+        filterOptions: ecUsers.map((u) => ({
+          value: u.fullName,
+          label: u.fullName,
+        })),
         editable: canReassign,
         editKind: "select",
         editOptions: ecUsers.map((u) => ({ value: u.id, label: u.fullName })),

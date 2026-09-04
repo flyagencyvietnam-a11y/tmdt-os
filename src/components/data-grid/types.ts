@@ -123,6 +123,10 @@ export interface GridColumn<Row> {
   /** Nhãn hiển thị cho giá trị enum. */
   enumLabels?: Record<string, string>;
   enumOptions?: { value: string; label: string }[];
+  /** Tập giá trị để LỌC (value phải khớp `accessor(row)`). Dùng cho cột kind=text
+   *  nhưng thực chất là danh mục (campaign, người phụ trách…). Nếu bỏ trống, grid tự
+   *  suy ra từ các giá trị đang có khi số lượng khác biệt ít. */
+  filterOptions?: { value: string; label: string }[];
   defaultWidth?: number;
   align?: "left" | "right" | "center";
   sortable?: boolean;

@@ -42,6 +42,24 @@ function isEmpty(v: unknown): boolean {
   return v == null || v === "" || (Array.isArray(v) && v.length === 0);
 }
 
+/** Chuẩn hoá giá trị bộ lọc "một trong": mảng, hoặc chuỗi phân tách bằng dấu phẩy. */
+function toArr(fv: unknown): unknown[] {
+  if (Array.isArray(fv)) return fv;
+  if (fv == null || fv === "") return [];
+  return String(fv)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** So khớp giá trị enum/picklist: thử bằng tuyệt đối, số, rồi chuỗi bỏ dấu. */
+function sameVal(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a != null && b != null && Number(a) === Number(b) && String(a).trim() !== "")
+    return true;
+  return norm(a) === norm(b);
+}
+
 export function evalCondition(
   value: unknown,
   operator: FilterOperator,
@@ -140,13 +158,17 @@ export function evalCondition(
 
     // ---- enum ----
     case "is":
-      return value === fv;
+      return sameVal(value, fv);
     case "is_not":
-      return value !== fv;
-    case "any_of":
-      return Array.isArray(fv) && fv.includes(value);
-    case "none_of":
-      return Array.isArray(fv) && !fv.includes(value);
+      return !sameVal(value, fv);
+    case "any_of": {
+      const arr = toArr(fv);
+      return arr.some((x) => sameVal(x, value));
+    }
+    case "none_of": {
+      const arr = toArr(fv);
+      return arr.length > 0 && !arr.some((x) => sameVal(x, value));
+    }
 
     // ---- boolean ----
     case "is_true":
