@@ -103,6 +103,7 @@ export const leads = pgTable(
     index("leads_mql_at_idx").on(t.mqlAt),
     index("leads_won_at_idx").on(t.wonAt),
     index("leads_sql_at_idx").on(t.sqlAt),
+    index("leads_received_at_idx").on(t.receivedAt),
     index("leads_name_normalized_idx").on(t.nameNormalized),
     index("leads_phone_normalized_idx").on(t.phoneNormalized),
     index("leads_product_idx").on(t.productId),
@@ -161,7 +162,11 @@ export const leadStageHistory = pgTable(
     changedBy: uuid("changed_by").references(() => users.id),
     reason: text("reason"),
   },
-  (t) => [index("lead_stage_history_lead_idx").on(t.leadId)],
+  (t) => [
+    index("lead_stage_history_lead_idx").on(t.leadId),
+    // EXISTS "rời NEW trong 24h" ở getOpsDisciplineGrouped
+    index("lead_stage_history_lead_from_idx").on(t.leadId, t.fromStage),
+  ],
 );
 
 export type Lead = typeof leads.$inferSelect;

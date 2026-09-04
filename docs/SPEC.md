@@ -1137,6 +1137,13 @@ bằng 3 truy vấn; `getOpsDisciplineGrouped({from,to})` → overdue/first-resp
 người bằng 2 truy vấn. Mỗi lần tải "Bóc tách" giảm từ ~vài trăm round-trip xuống ~15.
 Chỉ số phái sinh vẫn đi qua `deriveMetrics` duy nhất.
 
+**Cache 60s (Gói I).** "Sức khỏe" và "Bóc tách" là số tổng hợp, **không** riêng theo
+người xem → bọc `unstable_cache` (`src/app/(app)/dashboard-cache.ts`), khóa theo
+`(from, to, productIds, channels[, cmpMode])`, `revalidate: 60`, tag `"dashboard"`.
+Người thứ hai chọn cùng kỳ / bấm qua lại vài kỳ quen thuộc → lấy từ cache, không đụng
+DB. Thêm index `leads.received_at` và `lead_stage_history(lead_id, from_stage)`
+(migration 0007) cho các truy vấn gộp.
+
 ### 12.3. Tầng 1 - Khối cần hành động
 
 Chỉ hiện khi có vấn đề. Không có vấn đề thì khối này biến mất, không hiện dòng "Mọi thứ đều ổn" chiếm chỗ.

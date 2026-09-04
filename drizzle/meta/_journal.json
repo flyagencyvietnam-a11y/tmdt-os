@@ -50,6 +50,13 @@
       "when": 1788494984476,
       "tag": "0006_new_marvel_apes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788497862379,
+      "tag": "0007_striped_gideon",
+      "breakpoints": true
     }
   ]
 }

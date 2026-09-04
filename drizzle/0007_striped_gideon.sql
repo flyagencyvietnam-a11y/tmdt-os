@@ -1,0 +1,2 @@
+CREATE INDEX "lead_stage_history_lead_from_idx" ON "lead_stage_history" USING btree ("lead_id","from_stage");--> statement-breakpoint
+CREATE INDEX "leads_received_at_idx" ON "leads" USING btree ("received_at");

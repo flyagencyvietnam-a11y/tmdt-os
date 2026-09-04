@@ -13,7 +13,6 @@ import {
   cohortByReceiptMonth,
   comparePeriod,
   getActionCounts,
-  getHealth,
   weeklyTrend,
 } from "@/lib/services/dashboard";
 import { evaluateCampaignAlerts, type MetricsFilter } from "@/lib/services/metrics";
@@ -36,6 +35,7 @@ import {
   resolvePeriodValue,
 } from "@/lib/time";
 import { DashboardFilters } from "./dashboard-filters";
+import { getBreakdownsCached, getHealthBundleCached } from "./dashboard-cache";
 import { RunJobsButton } from "./run-jobs-button";
 import { TrendChart } from "./trend-chart";
 import { ReportExport } from "./report-export";
@@ -376,11 +376,13 @@ async function ActionHealthSection({
 }) {
   let health, actions, alerts;
   try {
-    [health, actions, alerts] = await Promise.all([
-      getHealth(db, filter, cmpMode),
-      getActionCounts(db),
-      evaluateCampaignAlerts(db),
-    ]);
+    ({ health, actions, alerts } = await getHealthBundleCached(
+      filter.from,
+      filter.to,
+      (filter.productIds ?? []).join(","),
+      (filter.channels ?? []).join(","),
+      cmpMode,
+    ));
   } catch (e) {
     return <DbError msg={e instanceof Error ? e.message : String(e)} />;
   }
@@ -430,13 +432,13 @@ async function BreakdownsSection({
 }) {
   let byProduct, byCampaign, byUser, trend, cohort;
   try {
-    [byProduct, byCampaign, byUser, trend, cohort] = await Promise.all([
-      breakdownByProduct(db, filter),
-      breakdownByCampaign(db, filter, 20),
-      isViewer ? Promise.resolve([]) : breakdownByUser(db, filter),
-      weeklyTrend(db, { weeks: 12, filter }),
-      cohortByReceiptMonth(db, { months: 6 }),
-    ]);
+    ({ byProduct, byCampaign, byUser, trend, cohort } = await getBreakdownsCached(
+      from,
+      to,
+      (filter.productIds ?? []).join(","),
+      (filter.channels ?? []).join(","),
+      !isViewer,
+    ));
   } catch (e) {
     return <DbError msg={e instanceof Error ? e.message : String(e)} />;
   }
