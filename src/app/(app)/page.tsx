@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { asc } from "drizzle-orm";
@@ -296,26 +297,10 @@ export default async function DashboardPage({
     .from(productsTable)
     .orderBy(asc(productsTable.sortOrder));
 
-  let data;
-  let dbError: string | null = null;
-  try {
-    const [health, actions, alerts, byProduct, byCampaign, byUser, trend, cohort] =
-      await Promise.all([
-        getHealth(db, filter, cmpMode),
-        getActionCounts(db),
-        evaluateCampaignAlerts(db),
-        breakdownByProduct(db, filter),
-        breakdownByCampaign(db, filter, 20),
-        isViewer ? Promise.resolve([]) : breakdownByUser(db, filter),
-        weeklyTrend(db, { weeks: 12, filter }),
-        cohortByReceiptMonth(db, { months: 6 }),
-      ]);
-    data = { health, actions, alerts, byProduct, byCampaign, byUser, trend, cohort };
-  } catch (e) {
-    dbError = e instanceof Error ? e.message : String(e);
-  }
-
   const cmp = comparePeriod(from, to, cmpMode);
+  // Khóa Suspense theo bộ lọc: đổi kỳ -> khối cũ hiện skeleton lại ngay, không "đứng hình".
+  const bkey = `${from}|${to}|${cmpMode}|${productIds.join(",")}|${(channels ?? []).join(",")}`;
+  const canExport = user.role === "ADMIN" || user.role === "MANAGER";
 
   return (
     <div className="space-y-5">
@@ -327,7 +312,7 @@ export default async function DashboardPage({
             {cmp ? ` · so với ${cmp.from} → ${cmp.to}` : ""}
           </p>
         </div>
-        {(user.role === "ADMIN" || user.role === "MANAGER") && <RunJobsButton />}
+        {canExport && <RunJobsButton />}
       </div>
 
       <DashboardFilters
@@ -335,93 +320,154 @@ export default async function DashboardPage({
         channels={["FB", "GOOGLE", "TIKTOK", "KHAC"]}
       />
 
-      {dbError && (
-        <div className="rounded-lg border border-warn/40 bg-warn/10 p-4 text-sm">
-          <p className="font-medium">Chưa lấy được dữ liệu.</p>
-          <p className="text-xs text-muted-foreground">{dbError}</p>
-        </div>
-      )}
+      {/* Shell + bộ lọc hiển thị tức thì; hai khối dưới chảy vào khi tính xong. */}
+      <Suspense key={`h-${bkey}`} fallback={<SkeletonBlock label="Đang tính sức khỏe kỳ…" rows={2} />}>
+        <ActionHealthSection filter={filter} cmpMode={cmpMode} />
+      </Suspense>
 
-      {data && (
-        <>
-          {/* ---------- TẦNG 1 — CẦN HÀNH ĐỘNG ---------- */}
-          <ActionTier
-            alerts={data.alerts}
-            counts={data.actions}
-          />
-
-          {/* ---------- TẦNG 2 — SỨC KHỎE ---------- */}
-          <section>
-            <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-              Sức khỏe
-            </h2>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-              <Tile name="Spend" t={data.health.tiles.spend} fmt={fmtCompact} />
-              <Tile name="Lead" t={data.health.tiles.leads} fmt={fmtInt} />
-              <Tile name="MQL" t={data.health.tiles.mql} fmt={fmtInt} />
-              <Tile name="SQL" t={data.health.tiles.sql} fmt={fmtInt} />
-              <Tile name="HV Chốt" t={data.health.tiles.won} fmt={fmtInt} />
-              <Tile
-                name="Doanh thu"
-                t={data.health.tiles.revenueGross}
-                fmt={fmtCompact}
-              />
-              <Tile
-                name="CPMQL"
-                t={data.health.tiles.cpmql}
-                fmt={fmtVnd}
-                lowerBetter
-              />
-              <Tile name="CAC" t={data.health.tiles.cac} fmt={fmtVnd} lowerBetter />
-              <Tile name="ROAS" t={data.health.tiles.roas} fmt={fmtRatioX} />
-            </div>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <Funnel title="Phễu kỳ này" m={data.health.current} />
-              {data.health.compare && (
-                <Funnel title="Phễu kỳ so sánh" m={data.health.compare} muted />
-              )}
-            </div>
-          </section>
-
-          {/* ---------- TẦNG 3 — BÓC TÁCH ---------- */}
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-muted-foreground">
-                Bóc tách · {label} ({from} → {to})
-              </h2>
-              {(user.role === "ADMIN" || user.role === "MANAGER") && (
-                <ReportExport
-                  filename={`bao-cao-${from}_${to}`}
-                  sheets={buildReportSheets({
-                    byProduct: data.byProduct,
-                    byCampaign: data.byCampaign,
-                    byUser: data.byUser,
-                    trend: data.trend,
-                    cohort: data.cohort,
-                  })}
-                />
-              )}
-            </div>
-
-            <ProductTable data={data.byProduct} />
-
-            {!isViewer && data.byUser.length > 0 && <UserTable rows={data.byUser} />}
-
-            <div className="rounded-lg border p-4">
-              <h3 className="mb-2 text-sm font-semibold">
-                Xu hướng 12 tuần — Spend / MQL / HV Chốt / CPMQL
-              </h3>
-              <TrendChart data={data.trend} />
-            </div>
-
-            <CampaignTable rows={data.byCampaign} />
-
-            <CohortTable rows={data.cohort} />
-          </section>
-        </>
-      )}
+      <Suspense
+        key={`b-${bkey}`}
+        fallback={<SkeletonBlock label="Đang bóc tách theo sản phẩm / campaign / nhân sự…" rows={5} />}
+      >
+        <BreakdownsSection
+          filter={filter}
+          from={from}
+          to={to}
+          label={label}
+          isViewer={isViewer}
+          canExport={canExport}
+        />
+      </Suspense>
     </div>
+  );
+}
+
+function SkeletonBlock({ label, rows }: { label: string; rows: number }) {
+  return (
+    <div className="space-y-2 rounded-lg border p-4">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <div className="space-y-1.5">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="h-6 animate-pulse rounded bg-muted/60" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DbError({ msg }: { msg: string }) {
+  return (
+    <div className="rounded-lg border border-warn/40 bg-warn/10 p-4 text-sm">
+      <p className="font-medium">Chưa lấy được dữ liệu.</p>
+      <p className="text-xs text-muted-foreground">{msg}</p>
+    </div>
+  );
+}
+
+// ---------- TẦNG 1 + 2 — CẦN HÀNH ĐỘNG & SỨC KHỎE (stream riêng) ----------
+async function ActionHealthSection({
+  filter,
+  cmpMode,
+}: {
+  filter: MetricsFilter;
+  cmpMode: "prev" | "yoy" | "none";
+}) {
+  let health, actions, alerts;
+  try {
+    [health, actions, alerts] = await Promise.all([
+      getHealth(db, filter, cmpMode),
+      getActionCounts(db),
+      evaluateCampaignAlerts(db),
+    ]);
+  } catch (e) {
+    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
+  }
+
+  return (
+    <div className="space-y-5">
+      <ActionTier alerts={alerts} counts={actions} />
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Sức khỏe</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <Tile name="Spend" t={health.tiles.spend} fmt={fmtCompact} />
+          <Tile name="Lead" t={health.tiles.leads} fmt={fmtInt} />
+          <Tile name="MQL" t={health.tiles.mql} fmt={fmtInt} />
+          <Tile name="SQL" t={health.tiles.sql} fmt={fmtInt} />
+          <Tile name="HV Chốt" t={health.tiles.won} fmt={fmtInt} />
+          <Tile name="Doanh thu" t={health.tiles.revenueGross} fmt={fmtCompact} />
+          <Tile name="CPMQL" t={health.tiles.cpmql} fmt={fmtVnd} lowerBetter />
+          <Tile name="CAC" t={health.tiles.cac} fmt={fmtVnd} lowerBetter />
+          <Tile name="ROAS" t={health.tiles.roas} fmt={fmtRatioX} />
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <Funnel title="Phễu kỳ này" m={health.current} />
+          {health.compare && <Funnel title="Phễu kỳ so sánh" m={health.compare} muted />}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ---------- TẦNG 3 — BÓC TÁCH (stream riêng — phần nặng nhất) ----------
+async function BreakdownsSection({
+  filter,
+  from,
+  to,
+  label,
+  isViewer,
+  canExport,
+}: {
+  filter: MetricsFilter;
+  from: string;
+  to: string;
+  label: string;
+  isViewer: boolean;
+  canExport: boolean;
+}) {
+  let byProduct, byCampaign, byUser, trend, cohort;
+  try {
+    [byProduct, byCampaign, byUser, trend, cohort] = await Promise.all([
+      breakdownByProduct(db, filter),
+      breakdownByCampaign(db, filter, 20),
+      isViewer ? Promise.resolve([]) : breakdownByUser(db, filter),
+      weeklyTrend(db, { weeks: 12, filter }),
+      cohortByReceiptMonth(db, { months: 6 }),
+    ]);
+  } catch (e) {
+    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-muted-foreground">
+          Bóc tách · {label} ({from} → {to})
+        </h2>
+        {canExport && (
+          <ReportExport
+            filename={`bao-cao-${from}_${to}`}
+            sheets={buildReportSheets({ byProduct, byCampaign, byUser, trend, cohort })}
+          />
+        )}
+      </div>
+
+      <ProductTable data={byProduct} />
+
+      {!isViewer && byUser.length > 0 && <UserTable rows={byUser} />}
+
+      <div className="rounded-lg border p-4">
+        <h3 className="mb-2 text-sm font-semibold">
+          Xu hướng 12 tuần — Spend / MQL / HV Chốt / CPMQL
+        </h3>
+        <TrendChart data={trend} />
+      </div>
+
+      <CampaignTable rows={byCampaign} />
+
+      <CohortTable rows={cohort} />
+    </section>
   );
 }
 

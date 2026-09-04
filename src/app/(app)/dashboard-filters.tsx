@@ -49,8 +49,14 @@ export function DashboardFilters({
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
+  const spStr = sp.toString();
+  const [pending, startTransition] = React.useTransition();
 
-  const range = sp.get("range") ?? "this_month";
+  // Giá trị "lạc quan": select nhảy ngay khi bấm, không chờ server render xong.
+  // Gắn với spStr lúc bấm; khi URL cập nhật xong (spStr đổi) thì tự bỏ qua.
+  const [opt, setOpt] = React.useState<{ spStr: string; range: string } | null>(null);
+  const range =
+    opt && opt.spStr === spStr ? opt.range : (sp.get("range") ?? "this_month");
   const grain = grainOf(range);
   const cmp = sp.get("cmp") ?? "prev";
 
@@ -72,10 +78,13 @@ export function DashboardFilters({
       else p.set(k, v);
     }
     const qs = p.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    if ("range" in next) setOpt({ spStr, range: next.range ?? "this_month" });
     try {
       localStorage.setItem("vmg.dashboard.filters", qs);
     } catch {}
+    startTransition(() => {
+      router.push(qs ? `${pathname}?${qs}` : pathname);
+    });
   }
 
   // khôi phục bộ lọc đã lưu nếu vào trang không kèm tham số
@@ -97,7 +106,13 @@ export function DashboardFilters({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
+    <div
+      aria-busy={pending}
+      className={cn(
+        "flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 transition-opacity",
+        pending && "opacity-60",
+      )}
+    >
       <SimpleSelect
         triggerClassName="h-8 w-24"
         value={grain}
@@ -180,6 +195,10 @@ export function DashboardFilters({
         >
           Xóa lọc
         </Button>
+      )}
+
+      {pending && (
+        <span className="text-xs text-muted-foreground">đang tải…</span>
       )}
     </div>
   );

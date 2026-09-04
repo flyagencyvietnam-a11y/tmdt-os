@@ -1104,6 +1104,15 @@ Ba tầng, từ trên xuống:
 theo sản phẩm / campaign / nhân sự / xu hướng tuần / cohort cho kỳ đang chọn, kèm nút
 **Xuất XLSX** (5 sheet) — chỉ ADMIN/MANAGER. Không còn route `/bao-cao`.
 
+**Hiệu năng render (Gói E1).** Shell trang + bộ lọc phải hiển thị **tức thì**, không chờ
+truy vấn. "Sức khỏe" (12.4) và "Bóc tách" (12.5) là hai `<Suspense>` riêng, khóa theo
+bộ lọc — đổi kỳ thì khối cũ hiện skeleton lại ngay, phần nhẹ (Sức khỏe) về trước, phần
+nặng (Bóc tách) về sau. Bộ lọc dùng `useTransition`: select nhảy giá trị ngay khi bấm
+(giá trị lạc quan), hiện "đang tải…" trong lúc server render. Nhóm `(app)` có
+`loading.tsx` chung để mọi lần điều hướng thấy phản hồi ngay thay vì đứng ở trang cũ.
+*(E2 — còn treo: thay fan-out `getBaseMetrics` N×M trong `dashboard.ts` bằng truy vấn
+`GROUP BY` gộp ở `metrics.ts` để giảm số round-trip DB.)*
+
 ### 12.3. Tầng 1 - Khối cần hành động
 
 Chỉ hiện khi có vấn đề. Không có vấn đề thì khối này biến mất, không hiện dòng "Mọi thứ đều ổn" chiếm chỗ.
