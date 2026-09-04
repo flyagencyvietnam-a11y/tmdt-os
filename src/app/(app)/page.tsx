@@ -10,7 +10,6 @@ import {
   breakdownByCampaign,
   breakdownByProduct,
   breakdownByUser,
-  cohortByReceiptMonth,
   comparePeriod,
   getActionCounts,
   weeklyTrend,
@@ -35,6 +34,7 @@ import {
   resolvePeriodValue,
 } from "@/lib/time";
 import { DashboardFilters } from "./dashboard-filters";
+import { TeamProgressTable } from "./team-progress-table";
 import {
   getBreakdownsCached,
   getHealthBundleCached,
@@ -53,11 +53,12 @@ async function loadViewerData() {
   }`;
   const qFilter = { from: qs, to: qe };
   try {
-    const [b, bp, tr, kpis] = await Promise.all([
+    const [b, bp, tr, kpis, bu] = await Promise.all([
       getBaseMetrics(db, qFilter),
       breakdownByProduct(db, qFilter),
       weeklyTrend(db, { weeks: 12, filter: qFilter }),
       getKpiProgressForPeriod(db, { periodStart: qs, periodEnd: qe }),
+      breakdownByUser(db, qFilter),
     ]);
     return {
       quarterLabel: qLabel,
@@ -74,6 +75,7 @@ async function loadViewerData() {
         revenue: r.metrics.revenueGross,
       })),
       trend: tr,
+      teamProgress: bu,
     };
   } catch {
     return null;
@@ -135,7 +137,6 @@ type Breakdowns = {
   byCampaign: Awaited<ReturnType<typeof breakdownByCampaign>>;
   byUser: Awaited<ReturnType<typeof breakdownByUser>>;
   trend: Awaited<ReturnType<typeof weeklyTrend>>;
-  cohort: Awaited<ReturnType<typeof cohortByReceiptMonth>>;
 };
 
 /** Gộp từ tab "Báo cáo" cũ: dựng các sheet để xuất XLSX. */
@@ -194,16 +195,20 @@ function buildReportSheets(d: Breakdowns) {
       })),
     },
     {
-      name: "Theo nhân sự",
+      name: "Tiến độ đội",
       columns: [
         { header: "Nhân sự", key: "u" },
         { header: "Lead giao", key: "assigned" },
         { header: "MQL", key: "mql" },
-        { header: "SQL", key: "sql" },
         { header: "HV", key: "won" },
         { header: "HVM", key: "hvm" },
         { header: "Doanh thu", key: "rev" },
         { header: "CR MQL→Chốt", key: "cr" },
+        { header: "Phiên CS", key: "care" },
+        { header: "Task xong", key: "tdone" },
+        { header: "Task tổng", key: "ttotal" },
+        { header: "% task", key: "tpct" },
+        { header: "Task trễ", key: "tover" },
         { header: "Tỷ lệ trễ hẹn", key: "overdue" },
         { header: "Tốc độ phản hồi", key: "resp" },
       ],
@@ -211,11 +216,18 @@ function buildReportSheets(d: Breakdowns) {
         u: r.label,
         assigned: r.leadsAssigned,
         mql: r.metrics.mql,
-        sql: r.metrics.sql,
         won: r.metrics.won,
         hvm: r.metrics.hvm,
         rev: r.metrics.revenueGross,
         cr: r.crMqlWon == null ? "" : (r.crMqlWon * 100).toFixed(1) + "%",
+        care: r.careSessions,
+        tdone: r.taskDone,
+        ttotal: r.taskTotal,
+        tpct:
+          r.taskTotal > 0
+            ? ((r.taskDone / r.taskTotal) * 100).toFixed(0) + "%"
+            : "",
+        tover: r.taskOverdue,
         overdue:
           r.overdueRate == null ? "" : (r.overdueRate * 100).toFixed(1) + "%",
         resp:
@@ -239,27 +251,6 @@ function buildReportSheets(d: Breakdowns) {
         mql: p.mql,
         won: p.won,
         cpmql: p.cpmql ?? "",
-      })),
-    },
-    {
-      name: "Cohort",
-      columns: [
-        { header: "Tháng tiếp nhận", key: "m" },
-        { header: "Tổng lead", key: "total" },
-        { header: "0-7 ngày", key: "b0" },
-        { header: "8-30 ngày", key: "b1" },
-        { header: "31-60 ngày", key: "b2" },
-        { header: "61-90 ngày", key: "b3" },
-        { header: ">90 ngày", key: "b4" },
-      ],
-      rows: d.cohort.map((r) => ({
-        m: r.month,
-        total: r.totalLeads,
-        b0: r.buckets[0],
-        b1: r.buckets[1],
-        b2: r.buckets[2],
-        b3: r.buckets[3],
-        b4: r.buckets[4],
       })),
     },
   ];
@@ -590,9 +581,9 @@ async function BreakdownsSection({
   isViewer: boolean;
   canExport: boolean;
 }) {
-  let byProduct, byCampaign, byUser, trend, cohort;
+  let byProduct, byCampaign, byUser, trend;
   try {
-    ({ byProduct, byCampaign, byUser, trend, cohort } = await getBreakdownsCached(
+    ({ byProduct, byCampaign, byUser, trend } = await getBreakdownsCached(
       from,
       to,
       (filter.productIds ?? []).join(","),
@@ -612,14 +603,14 @@ async function BreakdownsSection({
         {canExport && (
           <ReportExport
             filename={`bao-cao-${from}_${to}`}
-            sheets={buildReportSheets({ byProduct, byCampaign, byUser, trend, cohort })}
+            sheets={buildReportSheets({ byProduct, byCampaign, byUser, trend })}
           />
         )}
       </div>
 
       <ProductTable data={byProduct} />
 
-      {!isViewer && byUser.length > 0 && <UserTable rows={byUser} />}
+      {!isViewer && byUser.length > 0 && <TeamProgressTable rows={byUser} />}
 
       <div className="rounded-lg border p-4">
         <h3 className="mb-2 text-sm font-semibold">
@@ -629,8 +620,6 @@ async function BreakdownsSection({
       </div>
 
       <CampaignTable rows={byCampaign} />
-
-      <CohortTable rows={cohort} />
     </section>
   );
 }
@@ -953,122 +942,3 @@ function CampaignTable({
   );
 }
 
-function UserTable({
-  rows,
-}: {
-  rows: Awaited<ReturnType<typeof breakdownByUser>>;
-}) {
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-left text-sm">
-        <caption className="px-3 py-2 text-left text-sm font-semibold">
-          Theo nhân sự (E-Commerce Executive)
-        </caption>
-        <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2">Nhân sự</th>
-            <th className="px-3 py-2 text-right">Lead giao</th>
-            <th className="px-3 py-2 text-right">MQL</th>
-            <th className="px-3 py-2 text-right">SQL</th>
-            <th className="px-3 py-2 text-right">HV</th>
-            <th className="px-3 py-2 text-right">HVM</th>
-            <th className="px-3 py-2 text-right">Doanh thu</th>
-            <th className="px-3 py-2 text-right">CR MQL→Chốt</th>
-            <th className="px-3 py-2 text-right">Tỷ lệ trễ hẹn</th>
-            <th className="px-3 py-2 text-right">Tốc độ phản hồi</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.key} className="border-b">
-              <td className="px-3 py-1.5 font-medium">{r.label}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.leadsAssigned)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.metrics.mql)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.metrics.sql)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.metrics.won)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.metrics.hvm)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtVnd(r.metrics.revenueGross)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtPct(r.crMqlWon)}
-              </td>
-              <td
-                className={
-                  (r.overdueRate ?? 0) > 0.1
-                    ? "px-3 py-1.5 text-right tabular-nums text-crit"
-                    : "px-3 py-1.5 text-right tabular-nums"
-                }
-              >
-                {fmtPct(r.overdueRate)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtPct(r.firstResponseRate)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CohortTable({
-  rows,
-}: {
-  rows: Awaited<ReturnType<typeof cohortByReceiptMonth>>;
-}) {
-  const labels = ["0–7", "8–30", "31–60", "61–90", ">90"];
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-left text-sm">
-        <caption className="px-3 py-2 text-left text-sm font-semibold">
-          Cohort — số lead chốt sau bao nhiêu ngày kể từ khi tiếp nhận
-        </caption>
-        <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2">Tháng tiếp nhận</th>
-            <th className="px-3 py-2 text-right">Tổng lead</th>
-            {labels.map((l) => (
-              <th key={l} className="px-3 py-2 text-right">
-                {l} ngày
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.month} className="border-b">
-              <td className="px-3 py-1.5 font-medium">{r.month}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.totalLeads)}
-              </td>
-              {r.buckets.map((b, i) => (
-                <td key={i} className="px-3 py-1.5 text-right tabular-nums">
-                  {b || "–"}
-                </td>
-              ))}
-            </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
-                Chưa đủ dữ liệu.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}

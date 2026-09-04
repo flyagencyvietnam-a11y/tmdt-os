@@ -5,18 +5,21 @@
  * getBaseMetrics / deriveMetrics / getOpsDiscipline / evaluateCampaignAlerts
  * trong metrics.ts (nguồn công thức duy nhất) rồi gom nhóm / so sánh / xếp chuỗi.
  */
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import {
   appSettings,
   campaigns,
+  leadInteractions,
   leads,
   products,
+  tasks,
   users,
 } from "@/lib/db/schema";
 import {
   addDaysStr,
   monthBounds,
   quarterBounds,
+  todayVnDayStr,
   vnDayBoundsUtc,
 } from "@/lib/time";
 import {
@@ -232,7 +235,82 @@ export async function breakdownByCampaign(
   return rows.slice(0, limit);
 }
 
-/** Theo nhân sự (E-Commerce Executive) — SPEC 12.5. */
+/**
+ * Grouped: phiên chăm sóc (lead_interactions trong kỳ) + tiến độ task (due_date
+ * trong kỳ) theo người. Cho bảng "Tiến độ đội" (Gói M).
+ */
+async function getTeamAux(
+  db: AnyDb,
+  opts: { from: string; to: string },
+): Promise<
+  Map<
+    string,
+    { careSessions: number; taskDone: number; taskTotal: number; taskOverdue: number }
+  >
+> {
+  const today = todayVnDayStr();
+  const [startUtc, endUtc] = [
+    vnDayBoundsUtc(opts.from)[0],
+    vnDayBoundsUtc(opts.to)[1],
+  ];
+  const [careRows, taskRows] = await Promise.all([
+    db
+      .select({ g: leads.assignedTo, c: sql<number>`count(*)` })
+      .from(leadInteractions)
+      .innerJoin(leads, eq(leads.id, leadInteractions.leadId))
+      .where(
+        and(
+          isNull(leads.deletedAt),
+          isNull(leads.duplicateOf),
+          isNotNull(leads.assignedTo),
+          gte(leadInteractions.occurredAt, startUtc),
+          lt(leadInteractions.occurredAt, endUtc),
+        ),
+      )
+      .groupBy(leads.assignedTo),
+    db
+      .select({
+        g: tasks.assigneeId,
+        done: sql<number>`count(*) filter (where ${tasks.status} = 'DONE')`,
+        total: sql<number>`count(*)`,
+        overdue: sql<number>`count(*) filter (where ${tasks.dueDate} < ${today}::date and ${tasks.status} <> 'DONE')`,
+      })
+      .from(tasks)
+      .where(
+        and(
+          isNull(tasks.deletedAt),
+          sql`${tasks.status} <> 'CANCELLED'`,
+          gte(tasks.dueDate, opts.from),
+          lte(tasks.dueDate, opts.to),
+        ),
+      )
+      .groupBy(tasks.assigneeId),
+  ]);
+
+  const m = new Map<
+    string,
+    { careSessions: number; taskDone: number; taskTotal: number; taskOverdue: number }
+  >();
+  const ensure = (k: string) => {
+    let v = m.get(k);
+    if (!v) {
+      v = { careSessions: 0, taskDone: 0, taskTotal: 0, taskOverdue: 0 };
+      m.set(k, v);
+    }
+    return v;
+  };
+  for (const r of careRows) if (r.g) ensure(r.g).careSessions = Number(r.c);
+  for (const r of taskRows) {
+    if (!r.g) continue;
+    const v = ensure(r.g);
+    v.taskDone = Number(r.done);
+    v.taskTotal = Number(r.total);
+    v.taskOverdue = Number(r.overdue);
+  }
+  return m;
+}
+
+/** Theo nhân sự — phễu + kỷ luật + tiến độ công việc (SPEC 12.5, "Tiến độ đội"). */
 export async function breakdownByUser(
   db: AnyDb,
   filter: MetricsFilter,
@@ -242,20 +320,25 @@ export async function breakdownByUser(
     crMqlWon: number | null;
     overdueRate: number | null;
     firstResponseRate: number | null;
+    careSessions: number;
+    taskDone: number;
+    taskTotal: number;
+    taskOverdue: number;
   })[]
 > {
-  const [ecs, funnel, ops] = await Promise.all([
+  const [ecs, funnel, ops, aux] = await Promise.all([
     db
       .select({ id: users.id, fullName: users.fullName })
       .from(users)
       .where(
         and(
           eq(users.isActive, true),
-          sql`${users.role} in ('EC','MANAGER','ADMIN')`,
+          sql`${users.role} in ('EC','MANAGER','ADMIN','MARKETING')`,
         ),
       ),
     getBaseMetricsGrouped(db, filter, "assignee"),
     getOpsDisciplineGrouped(db, { from: filter.from, to: filter.to }),
+    getTeamAux(db, { from: filter.from, to: filter.to }),
   ]);
 
   const out = ecs
@@ -266,7 +349,20 @@ export async function breakdownByUser(
         overdueRate: null,
         firstResponseRate: null,
       };
-      if (o.leadsAssigned === 0 && b.mql === 0 && b.won === 0) return null;
+      const a = aux.get(u.id) ?? {
+        careSessions: 0,
+        taskDone: 0,
+        taskTotal: 0,
+        taskOverdue: 0,
+      };
+      if (
+        o.leadsAssigned === 0 &&
+        b.mql === 0 &&
+        b.won === 0 &&
+        a.taskTotal === 0 &&
+        a.careSessions === 0
+      )
+        return null;
       return {
         key: u.id,
         label: u.fullName,
@@ -275,6 +371,7 @@ export async function breakdownByUser(
         crMqlWon: safeDiv(b.won, b.mql),
         overdueRate: o.overdueRate,
         firstResponseRate: o.firstResponseRate,
+        ...a,
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -317,63 +414,6 @@ export async function weeklyTrend(
     mql: p.mql,
     won: p.won,
     cpmql: safeDiv(p.spend, p.mql),
-  }));
-}
-
-export interface CohortRow {
-  month: string; // YYYY-MM
-  totalLeads: number;
-  buckets: number[]; // [0-7, 8-30, 31-60, 61-90, >90] số lead chốt trong khoảng
-}
-
-/**
- * Cohort theo tháng tiếp nhận: bao lâu sau khi vào phễu thì khách chốt.
- * SPEC Mục 12.5 — "thông tin phòng chưa từng có".
- */
-export async function cohortByReceiptMonth(
-  db: AnyDb,
-  opts: { months?: number; end?: string } = {},
-): Promise<CohortRow[]> {
-  const months = opts.months ?? 6;
-  const end = opts.end ?? new Date().toISOString().slice(0, 10);
-  type Raw = {
-    month: string;
-    total: number;
-    b0: number;
-    b1: number;
-    b2: number;
-    b3: number;
-    b4: number;
-  };
-  const rows = await db.execute<Raw>(sql`
-    with base as (
-      select
-        to_char((received_at at time zone 'Asia/Ho_Chi_Minh'), 'YYYY-MM') as month,
-        case when won_at is not null
-          then floor(extract(epoch from (won_at - received_at)) / 86400)
-          else null end as days_to_won
-      from leads
-      where deleted_at is null and duplicate_of is null
-        and received_at >= (date_trunc('month', ${end}::date) - (${months - 1} || ' months')::interval)
-    )
-    select month,
-      count(*)::int as total,
-      count(*) filter (where days_to_won between 0 and 7)::int as b0,
-      count(*) filter (where days_to_won between 8 and 30)::int as b1,
-      count(*) filter (where days_to_won between 31 and 60)::int as b2,
-      count(*) filter (where days_to_won between 61 and 90)::int as b3,
-      count(*) filter (where days_to_won > 90)::int as b4
-    from base
-    group by month
-    order by month
-  `);
-  const arr: Raw[] = Array.isArray(rows)
-    ? (rows as Raw[])
-    : (((rows as { rows: Raw[] }).rows ?? []) as Raw[]);
-  return arr.map((r) => ({
-    month: r.month,
-    totalLeads: Number(r.total),
-    buckets: [r.b0, r.b1, r.b2, r.b3, r.b4].map(Number),
   }));
 }
 

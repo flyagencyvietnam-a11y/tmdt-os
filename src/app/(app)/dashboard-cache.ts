@@ -5,7 +5,6 @@ import {
   breakdownByCampaign,
   breakdownByProduct,
   breakdownByUser,
-  cohortByReceiptMonth,
   getActionCounts,
   getHealth,
   weeklyTrend,
@@ -52,14 +51,13 @@ export const getBreakdownsCached = unstable_cache(
     includeUser: boolean,
   ) => {
     const filter = toFilter(from, to, productCsv, channelCsv);
-    const [byProduct, byCampaign, byUser, trend, cohort] = await Promise.all([
+    const [byProduct, byCampaign, byUser, trend] = await Promise.all([
       breakdownByProduct(db, filter),
       breakdownByCampaign(db, filter, 20),
       includeUser ? breakdownByUser(db, filter) : Promise.resolve([]),
       weeklyTrend(db, { weeks: 12, filter }),
-      cohortByReceiptMonth(db, { months: 6 }),
     ]);
-    return { byProduct, byCampaign, byUser, trend, cohort };
+    return { byProduct, byCampaign, byUser, trend };
   },
   ["dashboard-breakdowns-v1"],
   { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },

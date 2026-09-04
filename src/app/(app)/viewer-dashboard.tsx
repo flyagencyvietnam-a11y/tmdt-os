@@ -1,4 +1,6 @@
+import type { breakdownByUser } from "@/lib/services/dashboard";
 import { fmtPct, fmtRatioX, fmtVnd } from "@/lib/format";
+import { TeamProgressTable } from "./team-progress-table";
 import { TrendChart } from "./trend-chart";
 
 interface Props {
@@ -18,6 +20,7 @@ interface Props {
     won: number;
     cpmql: number | null;
   }[];
+  teamProgress: Awaited<ReturnType<typeof breakdownByUser>>;
 }
 
 /** Dashboard rút gọn cho VIEWER (BOD) — SPEC Mục 12.6. Một màn hình, không dữ liệu cá nhân. */
@@ -55,6 +58,15 @@ export function ViewerDashboard(p: Props) {
         <h2 className="mb-2 text-sm font-semibold">Xu hướng 12 tuần</h2>
         <TrendChart data={p.trend} />
       </div>
+
+      {p.teamProgress.length > 0 && (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+            Tiến độ đội — quý {p.quarterLabel}
+          </h2>
+          <TeamProgressTable rows={p.teamProgress} />
+        </div>
+      )}
     </div>
   );
 }

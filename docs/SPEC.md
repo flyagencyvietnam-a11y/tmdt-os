@@ -1174,21 +1174,29 @@ Cột cuối rất quan trọng: đối chiếu tỷ trọng chi tiêu thực t�
 
 **Bảng theo campaign:** như Mục 10.1, giới hạn top 20 theo spend.
 
-**Bảng theo nhân sự:**
-E-Commerce Executive | Lead được giao | MQL | SQL | HV Chốt | HVM | Doanh thu | CR MQL→Chốt | Tỷ lệ trễ hẹn | Tốc độ phản hồi trung bình
+**Bảng "Tiến độ đội"** (Gói M — thay bảng "theo nhân sự" cũ; **bỏ bảng cohort**):
+mỗi hàng một nhân sự (EC + MARKETING), cột:
+Lead được giao | MQL | HV Chốt | HVM | Doanh thu | CR MQL→Chốt | **Phiên chăm sóc**
+(số `lead_interactions` trong kỳ) | **Task xong/tổng** (task có `due_date` trong kỳ) |
+**% task** | **Task trễ** | Tỷ lệ trễ hẹn | Tốc độ phản hồi lead mới.
+Dòng cuối **TỔNG ĐỘI** (cộng các số đếm; CR & %task tính lại theo tổng; hai tỷ lệ ops
+để "–"). Mục đích: BOD/quản lý nhìn ra ai đang tải nặng / chậm việc / chăm sóc ít.
+Grouped queries trong `dashboard.ts` (`getTeamAux` + `breakdownByUser`), cache 60s.
 
 **Biểu đồ xu hướng:** đường theo tuần cho Spend, MQL, HV Chốt, CPMQL trong 12 tuần gần nhất.
 
-**Bảng cohort theo tháng tiếp nhận:** hàng là tháng lead vào, cột là số ngày kể từ khi vào (0-7, 8-30, 31-60, 61-90, >90), ô là số lead chốt được trong khoảng đó. Bảng này trả lời câu hỏi "khách của mình thường chốt sau bao lâu", từ đó suy ra cửa sổ quy kết và độ dài chu kỳ bán hàng hợp lý. Đây là thông tin phòng chưa từng có.
-
 ### 12.6. Dashboard riêng cho vai trò VIEWER (BOD)
 
-Bản rút gọn, một màn hình, không cuộn:
+Bản rút gọn, một màn hình:
 - Doanh thu lũy kế so với chỉ tiêu quý, dạng thanh tiến độ
 - HVM lũy kế so với chỉ tiêu
 - ROAS tổng và theo sản phẩm
 - Xu hướng doanh thu 12 tuần
-- Không có thông tin liên hệ khách hàng, không có số liệu cá nhân từng nhân sự
+- **Bảng "Tiến độ đội"** (12.5) — theo yêu cầu BOD (điều chỉnh so với bản gốc):
+  BOD được xem tiến độ **theo từng người có tên** (task, chăm sóc, chuyển đổi, trễ hẹn)
+  kèm dòng TỔNG ĐỘI. Đây là dữ liệu hiệu suất công việc, không phải dữ liệu cá nhân
+  của khách hàng.
+- **Vẫn không** hiển thị thông tin liên hệ khách hàng cho VIEWER.
 
 ---
 
