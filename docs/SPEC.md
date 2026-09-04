@@ -696,17 +696,23 @@ Khi một kỳ bị khóa, mọi bản ghi có `metric_date`, `contract_date`, h
 **Nguyên tắc gốc:**
 > Mọi lead sau khi chăm sóc **bắt buộc** phải có Ngày LH lại, trừ lead ở trạng thái `DISQUALIFIED` (Không nhu cầu, spam).
 > Lead có Ngày LH lại nằm trong quá khứ = **đã trễ hẹn chăm sóc**.
+> **Chỉ thành Cold khi ĐÚNG 5 PHIÊN LIÊN TIẾP không phản hồi.** Khách phản hồi (kể cả
+> khi đã Cold) → reset chu kỳ.
 
-**Bảng escalate theo số lần im lặng:**
+**Bảng escalate — `silence_count` = số phiên `NO_RESPONSE` LIÊN TIẾP:**
 
-| `silence_count` sau lần chăm sóc | Ngày LH lại được đề xuất | Kịch bản hành động |
+| `silence_count` sau phiên vừa ghi | Ngày LH lại được đề xuất | Kịch bản hành động |
 |---|---|---|
-| 1 | Cùng ngày (T+0) | Nhắc lại ngay trong ngày |
-| 2 | T+1 | Nhắc lại vào ngày hôm sau |
-| 3 | T+3 | Nhắc lại kèm chương trình ưu đãi |
-| 4 | T+7 | Nhắn hỏi thăm, không bán |
-| 5 | T+30 | Thăm dò lại nhu cầu |
-| >= 6 | Không đặt | Hệ thống tự chuyển `is_cold = true`, `outcome = LOST`, `lost_reason = 'Không phản hồi sau 5 nhịp chăm sóc'` |
+| 0 (khách vừa phản hồi) | T+3 | Hẹn theo dõi lại |
+| 1 | T+1 | Nhắc lại vào ngày hôm sau |
+| 2 | T+3 | Nhắc lại kèm chương trình ưu đãi |
+| 3 | T+7 | Nhắn hỏi thăm, không bán |
+| 4 | T+30 | Thăm dò lại nhu cầu — **nhịp cuối** |
+| >= 5 | Không đặt | Hệ thống tự chuyển `is_cold = true`, `outcome = LOST`, `lost_reason = 'Không phản hồi sau 5 phiên chăm sóc liên tiếp'` |
+
+Hằng số chung: `COLD_SILENCE_THRESHOLD = 5`, `WARM_FOLLOWUP_DAYS = 3` trong
+`src/lib/services/escalate.ts`. Job Cold Data (00:30) và `recordInteraction` dùng
+chung hằng số này.
 
 **Quy tắc tăng và reset `silence_count`:**
 
@@ -717,6 +723,11 @@ Khi EC ghi một interaction:
   - result = RESCHEDULED     → silence_count = 0  (khách chủ động hẹn lại)
   - result = REFUSED         → không đổi, EC được nhắc chuyển outcome = LOST
 ```
+
+**Khách ấm lại từ trạng thái Cold:** nếu lead đang `is_cold = true` / `outcome = LOST`
+mà EC ghi một interaction `RESPONDED` hoặc `RESCHEDULED` → hệ thống **tự gỡ**
+`is_cold = false`, đưa `outcome = OPEN`, xoá `lost_reason`, đặt Ngày LH lại mới (T+3),
+ghi `lead_stage_history` + audit. Không cần thao tác tay để "mở lại" lead.
 
 **Hành vi giao diện bắt buộc:** khi EC chọn `result = NO_RESPONSE`, hệ thống **tự động điền sẵn** Ngày LH lại theo bảng trên. EC được phép sửa (vì thực tế luôn có ngoại lệ), nhưng nếu sửa thì phải ghi lý do một dòng. Mục tiêu là làm cho việc tuân thủ quy trình trở thành đường ít trở ngại nhất, thay vì bắt buộc bằng luật.
 
@@ -759,7 +770,7 @@ Xử lý:
 
 | Mã | Quy tắc | Mức | Hành vi |
 |---|---|---|---|
-| V01 | Lead có `outcome = OPEN` và đã có ít nhất 1 interaction thì bắt buộc có `next_contact_date` | CHẶN | Không lưu được |
+| V01 | Lead `outcome = OPEN` mà **(đã có người phụ trách và `stage != NEW`)** HOẶC **đã có ≥1 interaction** thì bắt buộc có `next_contact_date` | CHẶN | Không lưu được — áp cả khi tạo lead và khi cập nhật. Form "+ Lead mới" hiện ô Ngày LH lại (bắt buộc) ngay khi chọn giai đoạn khác 'Mới'. |
 | V02 | `outcome = DISQUALIFIED` thì không được có `next_contact_date` | CHẶN | Tự xóa khi chuyển trạng thái |
 | V03 | `outcome = LOST` bắt buộc có `lost_reason` dài >= 10 ký tự | CHẶN | |
 | V04 | `outcome = WON` bắt buộc có ít nhất 1 `enrollment` | CHẶN | Chỉ tạo được qua form enrollment |

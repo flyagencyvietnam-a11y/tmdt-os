@@ -7,7 +7,7 @@ import { writeAudit } from "@/lib/audit";
 import { campaigns, leadStageHistory, leads, users } from "@/lib/db/schema";
 import { sendMail } from "@/lib/email";
 import { addDaysStr, todayVnDayStr } from "@/lib/time";
-import { COLD_LOST_REASON } from "./escalate";
+import { COLD_LOST_REASON, COLD_SILENCE_THRESHOLD } from "./escalate";
 import { evaluateCampaignAlerts } from "./metrics";
 import type { AnyDb } from "./metrics";
 import { getManagerIds, notify, notifyMany } from "./notifications";
@@ -159,7 +159,7 @@ export async function runAlertScan(db: AnyDb, now = new Date()): Promise<JobResu
   };
 }
 
-/** 00:30 — chuyển Cold Data cho lead silence_count >= 6 (SPEC 17.2). Ghi log, không thông báo. */
+/** 00:30 — chuyển Cold Data cho lead im lặng >= ngưỡng (SPEC 8.2 / 17.2). Ghi log, không thông báo. */
 export async function runColdDataSweep(db: AnyDb): Promise<JobResult> {
   const stale = await db
     .select({ id: leads.id, stage: leads.stage, outcome: leads.outcome })
@@ -169,7 +169,7 @@ export async function runColdDataSweep(db: AnyDb): Promise<JobResult> {
         isNull(leads.deletedAt),
         eq(leads.isCold, false),
         eq(leads.outcome, "OPEN"),
-        sql`${leads.silenceCount} >= 6`,
+        sql`${leads.silenceCount} >= ${COLD_SILENCE_THRESHOLD}`,
       ),
     );
 
@@ -190,7 +190,7 @@ export async function runColdDataSweep(db: AnyDb): Promise<JobResult> {
       fromOutcome: l.outcome,
       toOutcome: "LOST",
       changedBy: null,
-      reason: "Cron 00:30 — Cold Data (silence_count >= 6)",
+      reason: `Cron 00:30 — Cold Data (im lặng >= ${COLD_SILENCE_THRESHOLD} phiên)`,
     });
     await writeAudit(db, {
       actorId: null,

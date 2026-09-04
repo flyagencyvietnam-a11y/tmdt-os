@@ -37,13 +37,15 @@ const OUTCOME_LABELS: Record<string, string> = {
   LOST: "Không chốt",
   DISQUALIFIED: "Không nhu cầu",
 };
-const ESC_OFFSET: Record<number, number | null> = { 1: 0, 2: 1, 3: 3, 4: 7, 5: 30 };
+// Đồng bộ với src/lib/services/escalate.ts (5 phiên liên tiếp là Cold).
+const COLD_AT = 5;
+const WARM_OFFSET = 3; // khách phản hồi -> hẹn theo dõi lại sau 3 ngày
+const ESC_OFFSET: Record<number, number | null> = { 1: 1, 2: 3, 3: 7, 4: 30 };
 const ESC_HINT: Record<number, string> = {
-  1: "Nhắc lại ngay trong ngày.",
-  2: "Nhắc lại vào ngày hôm sau.",
-  3: "Nhắc lại kèm chương trình ưu đãi.",
-  4: "Nhắn hỏi thăm, không bán.",
-  5: "Thăm dò lại nhu cầu.",
+  1: "Nhắc lại vào ngày hôm sau.",
+  2: "Nhắc lại kèm chương trình ưu đãi.",
+  3: "Nhắn hỏi thăm, không bán.",
+  4: "Thăm dò lại nhu cầu — nhịp cuối trước khi chuyển Cold.",
 };
 const CHANNELS = ["CALL", "ZALO", "MESSENGER", "EMAIL", "SMS", "MEET"];
 const RESULTS = [
@@ -297,9 +299,9 @@ function CareForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
 
   // Ngày LH lại tự điền theo bảng escalate (SPEC 8.2)
   const projectedSilence = result === "NO_RESPONSE" ? lead.silenceCount + 1 : 0;
-  const willCold = projectedSilence >= 6;
+  const willCold = projectedSilence >= COLD_AT;
   const autoOffset =
-    result === "NO_RESPONSE" ? ESC_OFFSET[projectedSilence] ?? null : 0;
+    result === "NO_RESPONSE" ? ESC_OFFSET[projectedSilence] ?? null : WARM_OFFSET;
   const suggested =
     autoOffset == null
       ? null
@@ -321,8 +323,10 @@ function CareForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
         content: content || null,
         stageAfter: stageAfter === "__keep" ? undefined : (stageAfter as never),
         stageChangeReason: stageReason || undefined,
+        // Chỉ gửi override khi EC thực sự sửa; nếu không, để server tự tính (tránh
+        // lệch do client không đẩy ngày nghỉ / lễ).
         nextContactDateOverride:
-          !willCold && suggested != null ? nextDate || null : undefined,
+          !willCold && nextDateEdit != null ? nextDate || null : undefined,
         overrideReason: overrideReason || undefined,
       });
       if (!res.ok) {
@@ -813,5 +817,7 @@ function EmsSection({
 function addDaysLocal(dayStr: string, days: number): string {
   const d = new Date(`${dayStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
+  // Xem trước: đẩy khỏi Chủ nhật (ngày lễ do server xử lý khi lưu).
+  while (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }

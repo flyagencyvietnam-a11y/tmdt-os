@@ -73,6 +73,14 @@ export async function createLead(
       "V07",
     );
   }
+  // V01 — lead đã có người phụ trách & không còn ở 'Mới' thì bắt buộc có Ngày LH lại
+  // ngay từ lúc tạo (SPEC 8.4). Không áp cho lead 'Mới' (chưa ai nhận việc chăm sóc).
+  if (stage !== "NEW" && input.assignedTo && !input.nextContactDate) {
+    throw new ServiceError(
+      "Lead đã giao và không ở giai đoạn 'Mới' thì bắt buộc có Ngày LH lại (V01).",
+      "V01",
+    );
+  }
 
   const receivedAt = input.receivedAt ?? new Date();
   const code = await nextLeadCode(db, receivedAt);
@@ -405,20 +413,27 @@ export async function updateLead(
     changes.campaign_id = { from: before.campaignId, to: patch.campaignId };
   }
 
-  // ---- V01: OPEN + đã có interaction -> phải có next_contact_date ----
+  // ---- V01: OPEN + (đã giao & khác 'Mới') HOẶC đã có interaction -> phải có next_contact_date ----
   const finalOutcome = curOutcome;
   const finalNext =
     set.nextContactDate !== undefined
       ? set.nextContactDate
       : before.nextContactDate;
   if (finalOutcome === "OPEN" && !finalNext) {
-    const [ic] = await db
-      .select({ c: sql<number>`count(*)` })
-      .from(leadInteractions)
-      .where(eq(leadInteractions.leadId, id));
-    if (Number(ic?.c ?? 0) > 0) {
+    const finalStage = (set.stage as Stage) ?? (before.stage as Stage);
+    const finalAssigned =
+      set.assignedTo !== undefined ? set.assignedTo : before.assignedTo;
+    let mustHaveNext = finalStage !== "NEW" && !!finalAssigned;
+    if (!mustHaveNext) {
+      const [ic] = await db
+        .select({ c: sql<number>`count(*)` })
+        .from(leadInteractions)
+        .where(eq(leadInteractions.leadId, id));
+      mustHaveNext = Number(ic?.c ?? 0) > 0;
+    }
+    if (mustHaveNext) {
       throw new ServiceError(
-        "Lead đang theo và đã có tương tác thì bắt buộc có Ngày LH lại (V01).",
+        "Lead đang theo (đã giao / đã có tương tác) thì bắt buộc có Ngày LH lại (V01).",
         "V01",
       );
     }

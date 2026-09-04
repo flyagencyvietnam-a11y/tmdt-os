@@ -86,6 +86,22 @@ describe("createLead", () => {
     ).rejects.toThrow(/V07/);
   });
 
+  it("V01: stage != NEW + đã giao mà thiếu Ngày LH lại -> chặn", async () => {
+    await expect(
+      createLead(
+        db(),
+        {
+          fullName: "A1",
+          productId: PROD,
+          source: "FB",
+          stage: "MQL",
+          assignedTo: ACTOR.id,
+        },
+        ACTOR,
+      ),
+    ).rejects.toThrow(/V01/);
+  });
+
   it("tạo lead MQL -> mql_at được set, code dạng L-YYMM-NNNN", async () => {
     const { code, id } = await createLead(
       db(),
@@ -96,6 +112,7 @@ describe("createLead", () => {
         campaignId: CAMP,
         stage: "MQL",
         assignedTo: ACTOR.id,
+        nextContactDate: "2026-08-18",
         receivedAt: new Date("2026-08-15T03:00:00Z"),
       },
       ACTOR,
@@ -112,7 +129,7 @@ describe("updateLead — máy trạng thái", () => {
   it("T01: MQL -> hạ về CONSULTING giữ max_stage=MQL và mql_at", async () => {
     const { id } = await createLead(
       db(),
-      { fullName: "C", productId: PROD, source: "FB", stage: "MQL", assignedTo: ACTOR.id },
+      { fullName: "C", productId: PROD, source: "FB", stage: "MQL", assignedTo: ACTOR.id, nextContactDate: "2026-08-20" },
       ACTOR,
     );
     const [m1] = await db().select().from(leads).where(eq(leads.id, id));
@@ -126,7 +143,7 @@ describe("updateLead — máy trạng thái", () => {
   it("hạ giai đoạn không kèm lý do -> chặn", async () => {
     const { id } = await createLead(
       db(),
-      { fullName: "D", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id },
+      { fullName: "D", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id, nextContactDate: "2026-08-20" },
       ACTOR,
     );
     await expect(
@@ -165,7 +182,7 @@ describe("updateLead — máy trạng thái", () => {
   it("V04: không cho đặt stage/outcome = WON trực tiếp", async () => {
     const { id } = await createLead(
       db(),
-      { fullName: "F", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id },
+      { fullName: "F", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id, nextContactDate: "2026-08-20" },
       ACTOR,
     );
     await expect(updateLead(db(), id, { stage: "WON" }, ACTOR)).rejects.toThrow(/V04/);
@@ -180,18 +197,20 @@ describe("escalate (SPEC 8.2)", () => {
     expect(nextSilenceCount(3, "REFUSED")).toBe(3);
   });
 
-  it("suggestNextContactDate: 1->T+0, 2->T+1, 3->T+3; >=6 -> null", async () => {
-    expect(await suggestNextContactDate(db(), 1, "2026-08-10")).toBe("2026-08-10");
-    expect(await suggestNextContactDate(db(), 2, "2026-08-10")).toBe("2026-08-11");
-    expect(await suggestNextContactDate(db(), 3, "2026-08-10")).toBe("2026-08-13");
-    expect(await suggestNextContactDate(db(), 6, "2026-08-10")).toBeNull();
+  it("suggestNextContactDate: 0->T+3, 1->T+1, 2->T+3, 3->T+7; >=5 -> null", async () => {
+    expect(await suggestNextContactDate(db(), 0, "2026-08-10")).toBe("2026-08-13");
+    expect(await suggestNextContactDate(db(), 1, "2026-08-10")).toBe("2026-08-11");
+    expect(await suggestNextContactDate(db(), 2, "2026-08-10")).toBe("2026-08-13");
+    expect(await suggestNextContactDate(db(), 3, "2026-08-10")).toBe("2026-08-17");
+    expect(await suggestNextContactDate(db(), 4, "2026-08-10")).toBe("2026-09-09");
+    expect(await suggestNextContactDate(db(), 5, "2026-08-10")).toBeNull();
   });
 
-  it("đẩy khỏi Chủ nhật: T+0 của 2026-08-30 (CN) -> 2026-08-31", async () => {
-    expect(await suggestNextContactDate(db(), 1, "2026-08-30")).toBe("2026-08-31");
+  it("đẩy khỏi Chủ nhật: silence=2 (T+3) của 2026-08-27 -> qua CN 30/8 -> 2026-08-31", async () => {
+    expect(await suggestNextContactDate(db(), 2, "2026-08-27")).toBe("2026-08-31");
   });
 
-  it("recordInteraction NO_RESPONSE x6 -> Cold Data, outcome LOST", async () => {
+  it("recordInteraction NO_RESPONSE x5 -> Cold Data, outcome LOST", async () => {
     const { id } = await createLead(
       db(),
       {
@@ -205,7 +224,7 @@ describe("escalate (SPEC 8.2)", () => {
       ACTOR,
     );
     let res;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
       res = await recordInteraction(
         db(),
         { leadId: id, channel: "CALL", direction: "OUTBOUND", result: "NO_RESPONSE" },
@@ -216,7 +235,39 @@ describe("escalate (SPEC 8.2)", () => {
     const [row] = await db().select().from(leads).where(eq(leads.id, id));
     expect(row.isCold).toBe(true);
     expect(row.outcome).toBe("LOST");
-    expect(row.silenceCount).toBe(6);
+    expect(row.silenceCount).toBe(5);
+  });
+
+  it("lead đã Cold, khách phản hồi lại -> gỡ Cold, outcome về OPEN, có Ngày LH lại", async () => {
+    const { id } = await createLead(
+      db(),
+      {
+        fullName: "G2",
+        productId: PROD,
+        source: "FB",
+        stage: "MQL",
+        assignedTo: ACTOR.id,
+        nextContactDate: "2026-08-10",
+      },
+      ACTOR,
+    );
+    for (let i = 0; i < 5; i++)
+      await recordInteraction(
+        db(),
+        { leadId: id, channel: "CALL", direction: "OUTBOUND", result: "NO_RESPONSE" },
+        ACTOR,
+      );
+    const res = await recordInteraction(
+      db(),
+      { leadId: id, channel: "ZALO", direction: "INBOUND", result: "RESPONDED" },
+      ACTOR,
+    );
+    expect(res.becameCold).toBe(false);
+    const [row] = await db().select().from(leads).where(eq(leads.id, id));
+    expect(row.isCold).toBe(false);
+    expect(row.outcome).toBe("OPEN");
+    expect(row.silenceCount).toBe(0);
+    expect(row.nextContactDate).not.toBeNull();
   });
 
   it("sửa Ngày LH lại đề xuất mà thiếu lý do -> chặn", async () => {
@@ -245,7 +296,7 @@ describe("createEnrollment", () => {
   it("enrollment đầu tiên -> lead WON + won_at = contract_date", async () => {
     const { id } = await createLead(
       db(),
-      { fullName: "I", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id },
+      { fullName: "I", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id, nextContactDate: "2026-08-20" },
       ACTOR,
     );
     const r = await createEnrollment(
@@ -263,7 +314,7 @@ describe("createEnrollment", () => {
   it("V11: collected > net -> chặn", async () => {
     const { id } = await createLead(
       db(),
-      { fullName: "J", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id },
+      { fullName: "J", productId: PROD, source: "FB", stage: "SQL", assignedTo: ACTOR.id, nextContactDate: "2026-08-20" },
       ACTOR,
     );
     await expect(

@@ -64,6 +64,11 @@ export async function recordInteraction(
   const newSilence = nextSilenceCount(lead.silenceCount, input.result);
   const becameCold = newSilence >= COLD_SILENCE_THRESHOLD;
 
+  // Khách phản hồi lại một lead đang Cold / LOST -> gỡ Cold, mở lại theo dõi (SPEC 8.2).
+  const warmBack =
+    (lead.isCold || lead.outcome === "LOST") &&
+    (input.result === "RESPONDED" || input.result === "RESCHEDULED");
+
   const suggested = becameCold
     ? null
     : await suggestNextContactDate(db, newSilence, today);
@@ -144,6 +149,13 @@ export async function recordInteraction(
     set.nextContactDate = chosenNext;
     if (chosenNext !== lead.nextContactDate)
       audit.next_contact_date = { from: lead.nextContactDate, to: chosenNext };
+    if (warmBack) {
+      set.isCold = false;
+      set.outcome = "OPEN";
+      set.lostReason = null;
+      audit.is_cold = { from: lead.isCold, to: false };
+      audit.outcome = { from: lead.outcome, to: "OPEN" };
+    }
   }
 
   await db.update(leads).set(set).where(eq(leads.id, lead.id));
@@ -157,8 +169,10 @@ export async function recordInteraction(
       toOutcome: set.outcome ?? lead.outcome,
       changedBy: becameCold ? null : actor.id,
       reason: becameCold
-        ? "Tự chuyển Cold Data sau 5 nhịp chăm sóc không phản hồi"
-        : (input.stageChangeReason ?? null),
+        ? "Tự chuyển Cold Data sau 5 phiên chăm sóc liên tiếp không phản hồi"
+        : warmBack
+          ? "Khách phản hồi lại — gỡ Cold, mở lại theo dõi (SPEC 8.2)"
+          : (input.stageChangeReason ?? null),
     });
   }
 

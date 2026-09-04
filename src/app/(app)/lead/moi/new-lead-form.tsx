@@ -52,6 +52,7 @@ export function NewLeadForm({
     campaignId: "",
     stage: "NEW",
     assignedTo: currentUserId,
+    nextContactDate: "",
     phone: "",
     email: "",
     fbProfile: "",
@@ -85,6 +86,7 @@ export function NewLeadForm({
         campaignId: showCampaign && f.campaignId ? f.campaignId : null,
         stage: f.stage as never,
         assignedTo: f.stage === "NEW" && !f.assignedTo ? null : f.assignedTo,
+        nextContactDate: f.stage !== "NEW" ? f.nextContactDate || null : null,
         phone: f.phone || null,
         email: f.email || null,
         fbProfile: f.fbProfile || null,
@@ -104,6 +106,7 @@ export function NewLeadForm({
           fbProfile: "",
           consultNote: "",
           stage: "NEW",
+          nextContactDate: "",
         }));
         setDups(null);
       } else {
@@ -208,6 +211,17 @@ export function NewLeadForm({
           />
         </Field>
       </div>
+
+      {f.stage !== "NEW" && (
+        <Field label="Ngày LH lại * (bắt buộc khi đã giao — V01)">
+          <Input
+            type="date"
+            value={f.nextContactDate}
+            onChange={(e) => set("nextContactDate", e.target.value)}
+            required
+          />
+        </Field>
+      )}
 
       <button
         type="button"
