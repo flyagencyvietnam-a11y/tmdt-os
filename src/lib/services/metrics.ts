@@ -1025,6 +1025,7 @@ export async function evaluateCampaignAlerts(
     new Date(Date.parse(`${today}T00:00:00${VN_TZ_OFFSET}`) -
       (ROLLING_WINDOW_DAYS - 1) * 86_400_000),
   );
+  const missFrom = addDaysStr(today, -2); // 3 ngày gần nhất
 
   const activeCampaigns = await db
     .select({
@@ -1038,52 +1039,78 @@ export async function evaluateCampaignAlerts(
     .from(campaigns)
     .innerJoin(products, eq(products.id, campaigns.productId))
     .where(and(eq(campaigns.status, "ON"), isNull(campaigns.deletedAt)));
+  if (activeCampaigns.length === 0) return [];
+  const ids = activeCampaigns.map((c) => c.id);
+
+  // 4 truy vấn gộp thay vì (số campaign × ~10) round-trip tuần tự.
+  const [spendLifeRows, mqlLifeRows, presentRows, rollingMap] = await Promise.all([
+    db
+      .select({
+        cid: campaignDailyMetrics.campaignId,
+        spend: sql<number>`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
+      })
+      .from(campaignDailyMetrics)
+      .innerJoin(campaigns, eq(campaigns.id, campaignDailyMetrics.campaignId))
+      .where(
+        and(
+          inArray(campaignDailyMetrics.campaignId, ids),
+          sql`${campaignDailyMetrics.metricDate} >= ${campaigns.startedOn}`,
+          lte(campaignDailyMetrics.metricDate, today),
+        ),
+      )
+      .groupBy(campaignDailyMetrics.campaignId),
+    db
+      .select({ cid: leads.campaignId, c: sql<number>`count(*)` })
+      .from(leads)
+      .where(
+        and(
+          inArray(leads.campaignId, ids),
+          isNull(leads.deletedAt),
+          isNull(leads.duplicateOf),
+          gte(leads.maxStage, "MQL"),
+          isNotNull(leads.mqlAt),
+          sql`${leads.mqlAt} - ${leads.receivedAt} <= interval '${sql.raw(
+            String(ATTRIBUTION_WINDOW_DAYS),
+          )} days'`,
+        ),
+      )
+      .groupBy(leads.campaignId),
+    db
+      .select({
+        cid: campaignDailyMetrics.campaignId,
+        present: sql<number>`count(*)`,
+      })
+      .from(campaignDailyMetrics)
+      .where(
+        and(
+          inArray(campaignDailyMetrics.campaignId, ids),
+          gte(campaignDailyMetrics.metricDate, missFrom),
+          lte(campaignDailyMetrics.metricDate, today),
+        ),
+      )
+      .groupBy(campaignDailyMetrics.campaignId),
+    getBaseMetricsGrouped(
+      db,
+      { from: rollingFrom, to: today, campaignAttribution: true },
+      "campaign",
+    ),
+  ]);
+
+  const spendById = new Map(spendLifeRows.map((r) => [r.cid, n(r.spend)]));
+  const mqlById = new Map(mqlLifeRows.map((r) => [r.cid, n(r.c)]));
+  const presentById = new Map(presentRows.map((r) => [r.cid, n(r.present)]));
 
   const alerts: CampaignAlert[] = [];
 
   for (const c of activeCampaigns) {
     const target = n(c.targetCpmql) || 600000;
     const kill = n(c.killThreshold) || 900000;
-
-    const [lifeRow] = await db
-      .select({ spend: sql`coalesce(sum(${campaignDailyMetrics.spend}),0)` })
-      .from(campaignDailyMetrics)
-      .where(
-        and(
-          eq(campaignDailyMetrics.campaignId, c.id),
-          gte(campaignDailyMetrics.metricDate, c.startedOn),
-          lte(campaignDailyMetrics.metricDate, today),
-        ),
-      );
-    const spendLifetime = n(lifeRow?.spend);
-
-    const [mqlLifeRow] = await db
-      .select({ c: sql`count(*)` })
-      .from(leads)
-      .where(
-        and(
-          eq(leads.campaignId, c.id),
-          isNull(leads.deletedAt),
-          isNull(leads.duplicateOf),
-          gte(leads.maxStage, "MQL"),
-          sql`${leads.mqlAt} is not null`,
-          sql`${leads.mqlAt} - ${leads.receivedAt} <= interval '${sql.raw(
-            String(ATTRIBUTION_WINDOW_DAYS),
-          )} days'`,
-        ),
-      );
-    const mqlLifetime = n(mqlLifeRow?.c);
-
-    const rolling = await getBaseMetrics(db, {
-      from: rollingFrom,
-      to: today,
-      campaignIds: [c.id],
-      campaignAttribution: true,
-    });
-    const cpmqlRolling = safeDiv(rolling.spend, rolling.mql);
-
-    // R4 — thiếu metric 3 ngày liên tiếp gần nhất
-    const missing3 = await hasMissingMetricStreak(db, c.id, today, 3);
+    const spendLifetime = spendById.get(c.id) ?? 0;
+    const mqlLifetime = mqlById.get(c.id) ?? 0;
+    const rb = rollingMap.get(c.id);
+    const rolling = { mql: rb?.mql ?? 0 };
+    const cpmqlRolling = rb ? safeDiv(rb.spend, rb.mql) : null;
+    const missing3 = (presentById.get(c.id) ?? 0) === 0;
 
     const push = (
       rule: CampaignAlertRule,
@@ -1159,25 +1186,6 @@ export async function evaluateCampaignAlerts(
   return alerts.sort((a, b) => order[a.severity] - order[b.severity]);
 }
 
-async function hasMissingMetricStreak(
-  db: AnyDb,
-  campaignId: string,
-  today: string,
-  days: number,
-): Promise<boolean> {
-  const fromDay = addDaysStr(today, -(days - 1));
-  const rows = await db.execute<{ present: number }>(sql`
-    with d as (
-      select generate_series(${fromDay}::date, ${today}::date, interval '1 day')::date as day
-    )
-    select count(m.id)::int as present
-    from d
-    left join campaign_daily_metrics m
-      on m.campaign_id = ${campaignId} and m.metric_date = d.day
-  `);
-  const r = normalizeExecRows<{ present: number }>(rows)[0];
-  return n(r?.present) === 0;
-}
 
 /** postgres-js trả mảng, pglite trả {rows}. Chuẩn hóa về mảng. */
 function normalizeExecRows<T>(res: unknown): T[] {

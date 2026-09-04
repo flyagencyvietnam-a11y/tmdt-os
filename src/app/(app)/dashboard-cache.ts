@@ -35,6 +35,23 @@ import {
  */
 const DASHBOARD_TTL = 60;
 
+/**
+ * "Cần hành động" và "Cảnh báo campaign" KHÔNG phụ thuộc bộ lọc thời gian (đều tính
+ * theo trạng thái hiện tại / rolling 14 ngày). Tách ra cache riêng, không khóa theo
+ * kỳ — đổi bộ lọc trên Dashboard hay /ads đều không phải tính lại.
+ */
+export const getActionCountsCached = unstable_cache(
+  async () => getActionCounts(db),
+  ["dashboard-action-counts-v1"],
+  { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
+);
+
+export const getCampaignAlertsCached = unstable_cache(
+  async () => evaluateCampaignAlerts(db),
+  ["campaign-alerts-v1"],
+  { revalidate: 120, tags: ["dashboard"] },
+);
+
 function toFilter(
   from: string,
   to: string,
@@ -90,37 +107,40 @@ export const getKpiFollowCached = unstable_cache(
 );
 
 /**
- * Trang "Theo dõi Ads" (Gói L + Q) — nhiều chiều: tổng 14 ngày (+ so kỳ trước),
- * nhịp ngân sách, chuỗi theo ngày, theo kênh, theo sản phẩm, cảnh báo, ma trận tuần.
+ * Trang "Theo dõi Ads" — tách 3 cache để đổi bộ lọc không tính lại phần "hôm nay":
+ *  - getAdsTodayCached: nhập-liệu-hôm-nay + nhịp ngân sách (không phụ thuộc kỳ)
+ *  - getCampaignAlertsCached: cảnh báo R1–R5 (rolling 14 ngày, không phụ thuộc kỳ)
+ *  - getAdsPeriodCached(from,to): thẻ tổng + so kỳ trước, chuỗi ngày, theo kênh /
+ *    sản phẩm, ma trận 8 tuần đến hết kỳ — chỉ phần này khóa theo (from,to).
  */
-export const getAdsMonitorCached = unstable_cache(
+export const getAdsTodayCached = unstable_cache(
+  async () => {
+    const [entry, pacing] = await Promise.all([
+      adsEntryStatusToday(db),
+      adsBudgetPacing(db),
+    ]);
+    return { entry, pacing };
+  },
+  ["ads-today-v1"],
+  { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
+);
+
+export const getAdsPeriodCached = unstable_cache(
   async (from: string, to: string) => {
     const f: MetricsFilter = { from, to };
     const prev = comparePeriod(from, to, "prev"); // kỳ liền trước cùng độ dài
 
-    const [
-      entry,
-      alerts,
-      campaignWeeks,
-      base,
-      basePrev,
-      pacing,
-      daily,
-      byChannel,
-      byProduct,
-    ] = await Promise.all([
-      adsEntryStatusToday(db),
-      evaluateCampaignAlerts(db),
-      campaignWeeklyPerf(db, recentReportWeekStarts(8, to)),
-      getBaseMetrics(db, f),
-      prev
-        ? getBaseMetrics(db, { from: prev.from, to: prev.to })
-        : Promise.resolve(null),
-      adsBudgetPacing(db),
-      adsDailySeries(db, { from, to }),
-      adsByChannel(db, f),
-      breakdownByProduct(db, f),
-    ]);
+    const [campaignWeeks, base, basePrev, daily, byChannel, byProduct] =
+      await Promise.all([
+        campaignWeeklyPerf(db, recentReportWeekStarts(8, to)),
+        getBaseMetrics(db, f),
+        prev
+          ? getBaseMetrics(db, { from: prev.from, to: prev.to })
+          : Promise.resolve(null),
+        adsDailySeries(db, { from, to }),
+        adsByChannel(db, f),
+        breakdownByProduct(db, f),
+      ]);
 
     const m = { ...base, ...deriveMetrics(base) };
     const mPrev = basePrev ? { ...basePrev, ...deriveMetrics(basePrev) } : null;
@@ -135,18 +155,9 @@ export const getAdsMonitorCached = unstable_cache(
       roas: { v: m.roas, d: delta(m.roas ?? 0, mPrev?.roas ?? undefined) },
     };
 
-    return {
-      entry,
-      alerts,
-      campaignWeeks,
-      tiles,
-      pacing,
-      daily,
-      byChannel,
-      byProduct: byProduct.rows,
-    };
+    return { tiles, campaignWeeks, daily, byChannel, byProduct: byProduct.rows };
   },
-  ["ads-monitor-v3"],
+  ["ads-period-v1"],
   { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
 );
 
@@ -161,8 +172,8 @@ export const getHealthBundleCached = unstable_cache(
     const filter = toFilter(from, to, productCsv, channelCsv);
     const [health, actions, alerts] = await Promise.all([
       getHealth(db, filter, cmpMode),
-      getActionCounts(db),
-      evaluateCampaignAlerts(db),
+      getActionCountsCached(),
+      getCampaignAlertsCached(),
     ]);
     return { health, actions, alerts };
   },

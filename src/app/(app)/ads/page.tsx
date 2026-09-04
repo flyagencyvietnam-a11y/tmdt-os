@@ -1,10 +1,15 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { requireUser } from "@/lib/auth/session";
 import { fmtInt, fmtPct, fmtRatioX, fmtVnd } from "@/lib/format";
 import { resolveRange, todayVnDayStr } from "@/lib/time";
-import { getAdsMonitorCached } from "../dashboard-cache";
+import {
+  getAdsPeriodCached,
+  getAdsTodayCached,
+  getCampaignAlertsCached,
+} from "../dashboard-cache";
 import { AdsDailyChart } from "./ads-daily-chart";
 import { AdsFilters } from "./ads-filters";
 
@@ -31,15 +36,6 @@ export default async function Page({
   const today = todayVnDayStr();
   const sp = await searchParams;
   const { from, to, label } = resolveRange(sp.range ?? "this_month");
-  const { entry, alerts, campaignWeeks, tiles, pacing, daily, byChannel, byProduct } =
-    await getAdsMonitorCached(from, to);
-
-  const kill = alerts.filter((a) => a.rule === "R1" || a.rule === "R2");
-  const warn = alerts.filter((a) => a.rule === "R3" || a.rule === "R4");
-  const good = alerts.filter((a) => a.rule === "R5");
-
-  const pacePct =
-    pacing.dailyBudgetOn > 0 ? pacing.spendToday / pacing.dailyBudgetOn : null;
 
   return (
     <div className="space-y-5">
@@ -60,16 +56,47 @@ export default async function Page({
 
       <AdsFilters />
 
-      {/* Thẻ tổng kỳ + nhịp ngân sách */}
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <AdTile name="Spend" value={fmtVnd(tiles.spend.v)} delta={tiles.spend.d} />
-        <AdTile name="Tin nhắn" value={fmtInt(tiles.messages.v)} delta={tiles.messages.d} />
-        <AdTile name="MQL" value={fmtInt(tiles.mql.v)} delta={tiles.mql.d} />
-        <AdTile name="CPMQL" value={fmtVnd(tiles.cpmql.v)} delta={tiles.cpmql.d} lowerBetter />
-        <AdTile name="CAC" value={fmtVnd(tiles.cac.v)} delta={tiles.cac.d} lowerBetter />
-        <AdTile name="ROAS" value={fmtRatioX(tiles.roas.v)} delta={tiles.roas.d} />
-      </section>
+      {/* "Hôm nay" — không phụ thuộc bộ lọc, thường lấy từ cache */}
+      <Suspense key="today" fallback={<Skel rows={2} label="Đang tải tình trạng hôm nay…" />}>
+        <TodayBlock today={today} />
+      </Suspense>
 
+      {/* Số theo kỳ — chảy vào sau khi tính xong */}
+      <Suspense
+        key={`p-${from}-${to}`}
+        fallback={<Skel rows={6} label="Đang tính số theo kỳ…" />}
+      >
+        <PeriodBlock from={from} to={to} />
+      </Suspense>
+    </div>
+  );
+}
+
+function Skel({ rows, label }: { rows: number; label: string }) {
+  return (
+    <div className="space-y-2 rounded-lg border p-4">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-6 animate-pulse rounded bg-muted/60" />
+      ))}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ Hôm nay
+async function TodayBlock({ today }: { today: string }) {
+  const [{ entry, pacing }, alerts] = await Promise.all([
+    getAdsTodayCached(),
+    getCampaignAlertsCached(),
+  ]);
+  const pacePct =
+    pacing.dailyBudgetOn > 0 ? pacing.spendToday / pacing.dailyBudgetOn : null;
+  const kill = alerts.filter((a) => a.rule === "R1" || a.rule === "R2");
+  const warn = alerts.filter((a) => a.rule === "R3" || a.rule === "R4");
+  const good = alerts.filter((a) => a.rule === "R5");
+
+  return (
+    <div className="space-y-5">
       <section className="grid grid-cols-2 gap-2 rounded-lg border p-3 sm:grid-cols-4">
         <Mini label="Ngân sách ngày (ON)" value={fmtVnd(pacing.dailyBudgetOn)} />
         <Mini
@@ -85,7 +112,6 @@ export default async function Page({
         />
       </section>
 
-      {/* Tình trạng nhập liệu hôm nay */}
       <section className="rounded-lg border p-4">
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
           Nhập liệu hôm nay ({dm(today)})
@@ -120,7 +146,6 @@ export default async function Page({
         )}
       </section>
 
-      {/* Cảnh báo R1–R5 */}
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
           Cảnh báo campaign
@@ -153,8 +178,7 @@ export default async function Page({
                     {g.tone !== "ok" && (
                       <AlertTriangle
                         className={
-                          "h-4 w-4 " +
-                          (g.tone === "crit" ? "text-crit" : "text-warn")
+                          "h-4 w-4 " + (g.tone === "crit" ? "text-crit" : "text-warn")
                         }
                       />
                     )}
@@ -176,8 +200,26 @@ export default async function Page({
           </div>
         )}
       </section>
+    </div>
+  );
+}
 
-      {/* Xu hướng 30 ngày */}
+// ------------------------------------------------------------------ Theo kỳ
+async function PeriodBlock({ from, to }: { from: string; to: string }) {
+  const { tiles, campaignWeeks, daily, byChannel, byProduct } =
+    await getAdsPeriodCached(from, to);
+
+  return (
+    <div className="space-y-5">
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <AdTile name="Spend" value={fmtVnd(tiles.spend.v)} delta={tiles.spend.d} />
+        <AdTile name="Tin nhắn" value={fmtInt(tiles.messages.v)} delta={tiles.messages.d} />
+        <AdTile name="MQL" value={fmtInt(tiles.mql.v)} delta={tiles.mql.d} />
+        <AdTile name="CPMQL" value={fmtVnd(tiles.cpmql.v)} delta={tiles.cpmql.d} lowerBetter />
+        <AdTile name="CAC" value={fmtVnd(tiles.cac.v)} delta={tiles.cac.d} lowerBetter />
+        <AdTile name="ROAS" value={fmtRatioX(tiles.roas.v)} delta={tiles.roas.d} />
+      </section>
+
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
           Xu hướng theo ngày — Spend / Tin nhắn / MQL / CPMQL
@@ -187,7 +229,6 @@ export default async function Page({
         </div>
       </section>
 
-      {/* Theo kênh + theo sản phẩm */}
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-left text-sm">
@@ -304,7 +345,6 @@ export default async function Page({
         </div>
       </section>
 
-      {/* Hiệu suất campaign theo tuần */}
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
           Hiệu suất theo tuần — CPMQL (8 tuần, tô màu theo target)
