@@ -1,15 +1,22 @@
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { requireUser } from "@/lib/auth/session";
-import { fmtInt, fmtVnd } from "@/lib/format";
+import { fmtInt, fmtPct, fmtRatioX, fmtVnd } from "@/lib/format";
 import { todayVnDayStr } from "@/lib/time";
 import { getAdsMonitorCached } from "../dashboard-cache";
+import { AdsDailyChart } from "./ads-daily-chart";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Theo dõi Ads — VMG TMĐT OS" };
 
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const CHANNEL_LABEL: Record<string, string> = {
+  FB: "Facebook",
+  GOOGLE: "Google",
+  TIKTOK: "TikTok",
+  KHAC: "Khác",
+};
 
 export default async function Page() {
   const user = await requireUser();
@@ -17,11 +24,15 @@ export default async function Page() {
     return <p className="text-sm">Không có quyền xem trang này.</p>;
 
   const today = todayVnDayStr();
-  const { entry, alerts, campaignWeeks } = await getAdsMonitorCached();
+  const { entry, alerts, campaignWeeks, tiles, pacing, daily, byChannel, byProduct } =
+    await getAdsMonitorCached();
 
   const kill = alerts.filter((a) => a.rule === "R1" || a.rule === "R2");
   const warn = alerts.filter((a) => a.rule === "R3" || a.rule === "R4");
   const good = alerts.filter((a) => a.rule === "R5");
+
+  const pacePct =
+    pacing.dailyBudgetOn > 0 ? pacing.spendToday / pacing.dailyBudgetOn : null;
 
   return (
     <div className="space-y-5">
@@ -29,7 +40,8 @@ export default async function Page() {
         <div>
           <h1 className="text-xl font-semibold">Theo dõi Ads</h1>
           <p className="text-sm text-muted-foreground">
-            Tình trạng nhập liệu, cảnh báo campaign, hiệu suất theo tuần.
+            Tổng 14 ngày, nhịp ngân sách, xu hướng theo ngày, theo kênh / sản phẩm,
+            cảnh báo, hiệu suất theo tuần.
           </p>
         </div>
         <Link
@@ -39,6 +51,31 @@ export default async function Page() {
           Nhập số liệu hôm nay
         </Link>
       </div>
+
+      {/* Thẻ tổng 14 ngày + nhịp ngân sách */}
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <AdTile name="Spend 14n" value={fmtVnd(tiles.spend.v)} delta={tiles.spend.d} />
+        <AdTile name="Tin nhắn 14n" value={fmtInt(tiles.messages.v)} delta={tiles.messages.d} />
+        <AdTile name="MQL 14n" value={fmtInt(tiles.mql.v)} delta={tiles.mql.d} />
+        <AdTile name="CPMQL 14n" value={fmtVnd(tiles.cpmql.v)} delta={tiles.cpmql.d} lowerBetter />
+        <AdTile name="CAC 14n" value={fmtVnd(tiles.cac.v)} delta={tiles.cac.d} lowerBetter />
+        <AdTile name="ROAS 14n" value={fmtRatioX(tiles.roas.v)} delta={tiles.roas.d} />
+      </section>
+
+      <section className="grid grid-cols-2 gap-2 rounded-lg border p-3 sm:grid-cols-4">
+        <Mini label="Ngân sách ngày (ON)" value={fmtVnd(pacing.dailyBudgetOn)} />
+        <Mini
+          label="Spend hôm nay"
+          value={fmtVnd(pacing.spendToday)}
+          tone={pacePct != null && pacePct > 1.1 ? "crit" : undefined}
+        />
+        <Mini label="Spend TB 7 ngày" value={fmtVnd(pacing.spend7dAvg)} />
+        <Mini
+          label="Nhịp hôm nay / ngân sách"
+          value={fmtPct(pacePct)}
+          tone={pacePct != null && pacePct > 1.1 ? "crit" : undefined}
+        />
+      </section>
 
       {/* Tình trạng nhập liệu hôm nay */}
       <section className="rounded-lg border p-4">
@@ -132,6 +169,133 @@ export default async function Page() {
         )}
       </section>
 
+      {/* Xu hướng 30 ngày */}
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+          Xu hướng 30 ngày — Spend / Tin nhắn / MQL / CPMQL
+        </h2>
+        <div className="rounded-lg border p-4">
+          <AdsDailyChart data={daily} />
+        </div>
+      </section>
+
+      {/* Theo kênh + theo sản phẩm */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-left text-sm">
+            <caption className="px-3 py-2 text-left text-sm font-semibold">
+              Theo kênh · 30 ngày
+            </caption>
+            <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2">Kênh</th>
+                <th className="px-3 py-2 text-right">Spend</th>
+                <th className="px-3 py-2 text-right">% NS</th>
+                <th className="px-3 py-2 text-right">Tin nhắn</th>
+                <th className="px-3 py-2 text-right">MQL</th>
+                <th className="px-3 py-2 text-right">CPMQL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byChannel.map((c) => (
+                <tr key={c.channel} className="border-b">
+                  <td className="px-3 py-1.5 font-medium">
+                    {CHANNEL_LABEL[c.channel] ?? c.channel}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtVnd(c.spend)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                    {c.sharePct == null ? "–" : `${c.sharePct.toFixed(0)}%`}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtInt(c.messages)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtInt(c.mql)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {fmtVnd(c.cpmql)}
+                  </td>
+                </tr>
+              ))}
+              {byChannel.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                    Chưa có dữ liệu.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-left text-sm">
+            <caption className="px-3 py-2 text-left text-sm font-semibold">
+              Theo sản phẩm · 30 ngày
+            </caption>
+            <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2">Sản phẩm</th>
+                <th className="px-3 py-2 text-right">Spend</th>
+                <th className="px-3 py-2 text-right">MQL</th>
+                <th className="px-3 py-2 text-right">CPMQL</th>
+                <th className="px-3 py-2 text-right">% NS thực tế / phân bổ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byProduct.map((r) => {
+                const variance =
+                  r.budgetShareActualPct != null && r.budgetSharePlanPct != null
+                    ? r.budgetShareActualPct - r.budgetSharePlanPct
+                    : null;
+                return (
+                  <tr key={r.key} className="border-b">
+                    <td className="px-3 py-1.5 font-medium">
+                      {r.label.split(" — ")[0]}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {fmtVnd(r.metrics.spend)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {fmtInt(r.metrics.mql)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {fmtVnd(r.metrics.cpmql)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {r.budgetShareActualPct == null
+                        ? "–"
+                        : `${r.budgetShareActualPct.toFixed(0)}%`}
+                      {r.budgetSharePlanPct != null && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          / {r.budgetSharePlanPct.toFixed(0)}%
+                        </span>
+                      )}
+                      {variance != null && Math.abs(variance) > 10 && (
+                        <span className="ml-1 text-crit">
+                          (lệch {variance > 0 ? "+" : ""}
+                          {variance.toFixed(0)})
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {byProduct.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                    Chưa có dữ liệu.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {/* Hiệu suất campaign theo tuần */}
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
@@ -204,6 +368,69 @@ export default async function Page() {
           Ô trống = không có MQL trong tuần. Di chuột lên ô để xem spend / MQL.
         </p>
       </section>
+    </div>
+  );
+}
+
+function AdTile({
+  name,
+  value,
+  delta,
+  lowerBetter,
+}: {
+  name: string;
+  value: string;
+  delta: number | null;
+  lowerBetter?: boolean;
+}) {
+  const up = delta != null && delta > 0;
+  const good = delta == null ? null : lowerBetter ? !up : up;
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="text-xs text-muted-foreground">{name}</div>
+      <div className="mt-1 text-base font-semibold tabular-nums">{value}</div>
+      {delta != null && (
+        <div
+          className={
+            "flex items-center gap-0.5 text-xs " +
+            (good == null
+              ? "text-muted-foreground"
+              : good
+                ? "text-ok"
+                : "text-crit")
+          }
+        >
+          {up ? (
+            <ArrowUpRight className="h-3 w-3" />
+          ) : (
+            <ArrowDownRight className="h-3 w-3" />
+          )}
+          {Math.abs(delta) > 5 ? ">500%" : fmtPct(Math.abs(delta))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Mini({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "crit";
+}) {
+  return (
+    <div className="rounded-md border p-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div
+        className={
+          "text-sm font-semibold tabular-nums " + (tone === "crit" ? "text-crit" : "")
+        }
+      >
+        {value}
+      </div>
     </div>
   );
 }

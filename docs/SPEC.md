@@ -994,8 +994,19 @@ trước đây redirect sang `/campaign` — nay là trang thật, không còn r
   ưu / đang tốt.
 - **Hiệu suất theo tuần:** ma trận campaign × 8 tuần báo cáo VMG, ô = CPMQL tuần đó, tô
   màu theo `target_cpmql` của sản phẩm (≤ target xanh, ≤ 1,5× vàng, > 1,5× đỏ; ô trống
-  = 0 MQL). Helper `campaignWeeklyPerf` (2 truy vấn gộp) + `recentReportWeekStarts`
-  trong `dashboard.ts`; cache 60s (`getAdsMonitorCached`).
+  = 0 MQL).
+- **Tổng 14 ngày (Gói Q):** thẻ Spend / Tin nhắn / MQL / CPMQL / CAC / ROAS kèm so
+  với 14 ngày liền trước.
+- **Nhịp ngân sách ngày:** Σ `daily_budget` các campaign ON · spend hôm nay · spend
+  TB 7 ngày · % nhịp (spend hôm nay / ngân sách ngày).
+- **Xu hướng 30 ngày:** biểu đồ cột spend + đường tin nhắn / MQL / CPMQL theo ngày.
+- **Theo kênh (30 ngày):** FB / Google / TikTok / Khác — spend, % ngân sách, tin nhắn,
+  MQL, CPMQL.
+- **Theo sản phẩm (30 ngày):** spend, MQL, CPMQL, % NS thực tế vs phân bổ.
+
+Helper trong `dashboard.ts`: `campaignWeeklyPerf` / `recentReportWeekStarts` /
+`adsDailySeries` / `adsByChannel` / `adsBudgetPacing`. Toàn bộ gói dữ liệu qua
+`getAdsMonitorCached` (cache 60s, tag `dashboard`).
 
 ### 10.3. Màn hình chi tiết campaign
 

@@ -2,6 +2,9 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import {
+  adsBudgetPacing,
+  adsByChannel,
+  adsDailySeries,
   adsEntryStatusToday,
   breakdownByCampaign,
   breakdownByProduct,
@@ -14,8 +17,11 @@ import {
 } from "@/lib/services/dashboard";
 import {
   evaluateCampaignAlerts,
+  getBaseMetrics,
+  deriveMetrics,
   type MetricsFilter,
 } from "@/lib/services/metrics";
+import { addDaysStr, todayVnDayStr } from "@/lib/time";
 import {
   getBudgetProgressForPeriod,
   getKpiProgressForPeriod,
@@ -83,17 +89,66 @@ export const getKpiFollowCached = unstable_cache(
   { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
 );
 
-/** Trang "Theo dõi Ads" (Gói L) — tình trạng nhập liệu + cảnh báo + ma trận tuần. */
+/**
+ * Trang "Theo dõi Ads" (Gói L + Q) — nhiều chiều: tổng 14 ngày (+ so kỳ trước),
+ * nhịp ngân sách, chuỗi theo ngày, theo kênh, theo sản phẩm, cảnh báo, ma trận tuần.
+ */
 export const getAdsMonitorCached = unstable_cache(
   async () => {
-    const [entry, alerts, campaignWeeks] = await Promise.all([
+    const today = todayVnDayStr();
+    const f14: MetricsFilter = { from: addDaysStr(today, -13), to: today };
+    const fPrev: MetricsFilter = {
+      from: addDaysStr(today, -27),
+      to: addDaysStr(today, -14),
+    };
+    const f30 = { from: addDaysStr(today, -29), to: today };
+
+    const [
+      entry,
+      alerts,
+      campaignWeeks,
+      base14,
+      basePrev,
+      pacing,
+      daily,
+      byChannel,
+      byProduct,
+    ] = await Promise.all([
       adsEntryStatusToday(db),
       evaluateCampaignAlerts(db),
       campaignWeeklyPerf(db, recentReportWeekStarts(8)),
+      getBaseMetrics(db, f14),
+      getBaseMetrics(db, fPrev),
+      adsBudgetPacing(db),
+      adsDailySeries(db, { days: 30 }),
+      adsByChannel(db, f30),
+      breakdownByProduct(db, f30),
     ]);
-    return { entry, alerts, campaignWeeks };
+
+    const m14 = { ...base14, ...deriveMetrics(base14) };
+    const mPrev = { ...basePrev, ...deriveMetrics(basePrev) };
+    const delta = (a: number, b: number) => (b === 0 ? null : (a - b) / b);
+    const tiles = {
+      spend: { v: m14.spend, d: delta(m14.spend, mPrev.spend) },
+      messages: { v: m14.leads, d: delta(m14.leads, mPrev.leads) },
+      mql: { v: m14.mql, d: delta(m14.mql, mPrev.mql) },
+      cpmql: { v: m14.cpmql, d: delta(m14.cpmql ?? 0, mPrev.cpmql ?? 0) },
+      cac: { v: m14.cac, d: delta(m14.cac ?? 0, mPrev.cac ?? 0) },
+      roas: { v: m14.roas, d: delta(m14.roas ?? 0, mPrev.roas ?? 0) },
+    };
+
+    return {
+      entry,
+      alerts,
+      campaignWeeks,
+      tiles,
+      pacing,
+      daily,
+      byChannel,
+      byProduct: byProduct.rows,
+    };
   },
-  ["ads-monitor-v1"],
+  ["ads-monitor-v2"],
   { revalidate: DASHBOARD_TTL, tags: ["dashboard"] },
 );
 

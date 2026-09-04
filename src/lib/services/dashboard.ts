@@ -601,6 +601,200 @@ export async function adsEntryStatusToday(
 }
 
 // ---------------------------------------------------------------------------
+//  Theo dõi Ads — chuỗi theo ngày / theo kênh / nhịp ngân sách (Gói Q)
+// ---------------------------------------------------------------------------
+
+export interface AdsDaily {
+  date: string;
+  spend: number;
+  messages: number;
+  mql: number;
+  cpmql: number | null;
+}
+
+/** Spend / tin nhắn / MQL / CPMQL theo NGÀY cho `days` ngày gần nhất. */
+export async function adsDailySeries(
+  db: AnyDb,
+  opts: { days?: number; end?: string } = {},
+): Promise<AdsDaily[]> {
+  const days = opts.days ?? 30;
+  const end = opts.end ?? new Date().toISOString().slice(0, 10);
+  const from = addDaysStr(end, -(days - 1));
+  const [startUtc, endUtc] = [vnDayBoundsUtc(from)[0], vnDayBoundsUtc(end)[1]];
+
+  const [slRows, mqlRows] = await Promise.all([
+    db
+      .select({
+        d: campaignDailyMetrics.metricDate,
+        spend: sql<number>`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
+        messages: sql<number>`coalesce(sum(${campaignDailyMetrics.messages}), 0)`,
+      })
+      .from(campaignDailyMetrics)
+      .where(
+        and(
+          gte(campaignDailyMetrics.metricDate, from),
+          lte(campaignDailyMetrics.metricDate, end),
+        ),
+      )
+      .groupBy(campaignDailyMetrics.metricDate),
+    db
+      .select({
+        d: sql<string>`(${leads.mqlAt} at time zone 'Asia/Ho_Chi_Minh')::date`,
+        c: sql<number>`count(*)`,
+      })
+      .from(leads)
+      .where(
+        and(
+          isNull(leads.deletedAt),
+          isNull(leads.duplicateOf),
+          gte(leads.maxStage, "MQL"),
+          gte(leads.mqlAt, startUtc),
+          lt(leads.mqlAt, endUtc),
+        ),
+      )
+      .groupBy(sql`(${leads.mqlAt} at time zone 'Asia/Ho_Chi_Minh')::date`),
+  ]);
+
+  const asDay = (v: unknown) =>
+    v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+  const spendBy = new Map<string, { spend: number; messages: number }>();
+  for (const r of slRows)
+    spendBy.set(asDay(r.d), { spend: Number(r.spend), messages: Number(r.messages) });
+  const mqlBy = new Map<string, number>();
+  for (const r of mqlRows) mqlBy.set(asDay(r.d), Number(r.c));
+
+  const out: AdsDaily[] = [];
+  for (let i = 0; i < days; i++) {
+    const date = addDaysStr(from, i);
+    const sl = spendBy.get(date) ?? { spend: 0, messages: 0 };
+    const mql = mqlBy.get(date) ?? 0;
+    out.push({
+      date,
+      spend: sl.spend,
+      messages: sl.messages,
+      mql,
+      cpmql: safeDiv(sl.spend, mql),
+    });
+  }
+  return out;
+}
+
+export interface AdsChannelRow {
+  channel: string;
+  spend: number;
+  messages: number;
+  mql: number;
+  cpmql: number | null;
+  sharePct: number | null;
+}
+
+/** Rollup theo kênh (FB / GOOGLE / TIKTOK / KHAC) cho kỳ. */
+export async function adsByChannel(
+  db: AnyDb,
+  opts: { from: string; to: string },
+): Promise<AdsChannelRow[]> {
+  const [startUtc, endUtc] = [
+    vnDayBoundsUtc(opts.from)[0],
+    vnDayBoundsUtc(opts.to)[1],
+  ];
+  const [slRows, mqlRows] = await Promise.all([
+    db
+      .select({
+        ch: campaigns.channel,
+        spend: sql<number>`coalesce(sum(${campaignDailyMetrics.spend}), 0)`,
+        messages: sql<number>`coalesce(sum(${campaignDailyMetrics.messages}), 0)`,
+      })
+      .from(campaignDailyMetrics)
+      .innerJoin(campaigns, eq(campaigns.id, campaignDailyMetrics.campaignId))
+      .where(
+        and(
+          gte(campaignDailyMetrics.metricDate, opts.from),
+          lte(campaignDailyMetrics.metricDate, opts.to),
+        ),
+      )
+      .groupBy(campaigns.channel),
+    db
+      .select({ ch: campaigns.channel, c: sql<number>`count(*)` })
+      .from(leads)
+      .innerJoin(campaigns, eq(campaigns.id, leads.campaignId))
+      .where(
+        and(
+          isNull(leads.deletedAt),
+          isNull(leads.duplicateOf),
+          gte(leads.maxStage, "MQL"),
+          gte(leads.mqlAt, startUtc),
+          lt(leads.mqlAt, endUtc),
+          sql`(${leads.mqlAt} - ${leads.receivedAt} <= interval '90 days')`,
+        ),
+      )
+      .groupBy(campaigns.channel),
+  ]);
+
+  const m = new Map<string, { spend: number; messages: number; mql: number }>();
+  const ensure = (k: string) => {
+    let v = m.get(k);
+    if (!v) {
+      v = { spend: 0, messages: 0, mql: 0 };
+      m.set(k, v);
+    }
+    return v;
+  };
+  for (const r of slRows) {
+    const v = ensure(r.ch);
+    v.spend = Number(r.spend);
+    v.messages = Number(r.messages);
+  }
+  for (const r of mqlRows) ensure(r.ch).mql = Number(r.c);
+
+  const total = [...m.values()].reduce((s, v) => s + v.spend, 0);
+  return [...m.entries()]
+    .map(([channel, v]) => ({
+      channel,
+      spend: v.spend,
+      messages: v.messages,
+      mql: v.mql,
+      cpmql: safeDiv(v.spend, v.mql),
+      sharePct: total > 0 ? (v.spend / total) * 100 : null,
+    }))
+    .sort((a, b) => b.spend - a.spend);
+}
+
+/** Nhịp ngân sách: tổng daily_budget các campaign ON vs spend hôm nay / TB 7 ngày. */
+export async function adsBudgetPacing(
+  db: AnyDb,
+  now = new Date(),
+): Promise<{ dailyBudgetOn: number; spendToday: number; spend7dAvg: number }> {
+  const today = todayVnDayStr(now);
+  const weekAgo = addDaysStr(today, -6);
+  const [bRow, tRow, wRow] = await Promise.all([
+    db
+      .select({
+        s: sql<number>`coalesce(sum(${campaigns.dailyBudget}), 0)`,
+      })
+      .from(campaigns)
+      .where(and(isNull(campaigns.deletedAt), eq(campaigns.status, "ON"))),
+    db
+      .select({ s: sql<number>`coalesce(sum(${campaignDailyMetrics.spend}), 0)` })
+      .from(campaignDailyMetrics)
+      .where(eq(campaignDailyMetrics.metricDate, today)),
+    db
+      .select({ s: sql<number>`coalesce(sum(${campaignDailyMetrics.spend}), 0)` })
+      .from(campaignDailyMetrics)
+      .where(
+        and(
+          gte(campaignDailyMetrics.metricDate, weekAgo),
+          lte(campaignDailyMetrics.metricDate, today),
+        ),
+      ),
+  ]);
+  return {
+    dailyBudgetOn: Number(bRow[0]?.s ?? 0),
+    spendToday: Number(tRow[0]?.s ?? 0),
+    spend7dAvg: Number(wRow[0]?.s ?? 0) / 7,
+  };
+}
+
+// ---------------------------------------------------------------------------
 //  Tầng 1 — Cần hành động (SPEC Mục 12.3): các đếm số nhanh cho thẻ
 // ---------------------------------------------------------------------------
 
