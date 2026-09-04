@@ -11,15 +11,20 @@ export const metadata = { title: "Công việc — VMG TMĐT OS" };
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string }>;
+  searchParams: Promise<{ scope?: string; archived?: string }>;
 }) {
   const user = await requireUser();
   const sp = await searchParams;
   const canSeeAll = can(user.role, "taskAssignOthers", "read");
   const scope = canSeeAll && sp.scope === "team" ? "team" : "mine";
+  const showArchived = sp.archived === "1";
 
   const [tasks, refs, stats] = await Promise.all([
-    listTasks(db, scope === "mine" ? { assigneeId: user.id } : {}),
+    // Luôn lấy cả việc đã lưu trữ để đếm — bảng tự ẩn/hiện theo `showArchived`.
+    listTasks(db, {
+      ...(scope === "mine" ? { assigneeId: user.id } : {}),
+      includeArchived: true,
+    }),
     getFormRefs(db),
     taskCompletionStats(db, scope === "mine" ? { assigneeId: user.id } : {}),
   ]);
@@ -38,6 +43,7 @@ export default async function Page({
         tasks={tasks.map((t) => ({
           ...t,
           completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+          archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null,
         }))}
         stats={stats}
         users={refs.users}
@@ -45,6 +51,7 @@ export default async function Page({
         canSeeAll={canSeeAll}
         canAssignOthers={can(user.role, "taskAssignOthers", "create")}
         scope={scope}
+        showArchived={showArchived}
       />
     </div>
   );

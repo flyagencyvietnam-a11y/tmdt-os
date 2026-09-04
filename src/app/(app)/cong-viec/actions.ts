@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { isServiceError } from "@/lib/services/errors";
 import {
   createTask,
+  setTaskArchived,
   softDeleteTask,
   updateTask,
   type CreateTaskInput,
@@ -45,6 +46,20 @@ export async function updateTaskAction(
   const user = await requireUser();
   try {
     await updateTask(db, id, patch, { id: user.id, role: user.role });
+    revalidatePath("/cong-viec");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setTaskArchivedAction(
+  id: string,
+  archived: boolean,
+): Promise<Result> {
+  const user = await requireUser();
+  try {
+    await setTaskArchived(db, id, archived, { id: user.id, role: user.role });
     revalidatePath("/cong-viec");
     return { ok: true };
   } catch (e) {

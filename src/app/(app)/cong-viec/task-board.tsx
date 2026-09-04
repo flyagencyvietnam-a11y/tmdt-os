@@ -19,7 +19,12 @@ import { SimpleSelect } from "@/components/ui/simple-select";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { createTaskAction, deleteTaskAction, updateTaskAction } from "./actions";
+import {
+  createTaskAction,
+  deleteTaskAction,
+  setTaskArchivedAction,
+  updateTaskAction,
+} from "./actions";
 
 const COLS = [
   { key: "TODO", label: "Cần làm" },
@@ -50,6 +55,7 @@ interface Task {
   assigneeId: string;
   assigneeName: string | null;
   completedAt: string | null;
+  archivedAt: string | null;
   leadId: string | null;
   leadCode: string | null;
   leadStage: string | null;
@@ -63,6 +69,7 @@ export function TaskBoard({
   canSeeAll,
   canAssignOthers,
   scope,
+  showArchived,
 }: {
   tasks: Task[];
   stats: {
@@ -78,11 +85,20 @@ export function TaskBoard({
   canSeeAll: boolean;
   canAssignOthers: boolean;
   scope: "mine" | "team";
+  showArchived: boolean;
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [pending, start] = React.useTransition();
   const today = new Date().toISOString().slice(0, 10);
+
+  function archive(id: string, next: boolean) {
+    start(async () => {
+      const res = await setTaskArchivedAction(id, next);
+      if (res.ok) router.refresh();
+      else toast.error(res.error);
+    });
+  }
 
   function move(id: string, status: string) {
     start(async () => {
@@ -97,7 +113,10 @@ export function TaskBoard({
     });
   }
 
-  const visible = tasks.filter((t) => t.status !== "CANCELLED");
+  const archivedCount = tasks.filter((t) => t.archivedAt).length;
+  const visible = tasks.filter(
+    (t) => t.status !== "CANCELLED" && (showArchived || !t.archivedAt),
+  );
   const blocked = visible.filter((t) => t.status === "BLOCKED");
   const overdue = visible.filter(
     (t) => t.dueDate && t.dueDate < today && t.status !== "DONE",
@@ -138,6 +157,18 @@ export function TaskBoard({
               </a>
             </div>
           )}
+          <a
+            href={
+              (scope === "team" ? "/cong-viec?scope=team" : "/cong-viec") +
+              (showArchived ? "" : `${scope === "team" ? "&" : "?"}archived=1`)
+            }
+            className={cn(
+              "rounded-md border px-2.5 py-1 text-sm",
+              showArchived && "bg-brand/10 font-medium text-brand",
+            )}
+          >
+            {showArchived ? "Ẩn lưu trữ" : `Đã lưu trữ (${archivedCount})`}
+          </a>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-1 h-4 w-4" /> Việc mới
           </Button>
@@ -181,6 +212,7 @@ export function TaskBoard({
                     today={today}
                     scope={scope}
                     onMove={move}
+                    onArchive={archive}
                     onDelete={
                       canAssignOthers
                         ? () =>
@@ -248,6 +280,7 @@ function TaskCard({
   today,
   scope,
   onMove,
+  onArchive,
   onDelete,
   disabled,
 }: {
@@ -255,12 +288,18 @@ function TaskCard({
   today: string;
   scope: "mine" | "team";
   onMove: (id: string, status: string) => void;
+  onArchive: (id: string, next: boolean) => void;
   onDelete?: () => void;
   disabled: boolean;
 }) {
   const overdue = t.dueDate && t.dueDate < today && t.status !== "DONE";
   return (
-    <div className="rounded-md border bg-background p-2 text-sm">
+    <div
+      className={cn(
+        "rounded-md border bg-background p-2 text-sm",
+        t.archivedAt && "opacity-60",
+      )}
+    >
       <div className="flex items-start justify-between gap-1">
         <span className="font-medium">{t.title}</span>
         {t.priority !== "NORMAL" && (
@@ -314,6 +353,25 @@ function TaskCard({
                     : "Chặn"}
             </button>
           ))}
+        {t.archivedAt ? (
+          <button
+            disabled={disabled}
+            className="rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+            onClick={() => onArchive(t.id, false)}
+          >
+            bỏ lưu trữ
+          </button>
+        ) : (
+          t.status === "DONE" && (
+            <button
+              disabled={disabled}
+              className="rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+              onClick={() => onArchive(t.id, true)}
+            >
+              lưu trữ
+            </button>
+          )
+        )}
         {onDelete && (
           <button
             className="rounded border px-1.5 py-0.5 text-[10px] text-crit hover:bg-muted"

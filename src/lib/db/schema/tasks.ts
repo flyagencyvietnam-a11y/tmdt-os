@@ -47,12 +47,15 @@ export const tasks = pgTable(
     /** Bắt buộc khi status = BLOCKED. */
     blockedReason: text("blocked_reason"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** Đã lưu trữ (ẩn khỏi bảng Công việc). Chỉ đặt được khi status = DONE. */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     ...auditColumns,
     ...softDeleteColumn,
   },
   (t) => [
     index("tasks_assignee_idx").on(t.assigneeId),
     index("tasks_status_idx").on(t.status),
+    index("tasks_archived_idx").on(t.archivedAt),
     index("tasks_due_idx").on(t.dueDate),
     index("tasks_parent_idx").on(t.parentTaskId),
     index("tasks_lead_idx").on(t.leadId),

@@ -1201,6 +1201,12 @@ Bổ sung:
 
 **Task của tôi:** ba cột Kanban (Cần làm / Đang làm / Xong), lọc theo tuần.
 
+**Lưu trữ (Gói G).** Task đã **Xong** có nút **"Lưu trữ"** → đặt `tasks.archived_at`,
+ẩn khỏi bảng (không phải xóa — bản ghi vẫn còn, vẫn tính vào thẻ tổng / `% hoàn thành`).
+Nút **"Đã lưu trữ (N)"** trên thanh công cụ bật `?archived=1` để xem lại, mỗi thẻ khi đó
+có nút **"bỏ lưu trữ"**. Chỉ lưu trữ được task `DONE`. Ghi `audit_logs` key `archived_at`.
+`listTasks` mặc định lọc `archived_at IS NULL`, trừ khi truyền `includeArchived`.
+
 **Toàn đội (chỉ MANAGER trở lên):**
 - Chế độ bảng: Data Grid, mặc định gom nhóm theo người phụ trách
 - Chế độ dòng thời gian: thanh ngang theo tuần, mỗi hàng một người, thấy được ai đang quá tải

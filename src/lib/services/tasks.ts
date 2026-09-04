@@ -134,9 +134,47 @@ export async function softDeleteTask(db: AnyDb, id: string, actor: Actor) {
   });
 }
 
+/**
+ * Lưu trữ / bỏ lưu trữ đầu việc (ẩn khỏi bảng Công việc). Chỉ lưu trữ được việc đã
+ * DONE — SPEC 13.1. Không phải xóa: bản ghi vẫn còn, vẫn tính vào thống kê.
+ */
+export async function setTaskArchived(
+  db: AnyDb,
+  id: string,
+  archived: boolean,
+  actor: Actor,
+): Promise<void> {
+  const [before] = await db
+    .select({ status: tasks.status, archivedAt: tasks.archivedAt })
+    .from(tasks)
+    .where(and(eq(tasks.id, id), isNull(tasks.deletedAt)))
+    .limit(1);
+  if (!before) throw new ServiceError("Không tìm thấy đầu việc.", "NOT_FOUND");
+  if (archived && before.status !== "DONE")
+    throw new ServiceError("Chỉ lưu trữ được việc đã Xong.", "NOT_DONE");
+  if (!!before.archivedAt === archived) return;
+
+  await db
+    .update(tasks)
+    .set({ archivedAt: archived ? new Date() : null, updatedBy: actor.id })
+    .where(eq(tasks.id, id));
+  await writeAudit(db, {
+    actorId: actor.id,
+    entity: "tasks",
+    entityId: id,
+    action: "UPDATE",
+    changes: { archived_at: { from: before.archivedAt, to: archived ? "now" : null } },
+  });
+}
+
 export async function listTasks(
   db: AnyDb,
-  opts: { assigneeId?: string; includeSystem?: boolean } = {},
+  opts: {
+    assigneeId?: string;
+    includeSystem?: boolean;
+    /** Kèm cả việc đã lưu trữ (mặc định: ẩn). */
+    includeArchived?: boolean;
+  } = {},
 ) {
   return db
     .select({
@@ -156,6 +194,7 @@ export async function listTasks(
       assigneeId: tasks.assigneeId,
       assigneeName: users.fullName,
       completedAt: tasks.completedAt,
+      archivedAt: tasks.archivedAt,
       leadId: tasks.leadId,
       leadCode: leads.code,
       leadStage: leads.stage,
@@ -166,6 +205,7 @@ export async function listTasks(
     .where(
       and(
         isNull(tasks.deletedAt),
+        opts.includeArchived ? undefined : isNull(tasks.archivedAt),
         opts.assigneeId ? eq(tasks.assigneeId, opts.assigneeId) : undefined,
       ),
     )
