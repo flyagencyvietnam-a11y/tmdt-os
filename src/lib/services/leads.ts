@@ -149,6 +149,7 @@ export interface UpdateLeadPatch {
     | "KHAC"
     | null;
   isCold?: boolean;
+  source?: Source;
   consultNote?: string | null;
   fullName?: string | null;
   phone?: string | null;
@@ -209,6 +210,8 @@ export async function updateLead(
     "full_name",
     "phone",
     "email",
+    "source",
+    "product_id",
     "consult_note",
     "campaign_id",
     "ems_status",
@@ -368,11 +371,34 @@ export async function updateLead(
     }
   }
   if (patch.fbProfile !== undefined) set.fbProfile = patch.fbProfile?.trim() || null;
-  if (patch.productId) set.productId = patch.productId;
+  if (patch.productId && patch.productId !== before.productId) {
+    set.productId = patch.productId;
+    changes.product_id = { from: before.productId, to: patch.productId };
+  }
+
+  // Nguồn hiện tại (sau khi tính patch.source) — dùng cho kiểm tra V05.
+  const nextSource: Source =
+    patch.source && patch.source !== before.source
+      ? patch.source
+      : (before.source as Source);
+  if (patch.source && patch.source !== before.source) {
+    const keepsCampaign =
+      patch.campaignId !== undefined
+        ? patch.campaignId != null
+        : before.campaignId != null;
+    if (keepsCampaign && PAID_FORBIDDEN_SOURCES.includes(patch.source)) {
+      throw new ServiceError(
+        "Nguồn này không được gắn campaign trả phí — bỏ campaign trước khi đổi nguồn (V05).",
+        "V05",
+      );
+    }
+    set.source = patch.source;
+    changes.source = { from: before.source, to: patch.source };
+  }
+
   if (patch.campaignId !== undefined && patch.campaignId !== before.campaignId) {
-    // V05 lại — nếu đổi sang nguồn cấm mà giữ campaign
-    const src = before.source as Source;
-    if (patch.campaignId && PAID_FORBIDDEN_SOURCES.includes(src)) {
+    // V05 — nguồn không được phép gắn campaign trả phí
+    if (patch.campaignId && PAID_FORBIDDEN_SOURCES.includes(nextSource)) {
       throw new ServiceError("Nguồn hiện tại không được gán campaign trả phí (V05).", "V05");
     }
     set.campaignId = patch.campaignId;

@@ -131,6 +131,8 @@ export interface GridColumn<Row> {
   editable?: boolean;
   /** Kiểu ô sửa: "text" (mặc định, <input>) hoặc "select" (<select>). */
   editKind?: "text" | "select";
+  /** type của <input> khi editKind != "select" (ví dụ "date", "number"). Mặc định "text". */
+  editInputType?: string;
   /** Lựa chọn cho editKind="select". `value` là giá trị gửi lên onEditCell. */
   editOptions?: { value: string; label: string }[];
   /** Giá trị khởi tạo ô sửa (mặc định = String(accessor(row))). Dùng khi giá trị

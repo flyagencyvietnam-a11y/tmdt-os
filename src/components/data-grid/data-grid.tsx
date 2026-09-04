@@ -565,6 +565,7 @@ function DataRow<Row>({
             ) : isEditing ? (
               <Input
                 autoFocus
+                type={c.editInputType ?? "text"}
                 defaultValue={
                   c.editValue ? c.editValue(row) : String(c.accessor(row) ?? "")
                 }

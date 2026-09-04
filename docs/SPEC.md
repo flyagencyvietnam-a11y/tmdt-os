@@ -1043,14 +1043,24 @@ Ràng buộc UX cứng: **hoàn thành trong dưới 30 giây.**
 
 Data Grid đầy đủ (Mục 16).
 
-**Sửa tại chỗ trên bảng** (nhấp đôi, người có quyền `lead.update`): chỉ các trường
-thông tin/vận hành nhẹ — **họ tên, SĐT, email, ghi chú tư vấn, campaign**. Campaign
-là ô chọn (`<select>`), lưu `campaign_id`; các trường còn lại là ô nhập chữ. Mọi thay
-đổi đi qua service `updateLead` (validate V05 khi đổi campaign) và **ghi audit_logs**
-(`full_name` / `phone` / `email` / `consult_note` / `campaign_id`). **Giai đoạn và
-kết quả KHÔNG sửa ở bảng** — đổi ở trang chi tiết lead để chạy đủ máy trạng thái
-(V01/V03/V04, mốc `mql_at`/`sql_at`, engine escalate). Khi bật quyền sửa, cột "Khách"
-bỏ liên kết (mở chi tiết qua cột "Mã") để nhấp đôi không điều hướng.
+**Sửa tại chỗ trên bảng** (nhấp đôi — Gói F). Trường có tập giá trị cố định hiển thị
+**dropdown (`<select>`)**, trường ngày hiển thị **date picker**, còn lại là ô nhập chữ.
+Mọi thay đổi đi qua service (`updateLead` hoặc `reassignLead`), **không** bỏ qua
+validate, và **ghi audit_logs**.
+
+| Nhóm | Trường | Kiểu ô | Quyền | Ghi chú |
+|---|---|---|---|---|
+| Thông tin | họ tên, SĐT, email, ghi chú tư vấn | chữ | `lead.update` | họ tên không được rỗng |
+| Danh mục | **Sản phẩm** (list từ `products` đang bật — "Cấu hình sản phẩm"), **Campaign** (list từ `campaigns`), **Nguồn** | dropdown | `lead.update` | lưu `product_id` / `campaign_id` / `source`; V05 khi Nguồn/Campaign xung khắc |
+| Trạng thái | **Giai đoạn**, **Kết quả** | dropdown | `lead.update` **và** `lead.statusChange` | chạy đủ máy trạng thái 8.1: max_stage GREATEST, đóng dấu `mql_at`/`sql_at`, đóng task `LEAD_CARE`. Hạ giai đoạn → hỏi lý do. `LOST` → hỏi lý do ≥10 ký tự (V03). `DISQUALIFIED` → hỏi mã lý do (V02). **Lên `WON` phải qua enrollment** (V04) — chặn ở bảng |
+| Lịch | **Ngày LH lại** | date | `lead.update` | V01 khi OPEN + đã có tương tác |
+| Phân công | **Phụ trách** | dropdown (EC) | `lead.reassign` | đi qua `reassignLead`, giữ `originally_assigned_to` |
+| EMS | trạng thái EMS, link EMS | dropdown / chữ | `lead.update` | xem 7.5 |
+
+Audit các key: `full_name` `phone` `email` `source` `product_id` `consult_note`
+`campaign_id` `stage` `outcome` `assigned_to` `next_contact_date` `ems_status` `ems_link`.
+Khi bật quyền sửa, cột "Khách" bỏ liên kết (mở chi tiết qua cột "Mã") để nhấp đôi
+không điều hướng.
 
 Các view dựng sẵn chia sẻ cho cả đội:
 

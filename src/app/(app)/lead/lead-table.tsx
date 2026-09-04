@@ -43,6 +43,9 @@ const SOURCE_LABELS: Record<string, string> = {
   REFERRAL: "Giới thiệu",
   KHAC: "Khác",
 };
+// Thứ tự giai đoạn (để phát hiện "hạ giai đoạn" cần lý do — SPEC 8.1).
+const STAGE_ORDER = ["NEW", "NO_CONTACT", "CONSULTING", "MQL", "SQL", "WON"];
+const DISQ_REASONS = ["SPAM", "WRONG_TARGET", "COMPETITOR", "DUPLICATE", "KHAC"];
 
 export interface LeadRow {
   id: string;
@@ -51,6 +54,7 @@ export interface LeadRow {
   phone: string | null;
   email: string | null;
   productCode: string | null;
+  productId: string | null;
   campaignId: string | null;
   campaignName: string | null;
   consultNote: string | null;
@@ -60,6 +64,7 @@ export interface LeadRow {
   stage: string;
   maxStage: string;
   outcome: string;
+  assignedId: string | null;
   assignedName: string | null;
   nextContactDate: string | null;
   silenceCount: number;
@@ -261,14 +266,18 @@ export function LeadTable({
   showContact,
   ecUsers,
   campaigns,
+  products,
   canEdit,
+  canChangeStatus,
   canReassign,
 }: {
   rows: LeadRow[];
   showContact: boolean;
   ecUsers: { id: string; fullName: string }[];
   campaigns: { id: string; name: string }[];
+  products: { id: string; code: string; name: string }[];
   canEdit: boolean;
+  canChangeStatus: boolean;
   canReassign: boolean;
 }) {
   const router = useRouter();
@@ -285,34 +294,97 @@ export function LeadTable({
       .catch(() => {});
   }, []);
 
-  /** Sửa tại chỗ trên grid — chỉ các trường thông tin/ghi chú/campaign.
-   *  Giai đoạn & kết quả KHÔNG sửa ở đây (làm ở trang chi tiết lead). */
+  /** Sửa tại chỗ trên grid. Trường có tùy chọn (Sản phẩm, Campaign, Nguồn, Giai đoạn,
+   *  Kết quả, Phụ trách) hiện dạng dropdown. Đổi Giai đoạn/Kết quả chạy đúng máy trạng
+   *  thái ở service (đóng dấu mql_at/sql_at, cập nhật max_stage, đóng task chăm sóc). */
   const onEditCell = React.useCallback(
     async (rowId: string, field: string, raw: string) => {
       const v = raw.trim();
-      let patch: Parameters<typeof updateLeadAction>[1] | null = null;
-      if (field === "fullName") {
-        if (!v) return toast.error("Tên khách không được để trống.");
-        patch = { fullName: v };
-      } else if (field === "phone") patch = { phone: v || null };
-      else if (field === "email") patch = { email: v || null };
-      else if (field === "consultNote") patch = { consultNote: v || null };
-      else if (field === "campaignName") patch = { campaignId: v || null };
-      else if (field === "emsStatus")
-        patch = { emsStatus: v === "DA_NHAP" ? "DA_NHAP" : "CHUA" };
-      else if (field === "emsLink") patch = { emsLink: v || null };
-      if (!patch) return;
+      const row = rows.find((r) => r.id === rowId);
+      type Patch = Parameters<typeof updateLeadAction>[1];
+      let run: (() => Promise<{ ok: boolean; error?: string }>) | null = null;
+
+      if (field === "assignedName") {
+        if (!v || v === (row?.assignedId ?? "")) return;
+        run = () => reassignLeadAction(rowId, v);
+      } else {
+        let patch: Patch | null = null;
+        if (field === "fullName") {
+          if (!v) return toast.error("Tên khách không được để trống.");
+          patch = { fullName: v };
+        } else if (field === "phone") patch = { phone: v || null };
+        else if (field === "email") patch = { email: v || null };
+        else if (field === "consultNote") patch = { consultNote: v || null };
+        else if (field === "campaignName") patch = { campaignId: v || null };
+        else if (field === "productCode") {
+          if (!v || v === (row?.productId ?? "")) return;
+          patch = { productId: v };
+        } else if (field === "source") {
+          if (!v || v === (row?.source ?? "")) return;
+          patch = { source: v as Patch["source"] };
+        } else if (field === "nextContactDate") {
+          patch = { nextContactDate: v || null };
+        } else if (field === "emsStatus") {
+          patch = { emsStatus: v === "DA_NHAP" ? "DA_NHAP" : "CHUA" };
+        } else if (field === "emsLink") patch = { emsLink: v || null };
+        else if (field === "stage") {
+          if (!v || v === (row?.stage ?? "")) return;
+          if (v === "WON")
+            return toast.error("Lên 'Chốt HV' phải qua tạo doanh thu (enrollment).");
+          let reason: string | undefined;
+          if (STAGE_ORDER.indexOf(v) < STAGE_ORDER.indexOf(row?.stage ?? "NEW")) {
+            reason = window.prompt("Hạ giai đoạn — nhập lý do:")?.trim() || undefined;
+            if (!reason) return;
+          }
+          patch = { stage: v as Patch["stage"], reason };
+        } else if (field === "outcome") {
+          if (!v || v === (row?.outcome ?? "")) return;
+          if (v === "WON")
+            return toast.error("Chốt HV phải qua tạo doanh thu (enrollment).");
+          const p: Patch = { outcome: v as Patch["outcome"] };
+          if (row?.outcome === "WON") {
+            p.reason =
+              window.prompt("Đổi trạng thái lead đã chốt — nhập lý do:")?.trim() ||
+              undefined;
+            if (!p.reason) return;
+          }
+          if (v === "LOST") {
+            const lr = window.prompt("Lý do KHÔNG chốt (tối thiểu 10 ký tự):")?.trim() ?? "";
+            if (lr.length < 10) return toast.error("Lý do phải từ 10 ký tự (V03).");
+            p.lostReason = lr;
+          }
+          if (v === "DISQUALIFIED") {
+            const dr = (
+              window.prompt(
+                "Lý do loại: " + DISQ_REASONS.join(" / "),
+                "KHAC",
+              ) ?? ""
+            )
+              .trim()
+              .toUpperCase();
+            if (!DISQ_REASONS.includes(dr))
+              return toast.error("Lý do loại không hợp lệ.");
+            p.disqualifyReason = dr as Patch["disqualifyReason"];
+          }
+          patch = p;
+        }
+        if (!patch) return;
+        const finalPatch = patch;
+        run = () => updateLeadAction(rowId, finalPatch);
+      }
+
+      if (!run) return;
       setSaving(true);
-      const res = await updateLeadAction(rowId, patch);
+      const res = await run();
       setSaving(false);
       if (res.ok) {
         toast.success("Đã lưu.");
         router.refresh();
       } else {
-        toast.error(res.error);
+        toast.error(res.error ?? "Không lưu được.");
       }
     },
-    [router],
+    [router, rows],
   );
 
   const columns: GridColumn<LeadRow>[] = React.useMemo(
@@ -386,6 +458,13 @@ export function LeadTable({
         enumOptions: [...new Set(rows.map((r) => r.productCode).filter(Boolean))].map(
           (c) => ({ value: c as string, label: c as string }),
         ),
+        editable: canEdit,
+        editKind: "select",
+        editOptions: products.map((p) => ({
+          value: p.id,
+          label: `${p.code} — ${p.name}`,
+        })),
+        editValue: (r) => r.productId ?? "",
       },
       {
         field: "campaignName",
@@ -471,6 +550,13 @@ export function LeadTable({
           value,
           label,
         })),
+        editable: canEdit,
+        editKind: "select",
+        editOptions: Object.entries(SOURCE_LABELS).map(([value, label]) => ({
+          value,
+          label,
+        })),
+        editValue: (r) => r.source,
       },
       {
         field: "stage",
@@ -482,6 +568,13 @@ export function LeadTable({
           value,
           label,
         })),
+        editable: canEdit && canChangeStatus,
+        editKind: "select",
+        editOptions: Object.entries(STAGE_LABELS).map(([value, label]) => ({
+          value,
+          label,
+        })),
+        editValue: (r) => r.stage,
         cell: (r) => <Badge variant="secondary">{STAGE_LABELS[r.stage]}</Badge>,
       },
       {
@@ -505,18 +598,32 @@ export function LeadTable({
           value,
           label,
         })),
+        editable: canEdit && canChangeStatus,
+        editKind: "select",
+        editOptions: Object.entries(OUTCOME_LABELS).map(([value, label]) => ({
+          value,
+          label,
+        })),
+        editValue: (r) => r.outcome,
       },
       {
         field: "assignedName",
         header: "Phụ trách",
         kind: "text",
         accessor: (r) => r.assignedName ?? "—",
+        editable: canReassign,
+        editKind: "select",
+        editOptions: ecUsers.map((u) => ({ value: u.id, label: u.fullName })),
+        editValue: (r) => r.assignedId ?? "",
       },
       {
         field: "nextContactDate",
         header: "Ngày LH lại",
         kind: "date",
         accessor: (r) => r.nextContactDate,
+        editable: canEdit,
+        editInputType: "date",
+        editValue: (r) => r.nextContactDate ?? "",
         cell: (r) => {
           if (!r.nextContactDate) return <span className="text-muted-foreground">–</span>;
           const overdue =
@@ -586,7 +693,16 @@ export function LeadTable({
         cell: (r) => fmtDate(r.wonAt),
       },
     ],
-    [rows, showContact, canEdit, campaigns],
+    [
+      rows,
+      showContact,
+      canEdit,
+      canChangeStatus,
+      canReassign,
+      campaigns,
+      products,
+      ecUsers,
+    ],
   );
 
   const initialView: ViewConfig = {
@@ -627,7 +743,7 @@ export function LeadTable({
         getRowId={(r) => r.id}
         initialView={initialView}
         savedViews={savedViews}
-        onEditCell={canEdit ? onEditCell : undefined}
+        onEditCell={canEdit || canReassign ? onEditCell : undefined}
         onSaveView={async (name, config) => {
           const res = await fetch("/api/views", {
             method: "POST",

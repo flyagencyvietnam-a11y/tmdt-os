@@ -25,6 +25,7 @@ export default async function Page() {
       phone: leads.phone,
       email: leads.email,
       productCode: products.code,
+      productId: leads.productId,
       campaignId: leads.campaignId,
       campaignName: campaigns.displayName,
       consultNote: leads.consultNote,
@@ -34,6 +35,7 @@ export default async function Page() {
       stage: leads.stage,
       maxStage: leads.maxStage,
       outcome: leads.outcome,
+      assignedId: leads.assignedTo,
       assignedName: users.fullName,
       nextContactDate: leads.nextContactDate,
       silenceCount: leads.silenceCount,
@@ -107,7 +109,11 @@ export default async function Page() {
         showContact={showContact}
         ecUsers={refs.ecUsers}
         campaigns={refs.campaigns.map((c) => ({ id: c.id, name: c.displayName }))}
+        products={refs.products
+          .filter((p) => p.isActive)
+          .map((p) => ({ id: p.id, code: p.code, name: p.name }))}
         canEdit={canEdit}
+        canChangeStatus={can(user.role, "lead.statusChange", "update")}
         canReassign={can(user.role, "lead.reassign", "update")}
       />
     </div>
