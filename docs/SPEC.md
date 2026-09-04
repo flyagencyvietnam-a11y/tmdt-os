@@ -1408,6 +1408,12 @@ Module này có giá trị thực nhưng **không nên làm ở Phase 1**. Nó c
   - Ngày: đúng ngày, trước, sau, trong khoảng, hôm nay, hôm qua, 7 ngày qua, 30 ngày qua, tháng này, tháng trước, quý này, **quá hạn**, trong X ngày tới
   - Danh mục: là, không là, là một trong, không là một trong
   - Có/không: đúng, sai
+- **Màu cho giá trị danh mục (Gói P).** Cột enum khai báo `enumColors` (value → màu
+  trong bảng `TAG_CLASS` ở `src/components/data-grid/tag.tsx`) hiển thị mỗi giá trị là
+  một **"tag" màu** ở ô, ở **tiêu đề nhóm** khi gom nhóm, và **chấm màu** trong danh
+  sách chọn của bộ lọc. Áp cho: Lead — Giai đoạn / Cao nhất (`NEW` xám → `WON` xanh
+  lá), Kết quả, Nguồn, EMS; Campaign — Trạng thái (ON xanh / PAUSED vàng / OFF xám),
+  Kênh. Trang chi tiết lead dùng cùng bảng màu.
 - **Ô nhập giá trị khớp kiểu cột (Gói N).** Cột danh mục hiển thị **dropdown** đúng
   tập giá trị của cột đó — không phải ô chữ tự do. Nguồn tập giá trị: `enumOptions`
   của cột, hoặc `filterOptions` khai báo riêng (khi giá trị hiển thị khác mã lưu — ví

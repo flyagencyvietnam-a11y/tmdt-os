@@ -13,6 +13,7 @@ import {
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { cn } from "@/lib/utils";
 import { OPERATORS_BY_KIND } from "./filter-engine";
+import { TagDot, type TagColor } from "./tag";
 import type {
   Conjunction,
   FilterCondition,
@@ -31,24 +32,40 @@ export function emptyFilterGroup(): FilterGroup {
 /** Ngưỡng: cột có <= ngần này giá trị khác nhau thì coi là danh mục (hiện dropdown). */
 const PICKLIST_MAX = 60;
 
+type FilterOpt = { value: string; label: string; color?: TagColor };
+
 /** Danh sách lựa chọn để lọc 1 cột (value khớp accessor). null = không phải danh mục. */
 function optionsFor<Row>(
   col: GridColumn<Row>,
   distinct?: (field: string) => string[],
-): { value: string; label: string }[] | null {
-  if (col.filterOptions?.length) return col.filterOptions;
+): FilterOpt[] | null {
+  const color = (v: string) => col.enumColors?.[v];
+  if (col.filterOptions?.length)
+    return col.filterOptions.map((o) => ({ ...o, color: color(o.value) }));
   if (col.enumOptions?.length) {
     return col.enumOptions.map((o) => ({
       value: o.value,
       label: col.enumLabels?.[o.value] ?? o.label,
+      color: color(o.value),
     }));
   }
   if ((col.kind === "enum" || col.kind === "text") && distinct) {
     const vals = distinct(col.field);
     if (vals.length > 0 && vals.length <= PICKLIST_MAX)
-      return vals.map((v) => ({ value: v, label: v }));
+      return vals.map((v) => ({ value: v, label: v, color: color(v) }));
   }
   return null;
+}
+
+/** Nhãn kèm chấm màu cho <SimpleSelect>. */
+function optLabel(o: FilterOpt): React.ReactNode {
+  if (!o.color) return o.label;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <TagDot color={o.color} />
+      {o.label}
+    </span>
+  );
 }
 
 function opsFor<Row>(
@@ -248,7 +265,7 @@ function ConditionRow<Row>({
             placeholder="Chọn…"
             value={String(condition.value ?? "")}
             onValueChange={(v) => onChange({ ...condition, value: v })}
-            options={opts}
+            options={opts.map((o) => ({ value: o.value, label: optLabel(o) }))}
           />
         ) : (
           <Input
@@ -287,7 +304,7 @@ function MultiPick({
   value,
   onChange,
 }: {
-  options: { value: string; label: string }[];
+  options: FilterOpt[];
   value: string[];
   onChange: (v: string[]) => void;
 }) {
@@ -345,6 +362,7 @@ function MultiPick({
                 checked={set.has(o.value)}
                 onCheckedChange={() => toggle(o.value)}
               />
+              {o.color && <TagDot color={o.color} />}
               <span className="truncate">{o.label}</span>
             </label>
           ))}

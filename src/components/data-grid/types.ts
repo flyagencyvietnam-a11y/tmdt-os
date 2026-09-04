@@ -123,6 +123,8 @@ export interface GridColumn<Row> {
   /** Nhãn hiển thị cho giá trị enum. */
   enumLabels?: Record<string, string>;
   enumOptions?: { value: string; label: string }[];
+  /** Màu cho từng giá trị enum — hiển thị dạng "tag" màu ở ô, tiêu đề nhóm, bộ lọc. */
+  enumColors?: Record<string, import("./tag").TagColor>;
   /** Tập giá trị để LỌC (value phải khớp `accessor(row)`). Dùng cho cột kind=text
    *  nhưng thực chất là danh mục (campaign, người phụ trách…). Nếu bỏ trống, grid tự
    *  suy ra từ các giá trị đang có khi số lượng khác biệt ít. */

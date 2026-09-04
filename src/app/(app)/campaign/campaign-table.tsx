@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { DataGrid, type GridColumn, type ViewConfig } from "@/components/data-grid";
-import { cn } from "@/lib/utils";
+import type { TagColor } from "@/components/data-grid/tag";
 import { fmtRatioX, fmtVnd } from "@/lib/format";
 import {
   createCampaignAction,
@@ -54,11 +54,22 @@ interface Row {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  ON: "● ON",
-  PAUSED: "❚❚ PAUSED",
-  OFF: "○ OFF",
+  ON: "ON",
+  PAUSED: "PAUSED",
+  OFF: "OFF",
+};
+const STATUS_COLORS: Record<string, TagColor> = {
+  ON: "emerald",
+  PAUSED: "amber",
+  OFF: "gray",
 };
 const CHANNELS = ["FB", "GOOGLE", "TIKTOK", "KHAC"];
+const CHANNEL_COLORS: Record<string, TagColor> = {
+  FB: "blue",
+  GOOGLE: "red",
+  TIKTOK: "slate",
+  KHAC: "gray",
+};
 
 function cpmqlTone(cpmql: number | null, target: number, mql: number, spend: number) {
   if (mql === 0) return spend >= target * 1.5 ? "text-crit font-medium" : "";
@@ -162,6 +173,7 @@ export function CampaignTable({
         kind: "enum",
         accessor: (r) => r.status,
         enumLabels: STATUS_LABELS,
+        enumColors: STATUS_COLORS,
         editable: canEditCampaign,
         editKind: "select",
         editOptions: ["ON", "PAUSED", "OFF"].map((s) => ({
@@ -169,20 +181,6 @@ export function CampaignTable({
           label: STATUS_LABELS[s],
         })),
         editValue: (r) => r.status,
-        cell: (r) => (
-          <span
-            className={cn(
-              "text-xs font-medium",
-              r.status === "ON"
-                ? "text-ok"
-                : r.status === "PAUSED"
-                  ? "text-warn"
-                  : "text-muted-foreground",
-            )}
-          >
-            {STATUS_LABELS[r.status]}
-          </span>
-        ),
         defaultWidth: 110,
       },
       {
@@ -329,6 +327,8 @@ export function CampaignTable({
         header: "Kênh",
         kind: "enum",
         accessor: (r) => r.channel,
+        enumColors: CHANNEL_COLORS,
+        enumOptions: CHANNELS.map((c) => ({ value: c, label: c })),
         editable: canEditCampaign,
         editKind: "select",
         editOptions: CHANNELS.map((c) => ({ value: c, label: c })),

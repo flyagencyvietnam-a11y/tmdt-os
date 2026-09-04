@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tag, type TagColor } from "@/components/data-grid/tag";
 import type { FormRefs } from "@/lib/services/refs";
 import { fmtDate, fmtDateTime, fmtVnd } from "@/lib/format";
 import {
@@ -36,6 +37,20 @@ const OUTCOME_LABELS: Record<string, string> = {
   WON: "Đã chốt",
   LOST: "Không chốt",
   DISQUALIFIED: "Không nhu cầu",
+};
+const STAGE_COLORS: Record<string, TagColor> = {
+  NEW: "slate",
+  NO_CONTACT: "gray",
+  CONSULTING: "sky",
+  MQL: "amber",
+  SQL: "violet",
+  WON: "emerald",
+};
+const OUTCOME_COLORS: Record<string, TagColor> = {
+  OPEN: "blue",
+  WON: "emerald",
+  LOST: "rose",
+  DISQUALIFIED: "gray",
 };
 // Đồng bộ với src/lib/services/escalate.ts (5 phiên liên tiếp là Cold).
 const COLD_AT = 5;
@@ -145,17 +160,17 @@ export function LeadDetail(props: {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-semibold">{lead.fullName}</h1>
-                {lead.isCold && <Badge variant="outline">Cold Data</Badge>}
+                {lead.isCold && (
+                  <Tag color="gray">Cold Data</Tag>
+                )}
               </div>
               <div className="font-mono text-xs text-muted-foreground">{lead.code}</div>
             </div>
             <div className="flex gap-1">
-              <Badge variant="secondary">{STAGE_LABELS[lead.stage]}</Badge>
-              <Badge
-                variant={lead.outcome === "WON" ? "default" : "outline"}
-              >
+              <Tag color={STAGE_COLORS[lead.stage]}>{STAGE_LABELS[lead.stage]}</Tag>
+              <Tag color={OUTCOME_COLORS[lead.outcome]}>
                 {OUTCOME_LABELS[lead.outcome]}
-              </Badge>
+              </Tag>
             </div>
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">

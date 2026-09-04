@@ -40,6 +40,7 @@ import { aggregate, buildGroups, type GroupNode } from "./aggregations";
 import { downloadCsv, downloadXlsx, rowsToCsv } from "./export-csv";
 import { evalGroup } from "./filter-engine";
 import { emptyFilterGroup, FilterBuilder } from "./filter-builder";
+import { Tag } from "./tag";
 import type {
   AggregateFn,
   FieldKind,
@@ -441,6 +442,7 @@ export function DataGrid<Row>({
                   <GroupHeaderRow
                     key={`g:${vr.node.key}`}
                     node={vr.node}
+                    column={columns.find((c) => c.field === vr.node.field)}
                     colCount={visibleColumns.length}
                     collapsed={collapsedGroups.has(vr.node.key)}
                     onToggle={() => toggleCollapse(vr.node.key)}
@@ -636,6 +638,14 @@ function DataRow<Row>({
               />
             ) : c.cell ? (
               c.cell(row)
+            ) : c.kind === "enum" &&
+              c.enumColors &&
+              c.accessor(row) != null &&
+              c.accessor(row) !== "" ? (
+              <Tag color={c.enumColors[String(c.accessor(row))]}>
+                {c.enumLabels?.[String(c.accessor(row))] ??
+                  String(c.accessor(row))}
+              </Tag>
             ) : c.kind === "enum" && c.enumLabels ? (
               (c.enumLabels[String(c.accessor(row))] ?? String(c.accessor(row) ?? "–"))
             ) : (
@@ -664,19 +674,24 @@ function allGroupKeys<Row>(nodes: GroupNode<Row>[]): string[] {
 /** Chỉ render dòng tiêu đề nhóm — thân nhóm do vòng cuộn ảo ở DataGrid render. */
 function GroupHeaderRow<Row>({
   node,
+  column,
   colCount,
   collapsed,
   onToggle,
   rowPx,
 }: {
   node: GroupNode<Row>;
+  column?: GridColumn<Row>;
   colCount: number;
   collapsed: boolean;
   onToggle: () => void;
   rowPx: number;
 }) {
+  const raw =
+    node.value == null || node.value === "" ? null : String(node.value);
   const label =
-    node.value == null || node.value === "" ? "(trống)" : String(node.value);
+    raw == null ? "(trống)" : (column?.enumLabels?.[raw] ?? raw);
+  const color = raw != null ? column?.enumColors?.[raw] : undefined;
   return (
     <tr className="border-b bg-muted/50" style={{ height: rowPx }}>
       <td />
@@ -695,7 +710,7 @@ function GroupHeaderRow<Row>({
           ) : (
             <ChevronDown className="h-4 w-4" />
           )}
-          {label}
+          {color ? <Tag color={color}>{label}</Tag> : label}
           <Badge variant="secondary" className="ml-2">
             {node.rows.length}
           </Badge>

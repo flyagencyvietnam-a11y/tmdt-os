@@ -12,6 +12,7 @@ import {
   type SavedViewLike,
   type ViewConfig,
 } from "@/components/data-grid";
+import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate, fmtVnd } from "@/lib/format";
 import { reassignLeadAction, updateLeadAction } from "./actions";
 
@@ -46,6 +47,36 @@ const SOURCE_LABELS: Record<string, string> = {
 // Thứ tự giai đoạn (để phát hiện "hạ giai đoạn" cần lý do — SPEC 8.1).
 const STAGE_ORDER = ["NEW", "NO_CONTACT", "CONSULTING", "MQL", "SQL", "WON"];
 const DISQ_REASONS = ["SPAM", "WRONG_TARGET", "COMPETITOR", "DUPLICATE", "KHAC"];
+
+// Màu danh mục (Gói P) — dùng cho ô, tiêu đề nhóm, bộ lọc.
+const STAGE_COLORS: Record<string, TagColor> = {
+  NEW: "slate",
+  NO_CONTACT: "gray",
+  CONSULTING: "sky",
+  MQL: "amber",
+  SQL: "violet",
+  WON: "emerald",
+};
+const OUTCOME_COLORS: Record<string, TagColor> = {
+  OPEN: "blue",
+  WON: "emerald",
+  LOST: "rose",
+  DISQUALIFIED: "gray",
+};
+const EMS_STATUS_COLORS: Record<string, TagColor> = {
+  CHUA: "amber",
+  DA_NHAP: "emerald",
+};
+const SOURCE_COLORS: Record<string, TagColor> = {
+  FB: "blue",
+  GOOGLE: "red",
+  TIKTOK: "slate",
+  ZALO: "sky",
+  HOTLINE: "orange",
+  ORGANIC: "green",
+  REFERRAL: "violet",
+  KHAC: "gray",
+};
 
 export interface LeadRow {
   id: string;
@@ -502,6 +533,7 @@ export function LeadTable({
         kind: "enum",
         accessor: (r) => r.emsStatus,
         enumLabels: EMS_STATUS_LABELS,
+        enumColors: EMS_STATUS_COLORS,
         enumOptions: Object.entries(EMS_STATUS_LABELS).map(([value, label]) => ({
           value,
           label,
@@ -513,11 +545,6 @@ export function LeadTable({
           label,
         })),
         editValue: (r) => r.emsStatus,
-        cell: (r) => (
-          <Badge variant={r.emsStatus === "DA_NHAP" ? "secondary" : "outline"}>
-            {EMS_STATUS_LABELS[r.emsStatus] ?? r.emsStatus}
-          </Badge>
-        ),
       },
       {
         field: "emsLink",
@@ -547,6 +574,7 @@ export function LeadTable({
         kind: "enum",
         accessor: (r) => r.source,
         enumLabels: SOURCE_LABELS,
+        enumColors: SOURCE_COLORS,
         enumOptions: Object.entries(SOURCE_LABELS).map(([value, label]) => ({
           value,
           label,
@@ -565,6 +593,7 @@ export function LeadTable({
         kind: "enum",
         accessor: (r) => r.stage,
         enumLabels: STAGE_LABELS,
+        enumColors: STAGE_COLORS,
         enumOptions: Object.entries(STAGE_LABELS).map(([value, label]) => ({
           value,
           label,
@@ -576,7 +605,6 @@ export function LeadTable({
           label,
         })),
         editValue: (r) => r.stage,
-        cell: (r) => <Badge variant="secondary">{STAGE_LABELS[r.stage]}</Badge>,
       },
       {
         field: "maxStage",
@@ -584,6 +612,7 @@ export function LeadTable({
         kind: "enum",
         accessor: (r) => r.maxStage,
         enumLabels: STAGE_LABELS,
+        enumColors: STAGE_COLORS,
         enumOptions: Object.entries(STAGE_LABELS).map(([value, label]) => ({
           value,
           label,
@@ -595,6 +624,7 @@ export function LeadTable({
         kind: "enum",
         accessor: (r) => r.outcome,
         enumLabels: OUTCOME_LABELS,
+        enumColors: OUTCOME_COLORS,
         enumOptions: Object.entries(OUTCOME_LABELS).map(([value, label]) => ({
           value,
           label,
