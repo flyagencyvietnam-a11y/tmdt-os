@@ -1,1936 +1,867 @@
-# VMG TMĐT OS - SPECIFICATION v1.0
-### Hệ thống quản trị và thực thi vận hành Thương mại điện tử - Phòng Marketing, TMĐT & CRM
+# MKT OS - ĐẶC TẢ SẢN PHẨM VÀ KỸ THUẬT
 
-| | |
-|---|---|
-| **Mã tài liệu** | VMG-TMDT-OS-SPEC-v1.0 |
-| **Ngày lập** | 28/08/2026 |
-| **Chủ dự án** | Trưởng phòng Marketing, TMĐT & CRM |
-| **Nguồn tham chiếu** | `VMG_Ads_Lead_Tracker.xlsx` (11 sheet, dữ liệu đến 26/08/2026) |
-| **Trạng thái** | Draft để review nội bộ trước khi khởi tạo codebase |
-| **Đối tượng đọc** | Người phát triển (Claude Code), Trưởng phòng, thành viên TMĐT |
+> Phiên bản: v0.1 (bản nháp để đưa coding agent) | Ngày: 02/10/2026
+> Chủ sản phẩm: Trưởng phòng Marketing, VMG (Viet My Group)
+> Ngôn ngữ giao diện: tiếng Việt. Mã nguồn, tên bảng, tên trường: tiếng Anh, snake_case.
+> Tài liệu đi kèm (nguồn seed và hình mẫu cấu trúc): `VMG_Marketing_Strategy_Operations_2026.xlsx` (sheet 1 đến 4)
 
----
-
-## CÁCH DÙNG TÀI LIỆU NÀY
-
-Tài liệu này là **nguồn sự thật duy nhất** cho toàn bộ dự án. Khi làm việc với Claude Code:
-
-1. Đặt file này tại `/docs/SPEC.md` trong repo, commit ngay từ đầu.
-2. Mỗi phiên làm việc, yêu cầu Claude Code đọc lại Mục 5 (Mô hình dữ liệu), Mục 6 (Quy tắc nghiệp vụ) và Mục 7 (Công thức chỉ số) trước khi viết code liên quan.
-3. **Mục 24 (Quyết định còn treo) phải được chốt trước khi bắt đầu Phase tương ứng.** Không code trên giả định.
-4. Mọi thay đổi nghiệp vụ phải cập nhật vào file này trước, code sau. Không để code là nơi duy nhất chứa logic nghiệp vụ.
-
-**Nguyên tắc bất di bất dịch của dự án:** mọi công thức chỉ số chỉ được định nghĩa **một lần duy nhất** tại tầng service (Mục 7). Dashboard, KPI, cảnh báo, báo cáo đều gọi cùng một hàm. Đây chính là lỗi chết người của file sheet hiện tại (cùng một chỉ số CPMQL được tính bằng 3 công thức khác nhau ở 3 sheet, cho 3 kết quả khác nhau).
+Quy ước đánh dấu trong tài liệu:
+- **[MVP]** bắt buộc có ở phase 1. **[P2]**, **[P3]** là phase sau.
+- **[CẦN XÁC NHẬN]** là điều chưa có thông tin, agent không tự quyết, phải hỏi chủ sản phẩm hoặc dùng giá trị mặc định ghi kèm.
+- **[MẶC ĐỊNH]** là giá trị agent dùng ngay, có thể đổi sau trong trang cấu hình.
 
 ---
 
-# PHẦN I - BỐI CẢNH VÀ MỤC TIÊU
+## 0. TÓM TẮT MỘT TRANG
 
-## 1. Bối cảnh
+MKT OS là ứng dụng web nội bộ để phòng Marketing VMG hoạch định chiến lược từ nền tảng đến thực thi và, quan trọng nhất, **biến mọi việc phải làm thành task có người, có hạn, có nhắc**.
 
-### 1.1. Hiện trạng vận hành
+Ba ý chính cần agent nắm trước khi đọc tiếp:
 
-Đội TMĐT hiện vận hành trên một Google Sheet duy nhất với phân công:
+1. **Task là lõi.** Campaign, content calendar, kế hoạch quay chụp, request từ trung tâm, kiểm tra POSM, chạy ads, báo cáo cuối tháng: tất cả cuối cùng đều sinh ra task. Mỗi nhân sự đăng nhập là thấy ngay việc của mình.
+2. **Nhập liệu bằng file template.** Mỗi tháng chủ sản phẩm nạp file plan (xlsx) theo template. Hệ thống đọc, kiểm tra, xem trước, rồi tạo campaign, hạng mục và task hàng loạt. Nạp lại cùng file không được tạo trùng, không được ghi đè phần người dùng đã sửa tay.
+3. **Việc lặp lại là công dân hạng nhất.** Báo cáo cuối tháng, kiểm tra hiện trạng POSM từng trung tâm, nhắc mốc 10-15-20-25-29 hàng tháng: định nghĩa một lần bằng quy tắc lặp, hệ thống tự sinh task đúng hạn, kể cả quy tắc "một việc cho mỗi trung tâm".
 
-| Vai trò | Người | Nhiệm vụ trên sheet |
+Kích thước hệ thống rất nhỏ: dưới 50 người dùng, ước tính 500 đến 1.500 task mỗi tháng. **Không cần kiến trúc phân tán.** Một ứng dụng, một cơ sở dữ liệu Postgres, một tiến trình chạy lịch là đủ.
+
+---
+
+## 1. BỐI CẢNH, MỤC TIÊU, PHI MỤC TIÊU
+
+### 1.1 Bối cảnh
+
+- VMG là hệ thống giáo dục (tiếng Anh, du học, hướng nghiệp) tại Đồng Nai, có 10 trung tâm cộng Trung tâm Kinh doanh TMĐT (trung tâm thứ 11, hiệu lực 05/10/2026). Phòng Marketing HO phục vụ đồng thời việc truyền thông tổng (ATL) và yêu cầu từ các trung tâm.
+- Hiện công việc nằm rải rác ở Excel, email, Zalo, MISA. Hậu quả: quên việc, trễ hạn, không biết ai đang giữ việc gì, không đo được tải công việc từng người.
+- Đã có một công cụ nội bộ tương tự cho mảng TMĐT (CommerceOS). **Bài học bắt buộc rút ra:** bản đó lưu dữ liệu trong `localStorage` của từng trình duyệt nên không dùng chung được nhiều người. MKT OS phải có backend và cơ sở dữ liệu thật ngay từ đầu.
+
+### 1.2 Mục tiêu
+
+| # | Mục tiêu | Cách đo |
 |---|---|---|
-| Marketing Executive | Khiết | Cập nhật ngân sách ads, số message theo campaign, hằng ngày, trên `Campaign Monitor` và `Ads tracker` |
-| E-Commerce Executive | Kiên, Ý | Nhập thông tin lead và quá trình tư vấn vào `Lead Sheet`, tick trạng thái |
-| Trưởng phòng | Nghiêm | Đọc `Dashboard`, ra quyết định tắt/bật/tối ưu campaign |
+| G1 | Không còn việc bị quên | Tỷ lệ task trễ hạn không có người biết = 0 (mọi task trễ đều có thông báo đã gửi) |
+| G2 | Mọi nhân sự mở app là biết hôm nay làm gì | Dashboard "Việc của tôi" là trang mặc định sau đăng nhập |
+| G3 | Nhập plan tháng trong dưới 30 phút | Từ lúc có file template đã điền đến lúc task xuất hiện |
+| G4 | Việc lặp lại không cần nhớ | Tỷ lệ task định kỳ được tạo đúng hạn = 100% |
+| G5 | Quản lý thấy tải và tiến độ | Có màn hình tải công việc theo người, tiến độ theo campaign |
+| G6 | Thay thế sheet 2, 3, 4 của file Excel hiện tại | Dữ liệu seed khớp, vận hành được không cần Excel |
 
-Logic hiện tại: `Campaign Monitor` dùng `COUNTIFS` đếm ngược từ `Lead Sheet` theo tên campaign để tính CPL, CPMQL, CAC theo từng campaign.
+### 1.3 Phi mục tiêu (agent không làm trong phase 1)
 
-### 1.2. Chẩn đoán các lỗi cấu trúc của file sheet hiện tại
-
-Đây không phải liệt kê để chê file cũ. Đây là danh sách những thứ hệ thống mới **bắt buộc** phải giải quyết, vì nếu không, web mới sẽ chỉ là phiên bản đắt tiền hơn của cùng một vấn đề.
-
-**(a) Khóa liên kết là chuỗi văn bản tự do.**
-`Campaign Monitor!A4` chứa `"Kien_T6.01_FT_Message"`, và `Lead Sheet!J` phải khớp đúng từng ký tự. Trong dữ liệu thực tế có các giá trị như:
-- `Khiết_FT_TMĐT_02.07\nID: 120247600089430044` (có ký tự xuống dòng bên trong)
-- `Khiết - 12/08- TMDT.Q3.2026 - TIN NHAN - TESOL - Bản sao`
-- `Khiết - 12/08 - TMDT.Q3.2026 - FT 1.5 - FT` và `Khiết - 12.08 - TMDT.Q3.2026 - page Tieng Trung`
-
-Chỉ cần lệch một dấu cách hoặc một dấu chấm, `COUNTIFS` trả về 0 và campaign đó hiển thị CPMQL = "-" mà không ai biết là do sai khóa hay do thật sự không có MQL. **Đây là lỗi âm thầm, nguy hiểm nhất trong toàn bộ hệ thống hiện tại.**
-
-**(b) Một trường trạng thái gánh hai khái niệm khác nhau.**
-Cột `Trạng Thái` trộn lẫn *giai đoạn phễu* (New, KLH được, Đã tư vấn, MQL, SQL) với *kết quả cuối* (Chốt HV, Không chốt, Không nhu cầu). Hệ quả: khi một lead MQL chuyển sang "Không chốt", nó biến mất khỏi số đếm MQL. Để chữa, sheet phải viết `COUNTIF(MQL) + COUNTIF(SQL) + COUNTIF(Chot HV)` - nhưng công thức này vẫn **bỏ sót** lead đã từng là MQL rồi rơi về "Không chốt". Số MQL thực tế đang bị báo thiếu.
-
-**(c) Hai nguồn số liệu lead cùng tồn tại, không ai biết dùng cái nào.**
-Sheet có đồng thời `Lead + mess` (nhập tay), `MQL (file gốc)` (nhập tay), `Leads (auto LS)`, `MQL (auto LS)`. Trong `Dashboard`, CPL lấy từ nguồn nhập tay, CPMQL lấy từ nguồn auto. Hai mẫu số khác nhau nhưng đặt cạnh nhau như thể so sánh được.
-
-**(d) Dải ô trong công thức không nhất quán.**
-Trích từ `Dashboard`: `SUM('Campaign Monitor'!E4:E507)` ở dòng 26, nhưng `SUM('Campaign Monitor'!E4:E3562)/SUM('Campaign Monitor'!F4:F35)` ở dòng 31, và `SUM('Campaign Monitor'!E4:E35)` ở dòng 33. Ba con số "tổng spend" khác nhau trong cùng một dashboard. Tương tự tại Section 3B: `$B$4:$B$107`, `$B$4:$B$507`, `$B$4:$B$5007` xen kẽ nhau.
-
-**(e) Kiểu dữ liệu ngày tháng hỗn tạp.**
-Cột `Ngày LH lại` có 45 giá trị phân biệt, trong đó lẫn lộn kiểu `datetime` (`2026-08-04`) với kiểu chuỗi (`"30/07/2026"`, `" 30/06/2026"` có dấu cách đầu). Có ô ngày bị nhập nhầm vào cột `Lý do từ chối`. Có ô ngày với serial number vượt giới hạn (dòng 206-213). Không thể lọc "quá hạn" một cách đáng tin cậy trên nền dữ liệu này.
-
-**(f) Danh mục tư vấn viên không chuẩn hóa.**
-15 giá trị phân biệt cho ~5 con người thật: `Kien` (312), `Kiên` (4), `Hien` (54), `Hiền` (26), `Thy` (44), `Hiền/ Thy` (2), `Hiền / Thy` (1), `Hiền/ Kiên` (1), `Trung Tam` (16), `Trung tâm` (2), `Trung Tâm` (1), `Chưa` (1). Không thể đo hiệu suất cá nhân, không thể tính thưởng.
-
-**(g) Sheet đã bắt đầu phân rã.**
-Tồn tại song song `Dashboard` và `Bản sao của Dashboard`, `ADS TRACKER-` và `Ads tracker` (1226 vs 1225 dòng, công thức khác nhau). Không ai biết bản nào đúng.
-
-**(h) Không có lịch sử.**
-Không thể biết một lead đã được chăm sóc mấy lần, ai đổi trạng thái lúc nào, ngày hẹn cũ là ngày nào. Toàn bộ quy tắc escalate theo "số lần im lặng" mà anh mô tả **không thể thực thi được trên sheet**, vì sheet không lưu số lần.
-
-**(i) Ràng buộc dữ liệu không tồn tại.**
-Có 23 lead trạng thái `Chot HV` nhưng chỉ 22 dòng có doanh thu. Cột `Lý do từ chối` chỉ có 12/47 case Không chốt + Không nhu cầu được điền.
-
-### 1.3. Điểm cần nói thẳng
-
-Rủi ro lớn nhất của dự án này **không phải kỹ thuật**. Quy mô dữ liệu rất nhỏ: khoảng 570 lead, 38 campaign, 10 người dùng. Về mặt kỹ thuật đây là bài toán dễ.
-
-Rủi ro thật là **sự chấp nhận của người dùng**. Kiên và Ý hiện nhập lead trên sheet với thao tác gõ tự do, không ràng buộc, cực nhanh. Web mới nếu chậm hơn, nhiều bước hơn, hoặc chặn họ vì thiếu trường bắt buộc, họ sẽ quay lại sheet trong hai tuần và dự án chết. Vì vậy spec này đặt ra các ràng buộc UX cứng ở Mục 9.6 mà không được thỏa hiệp.
-
-Rủi ro thứ hai: hệ thống này sẽ **gắn với tiền thưởng** (cơ chế thưởng Q3/2026 tính 50.000đ/HVM lũy kế và % doanh thu gộp theo mức hoàn thành KPI). Ngay khi một con số trên web quyết định thu nhập của một người, con số đó trở thành đối tượng tranh chấp. Do đó audit log và khóa sổ kỳ (Mục 16) không phải tính năng "nice to have", mà là điều kiện để hệ thống được tin cậy.
+- Không làm CRM, không lưu dữ liệu lead hoặc học viên (đã có hệ thống CRM riêng).
+- Không thay MISA. Phê duyệt chính thức và order vẫn qua MISA, MKT OS chỉ lưu mã hoặc link tham chiếu.
+- Không chấm công, không tính lương, không time tracking chi tiết.
+- Không tích hợp trực tiếp Meta Ads, Google Ads, Zalo ở phase 1.
+- Không làm ứng dụng di động riêng. Dùng web responsive, [P2] PWA.
+- **Không lưu dữ liệu cá nhân của học viên, phụ huynh, khách hàng.** Đây là ràng buộc thiết kế để tránh thủ tục pháp lý về dữ liệu cá nhân. Giao diện form request phải có cảnh báo "không nhập thông tin cá nhân học viên".
 
 ---
 
-## 2. Mục tiêu và phi mục tiêu
+## 2. NGUYÊN TẮC THIẾT KẾ
 
-### 2.1. Ba mục tiêu chính (theo yêu cầu)
-
-| # | Mục tiêu | Diễn giải thành yêu cầu kiểm chứng được |
-|---|---|---|
-| M1 | Dashboard rõ ràng, đầy đủ, theo thời gian | Trưởng phòng mở web, trong dưới 10 giây trả lời được: campaign nào đang lỗ, sản phẩm nào đang hiệu quả, tuần này so với tuần trước ra sao, có bao nhiêu lead đang bị bỏ rơi |
-| M2 | Tài khoản riêng, quản trị task cá nhân và tổng thể | Mỗi nhân sự đăng nhập thấy đúng danh sách việc hôm nay của mình; Trưởng phòng thấy tiến độ của cả đội trên một màn hình |
-| M3 | Giao và quản trị KPI trên web | KPI được gán bằng form, số thực tế tự động lấy từ dữ liệu vận hành, % hoàn thành cập nhật theo thời gian thực |
-
-### 2.2. Mục tiêu ngầm nhưng quan trọng hơn
-
-| # | Mục tiêu | Lý do |
-|---|---|---|
-| M4 | Loại bỏ hoàn toàn lỗi khóa liên kết văn bản tự do | Xem 1.2(a). Đây là lý do kỹ thuật cốt lõi để rời sheet |
-| M5 | Ép kỷ luật chăm sóc lead qua trường "Ngày LH lại" | Quy trình escalate 5 bước không thể vận hành thủ công |
-| M6 | Tạo bản ghi lịch sử không thể sửa lén | Nền tảng cho tính thưởng và cho báo cáo BOD |
-
-### 2.3. Phi mục tiêu (KHÔNG làm trong phạm vi dự án này)
-
-Ghi rõ để tránh phình phạm vi:
-
-- **Không** thay thế DotB EMS. Web này quản lý giai đoạn *trước khi trở thành học viên*. Sau khi chốt, dữ liệu bàn giao sang EMS theo quy trình hiện hành.
-- **Không** đồng bộ hai chiều tự động với DotB ở Phase 1-3. Chỉ export.
-- **Không** kết nối Meta Marketing API để tự kéo spend ở Phase 1. Marketing Executive vẫn nhập tay. (Xem Mục 24-QĐ08 để cân nhắc Phase 4.)
-- **Không** làm hệ thống chat/inbox. E-Commerce Executive vẫn trả lời khách trên Meta Business Suite và Zalo.
-- **Không** đo impression, click, CTR, reach. Theo chỉ đạo: chỉ đo từ lead đến HV chốt.
-- **Không** làm module kế toán, hóa đơn, hợp đồng điện tử. E-Contract là dự án riêng phối hợp Phòng Pháp chế.
-- **Không** làm ứng dụng di động native. Web responsive là đủ.
-
-### 2.4. Tiêu chí thành công (đo sau 60 ngày golive)
-
-| Tiêu chí | Ngưỡng |
-|---|---|
-| Tỷ lệ lead được nhập qua web thay vì sheet | 100% |
-| Tỷ lệ lead có trạng thái khác "Không nhu cầu" mà thiếu Ngày LH lại | Dưới 5% |
-| Tỷ lệ lead quá hạn chăm sóc trên 3 ngày | Dưới 10% |
-| Số lần Trưởng phòng phải hỏi lại số liệu vì nghi ngờ sai | 0 |
-| Thời gian nhập một lead mới | Dưới 30 giây |
-| Số campaign bị kill do vượt ngưỡng CPMQL mà không ai phát hiện trong 48h | 0 |
+1. **Một việc, một task, một người chịu trách nhiệm.** Mỗi task có đúng 1 người phụ trách chính (assignee) và có thể có người phối hợp (collaborators).
+2. **Plan sinh task, task không mồ côi.** Task tạo từ nguồn nào thì lưu `source_type` và `source_id` để truy ngược (từ task mở lại campaign, content hoặc request gốc).
+3. **Không làm ngập người dùng.** Hệ thống phải gộp, không bắn từng việc nhỏ. Quy tắc lặp theo trung tâm mặc định sinh **1 task có checklist theo trung tâm**, không sinh 12 task rời (xem mục 6.5).
+4. **Import không phá dữ liệu.** Nạp lại là cập nhật (upsert theo khóa), không nhân đôi. Trường đã bị người dùng sửa tay thì không bị file ghi đè mà hiện thành xung đột để chọn.
+5. **Không bịa dữ liệu.** Ô thiếu thông tin hiển thị `[CẦN XÁC NHẬN]` hoặc để trống. Hệ thống không tự điền giá trị.
+6. **Tiếng Việt, múi giờ Việt Nam.** Định dạng ngày `dd/mm/yyyy`, tuần bắt đầu thứ Hai, múi giờ `Asia/Ho_Chi_Minh`, lưu thời gian dạng UTC trong cơ sở dữ liệu.
+7. **Đơn giản trước, mạnh sau.** Làm đúng và chắc phần lõi (task, lặp, import, nhắc) trước khi làm phần đẹp (Gantt kéo thả, báo cáo).
+8. **Bộ nhận diện VMG** cho giao diện: Đỏ `#BE202F` (chủ đạo), Vàng đồng `#8B672A` (nhấn), Charcoal `#2A2420` (chữ), nền sáng. Font Arial làm dự phòng.
 
 ---
 
-## 3. Người dùng và phân quyền
+## 3. NGƯỜI DÙNG, VAI TRÒ, QUYỀN
 
-### 3.1. Vai trò
+### 3.1 Vai trò
 
-Theo quy tắc trình bày tài liệu tổ chức của phòng, hệ thống dùng **chức danh**, không dùng tên riêng, ở mọi nơi cấu hình vai trò.
+| Vai trò (`role`) | Ai | Mô tả |
+|---|---|---|
+| `admin` | Trưởng phòng Marketing | Toàn quyền, cấu hình, nhập liệu, xem mọi thứ |
+| `manager` | Phó phòng hoặc trưởng nhóm (nếu có) | Như admin trừ cấu hình hệ thống và xóa dữ liệu gốc |
+| `member` | Nhân sự Marketing HO (marketing executive, designer...) | Thấy toàn bộ plan; sửa task của mình; tạo task cho mình |
+| `center_contributor` | GĐKV, GĐ trung tâm, EC, đầu mối marketing tại trung tâm | Chỉ gửi request, nhận và xác nhận task thuộc trung tâm của mình, xem Brand Kit |
+| `viewer` | BOD, Giám đốc Khối | Chỉ xem dashboard, campaign master, tiến độ |
 
-| Mã vai trò | Chức danh | Số lượng dự kiến | Mô tả |
-|---|---|---|---|
-| `ADMIN` | Trưởng phòng Marketing, TMĐT & CRM | 1 | Toàn quyền, cấu hình hệ thống, khóa sổ kỳ |
-| `MANAGER` | Phó phòng Marketing / người được ủy quyền | 0-1 | Như ADMIN trừ cấu hình hệ thống và xóa dữ liệu |
-| `MARKETING` | Marketing Executive | 1-2 | Quản lý campaign, nhập số liệu ads hằng ngày |
-| `EC` | E-Commerce Executive | 2-4 | Quản lý lead được phân công, tư vấn, chốt |
-| `VIEWER` | Ban Giám đốc / Khối R&D | 2-5 | Chỉ xem dashboard và báo cáo, không xem chi tiết thông tin cá nhân khách hàng |
+### 3.2 Ma trận quyền (rút gọn)
 
-### 3.2. Ma trận phân quyền
-
-Ký hiệu: C=Tạo, R=Xem, U=Sửa, D=Xóa, `-`=Không quyền, `own`=chỉ bản ghi của mình
-
-| Đối tượng | ADMIN | MANAGER | MARKETING | EC | VIEWER |
+| Chức năng | admin | manager | member | center_contributor | viewer |
 |---|---|---|---|---|---|
-| Lead - danh sách | CRUD | CRUD | R | CR + U(own) | - |
-| Lead - thông tin liên hệ (SĐT, email) | R | R | - | R(own) | - |
-| Lead - doanh thu | CRUD | CRUD | R | CR + U(own) | R (chỉ tổng) |
-| Lead - phân công lại | U | U | - | - | - |
-| Tương tác/nhật ký chăm sóc | R | R | R | CR(own) | - |
-| Campaign | CRUD | CRUD | CRU | R | R |
-| Số liệu ads hằng ngày | CRUD | CRUD | CRU | R | R |
-| Task cá nhân | CRUD | CRUD | CRU(own) | CRU(own) | - |
-| Task giao cho người khác | CRUD | CRUD | - | - | - |
-| KPI - thiết lập, giao chỉ tiêu | CRUD | CRU | - | - | - |
-| KPI - xem kết quả | R(all) | R(all) | R(own) | R(own) | R(tổng) |
-| Sale Enablement | CRUD | CRUD | CRU | R | R |
-| Audit log | R | R | - | - | - |
-| Khóa/mở sổ kỳ | U | - | - | - | - |
-| Quản lý người dùng | CRUD | - | - | - | - |
+| Xem Campaign master, Foundation | ✔ | ✔ | ✔ | Chỉ Brand Kit và chủ đề tháng | ✔ |
+| Sửa Campaign, Foundation | ✔ | ✔ | ✘ | ✘ | ✘ |
+| Nạp file import | ✔ | ✔ | ✘ [MẶC ĐỊNH] | ✘ | ✘ |
+| Xem mọi task | ✔ | ✔ | ✔ (chỉ xem, sửa task của mình) | Chỉ task thuộc trung tâm mình | ✔ |
+| Tạo task, giao cho người khác | ✔ | ✔ | Giao cho mình; giao người khác cần cờ `can_assign` | ✘ | ✘ |
+| Tạo request | ✔ | ✔ | ✔ | ✔ | ✘ |
+| Cấu hình quy tắc lặp | ✔ | ✔ | Tạo quy tắc cho bản thân | ✘ | ✘ |
+| Xem workload, báo cáo | ✔ | ✔ | Của mình | ✘ | ✔ |
+| Quản lý người dùng, SBU, danh mục | ✔ | ✘ | ✘ | ✘ | ✘ |
 
-### 3.3. Ba quyết định phân quyền cần lưu ý
+Phân quyền thực thi ở **tầng cơ sở dữ liệu hoặc tầng truy cập dữ liệu phía server** (Row Level Security hoặc lớp policy), không chỉ ẩn nút ở giao diện.
 
-**(a) EC nhìn thấy lead của nhau hay không?**
-Khuyến nghị: **có, ở chế độ chỉ đọc**. Đội chỉ 2-4 người, việc che giấu tạo ra chi phí quản lý lớn hơn lợi ích. Ngoài ra khi một EC nghỉ phép, người còn lại phải tiếp quản được ngay. Nhưng **chỉ EC được phân công mới sửa được**, tránh giẫm chân và tranh công.
+### 3.3 Đăng nhập
 
-**(b) VIEWER (BOD) có được xem SĐT khách không?**
-Khuyến nghị: **không**. Không có nhu cầu nghiệp vụ, và giảm bề mặt rủi ro dữ liệu cá nhân. Dashboard cho VIEWER chỉ hiển thị số tổng hợp.
-
-**(c) MARKETING có sửa được trạng thái lead không?**
-Khuyến nghị: **không**. Nếu Marketing sửa được trạng thái, chỉ số CPMQL mà chính Marketing bị đánh giá sẽ do Marketing tự tạo ra. Đây là xung đột lợi ích cơ bản, phải chặn ở tầng quyền chứ không phải bằng lời hứa.
+- [MẶC ĐỊNH] Đăng nhập Google, giới hạn miền email nội bộ `vmg.edu.vn` (suy ra từ địa chỉ email công ty; [CẦN XÁC NHẬN] công ty dùng Google Workspace). Admin mời người dùng bằng email, người chưa được mời không vào được dù đúng miền.
+- Phương án dự phòng: email và mật khẩu do admin tạo.
+- Người dùng `center_contributor` ngoài miền hoặc chưa có tài khoản: hỗ trợ **liên kết ký số một lần (magic link)** trong email để bấm "Xác nhận đã xong" cho task được giao, không bắt buộc đăng nhập. Liên kết hết hạn sau 7 ngày, chỉ tác động lên đúng một task.
 
 ---
 
-## 4. Từ điển thuật ngữ và định nghĩa nghiệp vụ
+## 4. KHÁI NIỆM LÕI VÀ MÔ HÌNH DỮ LIỆU
 
-Phần này là ràng buộc pháp lý nội bộ của dự án. Mọi tranh cãi số liệu về sau đều quy chiếu về đây.
-
-### 4.1. Định nghĩa phễu
-
-| Thuật ngữ | Định nghĩa chính thức | Nguồn dữ liệu |
-|---|---|---|
-| **Lead** | Tất cả tin nhắn hoặc đăng ký form, **bất kể đã có số điện thoại hay chưa** | Số nhập tay theo campaign theo ngày, do Marketing Executive nhập từ Meta Business Suite |
-| **MQL** | Khách trao đổi được và có quan tâm thật (xác nhận mục tiêu rõ ràng, hỏi giá, hỏi lịch khai giảng) | Bản ghi lead trên hệ thống, do E-Commerce Executive đánh dấu |
-| **SQL** | Có nhu cầu và khả năng mua hàng cao (đã hỏi giá và không phản đối, hỏi hình thức thanh toán) | Bản ghi lead |
-| **HV Chốt** | Khách đã đăng ký và thanh toán thành công | Bản ghi lead, bắt buộc kèm doanh thu > 0 |
-| **Cold Data** | Lead đã qua đủ 5 nhịp chăm sóc mà vẫn im lặng | Hệ thống tự chuyển |
-
-### 4.2. Điểm cực kỳ quan trọng về hai mẫu số
-
-Theo nguyên tắc vận hành đã chốt: **chỉ nhập vào hệ thống những lead đã là MQL, hoặc lead chưa MQL nhưng có số điện thoại.** Nghĩa là một lượng lead thô (tin nhắn hỏi vu vơ rồi im, không để lại SĐT) sẽ **không bao giờ tồn tại dưới dạng bản ghi**.
-
-Hệ quả bắt buộc phải tuân thủ:
+### 4.1 Quan hệ chính
 
 ```
-Số Lead dùng để báo cáo  =  tổng cột messages nhập tay theo campaign/ngày
-                            KHÔNG PHẢI đếm số bản ghi lead trên hệ thống
-
-Số MQL, SQL, HV Chốt      =  đếm từ bản ghi lead trên hệ thống
-                            KHÔNG PHẢI nhập tay
+Brand ─┐
+       ├─ Campaign ──── Task (action plan = task có campaign_id)
+SBU ───┘                 ▲   ▲   ▲   ▲
+                         │   │   │   └── RecurringRule (sinh task định kỳ)
+ContentItem ─────────────┘   │   └────── Request (yêu cầu từ trung tâm)
+MediaShoot ──────────────────┘
+SbuCatalogItem x SBU x kỳ ── SbuItemStatus (ma trận trạng thái, suy ra từ task)
 ```
 
-Hệ thống phải hiển thị **hai con số này ở hai chỗ khác nhau, có nhãn khác nhau**, và tuyệt đối không cho phép đặt cạnh nhau kiểu gợi ý rằng chúng cùng loại. Đây chính là chỗ file sheet hiện tại gây nhầm lẫn.
+**Quyết định quan trọng:** "action plan của campaign" **không phải bảng riêng**. Đó là các task có `campaign_id`. Tab "Action plan" chỉ là view của task nhóm theo campaign. Như vậy không phải đồng bộ hai nơi.
 
-Hệ thống **phải** hiển thị cảnh báo khi `số bản ghi lead của campaign > số messages nhập tay của campaign đó`, vì đó là dấu hiệu Marketing quên nhập số hoặc EC gán sai campaign.
+### 4.2 Các thực thể và trường
 
-### 4.3. Quy tắc "giai đoạn cao nhất từng đạt"
+Kiểu dữ liệu ghi theo Postgres. Mọi bảng có `id uuid`, `created_at`, `updated_at`, `created_by`. Bảng dữ liệu gốc có thêm `deleted_at` (xóa mềm).
 
-Đây là thay đổi cấu trúc quan trọng nhất so với sheet.
+#### `users`
+`email` (unique), `full_name`, `role`, `team` (`ho_marketing` | `center` | `bod` | `other`), `sbu_id` (nullable, dùng cho `center_contributor`), `can_assign boolean`, `active boolean`, `notification_prefs jsonb`, `work_days` (mặc định thứ 2 đến thứ 6, [CẦN XÁC NHẬN] có làm thứ 7 không), `avatar_url`.
 
-Mỗi lead có hai thuộc tính độc lập:
+#### `sbus` (đầu mối SBU)
+`code` (unique: `VTS`, `PVT`, `NKN`, `TBM`, `LDN`, `TPU`, `PTA`, `NTI`, `HVG`, `BPH`, `TMDT`, `VMP_VMT`), `name`, `kind` (`center` | `online_center` | `group`), `region` (`KV1` | `KV2` | `KV3` | `KV2_KV3` | `ONLINE` | `RND`), `ho_owner_id` (nhân sự HO phụ trách), `active`.
 
-- **`stage`** - giai đoạn hiện tại, có thứ tự: `NEW` (0) < `NO_CONTACT` (1) < `CONSULTING` (2) < `MQL` (3) < `SQL` (4) < `WON` (5)
-- **`outcome`** - kết quả, không có thứ tự: `OPEN` | `WON` | `LOST` | `DISQUALIFIED`
+#### `brands`
+`code` (`VMG`, `VMG_IELTS`, `VMG_TESOL`, `VMG_TRUNG`, `VMP`, `VMT`, `UPLEARN`), `name`, `kind`, `color`, `public_name_allowed boolean` (VMT: `false` cho đến khi có quyết định rebrand, giao diện cảnh báo khi dùng tên này trong nội dung công khai).
 
-Và một trường dẫn xuất do hệ thống tự tính, không cho sửa:
+#### `brand_foundation_entries` (cho tab Foundation)
+`brand_id`, `section_code` (A đến I), `component_code` (A1, B1, C1...), `component_label`, `content text`, `status` (`confirmed` | `needs_confirmation` | `proposed`), `version int`, `updated_by`. Mỗi lần sửa lưu bản lịch sử (`brand_foundation_history`).
 
-- **`max_stage`** - giai đoạn cao nhất từng đạt được, chỉ tăng, không bao giờ giảm
+#### `campaigns`
+`code` (unique, ví dụ `BT-2026-09`, `CP-08`), `name`, `type` (`brand_theme` | `product_gtm` | `business_program` | `rebrand` | `data_program` | `internal_program` | `other`), `tagline`, `occasion`, `start_date`, `end_date`, `status` (`planned` | `preparing` | `running` | `paused` | `done` | `cancelled` | `needs_confirmation`), `owner_id`, `target_audience text`, `insight_message text`, `objective text`, `hero_activity text`, `cta`, `channels text`, `role_split text` (vai trò HO và trung tâm), `budget_note text` (chữ, không ép số), `kpi_note text`, `source_note`, `notes`. Quan hệ nhiều-nhiều với `brands` (`campaign_brands`).
 
-**Mọi số đếm phễu trong toàn hệ thống đều dùng `max_stage`, không dùng `stage`.**
-
-Ví dụ: một lead lên MQL ngày 5/8, lên SQL ngày 10/8, rồi từ chối ngày 20/8 vì giá cao.
-- `stage` = SQL, `outcome` = LOST, `max_stage` = SQL
-- Lead này **vẫn được đếm** vào MQL của tháng 8 và SQL của tháng 8. Chi phí để tạo ra MQL này đã tiêu rồi, việc mất khách sau đó không xóa được sự thật là ads đã tạo ra một MQL.
-- Đây là cách đúng để đo hiệu quả ads. Cách của sheet hiện tại đang báo thiếu MQL.
-
-**Ngày ghi nhận giai đoạn:** hệ thống lưu `mql_at`, `sql_at`, `won_at` (timestamp lần đầu đạt giai đoạn đó). Báo cáo theo tháng dùng các mốc này, không dùng ngày tiếp nhận lead. Điều này cho phép trả lời chính xác câu "tháng 8 tạo ra bao nhiêu MQL".
-
-### 4.4. Định nghĩa trạng thái chi tiết (chuyển thể từ sheet "Định nghĩa lead")
-
-| Stage | Nhãn hiển thị | Ý nghĩa | Tín hiệu nhận biết | Việc cần làm ngay |
-|---|---|---|---|---|
-| `NEW` | Mới | Khách vừa nhắn, chưa ai phản hồi | Tin nhắn đầu tiên chưa có reply từ page | Phản hồi trong 15 phút. Chuyển sang Đang tư vấn ngay khi bắt đầu trò chuyện |
-| `NO_CONTACT` | Không liên hệ được | Đã có hành động liên lạc nhưng chưa trao đổi được | Gọi không bắt máy, nhắn Zalo không phản hồi | Thử lại sau 4-6 tiếng hoặc sang hôm sau |
-| `CONSULTING` | Đang tư vấn | Đang hoặc đã trao đổi trực tiếp | Cuộc trò chuyện đang diễn ra, khách hỏi về sản phẩm, giá, lịch học | Áp dụng HỎI - HIỂU - HƯỚNG. Không để cuộc trò chuyện kết thúc bằng câu trả lời đóng |
-| `MQL` | MQL | Đủ điều kiện về nhu cầu: biết mục tiêu, đúng sản phẩm | Khách xác nhận mục tiêu rõ ràng, hỏi giá và lịch khai giảng cụ thể | Gửi thông tin khóa học, giá, lịch khai giảng gần nhất. Mời đặt lịch tư vấn sâu |
-| `SQL` | SQL | Đủ điều kiện về tài chính và quyết định | Đã hỏi giá và không phản đối, hỏi hình thức thanh toán, trả góp | Chốt sale, mời làm test, học thử. Follow-up trong 24h |
-| `WON` | Chốt HV | Đã đăng ký và thanh toán thành công | Có xác nhận đăng ký, khách xác nhận chuyển khoản | Ghi nhận doanh thu, chuyển thông tin sang vận hành xếp lớp, gửi tin nhắn chào mừng |
-
-| Outcome | Nhãn hiển thị | Ý nghĩa | Xử lý |
-|---|---|---|---|
-| `OPEN` | Đang theo | Còn trong phễu | Bắt buộc có Ngày LH lại |
-| `WON` | Đã chốt | Thắng | Bắt buộc có doanh thu và ngày chốt |
-| `LOST` | Không chốt | Đã tư vấn đủ nhưng khách không đăng ký lúc này | Bắt buộc ghi lý do. Là warm audience, không xóa, đưa vào danh sách remarketing sau 30-45 ngày |
-| `DISQUALIFIED` | Không nhu cầu / Spam | Sai đối tượng hoàn toàn, nhắn nhầm, đối thủ, spam | Đóng, không follow-up, **không bắt buộc Ngày LH lại** |
-
-### 4.5. Danh mục sản phẩm (chuẩn hóa)
-
-Lấy từ dữ liệu thực tế cột `SP (chuẩn)` và Kế hoạch T9. Danh mục này phải là bảng dữ liệu cấu hình được, không hard-code.
-
-| Mã | Tên đầy đủ | Ghi chú |
+#### `tasks` (thực thể trung tâm)
+| Trường | Kiểu | Ghi chú |
 |---|---|---|
-| `TESOL` | TESOL E-PATH | Sản phẩm lõi. Phân loại Hybrid. Ưu tiên nguồn lực số 1, 50% ngân sách |
-| `VSTEP` | VSTEP Mastery | 20% ngân sách theo Kế hoạch T9 |
-| `TQ` | Tiếng Trung | 10% ngân sách |
-| `FT15` | IELTS Fast Track 1.5 | **Dừng từ Q4/2026.** Hệ thống phải hỗ trợ đánh dấu sản phẩm `is_active = false` mà vẫn giữ dữ liệu lịch sử |
-| `FLEXTRACK` | FlexTrack 1-1 / nhóm nhỏ | 10% ngân sách |
-| `IE` | IELTS Express Online | |
-| `GT` | Tiếng Anh Giao tiếp | |
-| `EDU` | EduNext (B2B) | |
-| `KHAC` | Khác | Bắt buộc kèm ghi chú |
+| `code` | text unique | `T-000123`, tự tăng |
+| `title` | text | bắt buộc |
+| `description` | text (markdown) | |
+| `type` | enum | `campaign_action`, `content`, `media`, `request`, `monitoring`, `ads`, `report`, `meeting`, `general` |
+| `status` | enum | `todo`, `in_progress`, `in_review`, `blocked`, `done`, `cancelled` |
+| `blocked_reason` | text | bắt buộc khi `blocked` |
+| `priority` | enum | `urgent`, `high`, `medium`, `low` |
+| `assignee_id` | uuid | người chịu trách nhiệm chính |
+| `creator_id` | uuid | |
+| `start_date` | date | |
+| `due_date` | date | hạn |
+| `due_time` | time nullable | nếu có giờ cụ thể (ví dụ giờ đăng bài) |
+| `time_slot` | enum `morning`/`afternoon`/`all_day` | dùng cho lịch tuần gửi BOD |
+| `estimate_hours` | numeric nullable | tùy chọn, dùng cho workload |
+| `completed_at` | timestamptz | đặt khi chuyển `done`, xóa khi mở lại |
+| `parent_id` | uuid nullable | task con (tối đa 2 cấp) |
+| `campaign_id` | uuid nullable | |
+| `brand_id` | uuid nullable | |
+| `workstream` | text nullable | nhóm trong campaign (ví dụ "Digital", "Offline", "PR") |
+| `channel` | text nullable | Fanpage, TikTok, Zalo OA, Website, Offline... |
+| `deliverable_url` | text nullable | link sản phẩm bàn giao |
+| `reference_url` | text nullable | link brief, MISA, tài liệu |
+| `is_milestone` | boolean | mốc không có thời lượng |
+| `source_type` | enum | `manual`, `import`, `recurring`, `content_item`, `media_shoot`, `request`, `campaign_template` |
+| `source_id` | uuid nullable | |
+| `recurring_rule_id` | uuid nullable | |
+| `occurrence_date` | date nullable | ngày danh nghĩa của lần lặp (để chống tạo trùng) |
+| `external_key` | text nullable | khóa để upsert khi import, unique theo `(import_scope, external_key)` |
+| `import_batch_id` | uuid nullable | |
+| `manually_edited_fields` | text[] | trường người dùng đã sửa tay sau khi sinh |
+| `sort_order` | numeric | thứ tự trong kanban và list |
 
-### 4.6. Danh mục nguồn / kênh
+Bảng phụ thuộc task: `task_collaborators`, `task_sbus` (một task liên quan nhiều SBU), `task_labels`, `checklist_items` (`task_id`, `text`, `done`, `sbu_id` nullable, `done_by`, `done_at`), `task_dependencies` (`predecessor_id`, `successor_id`, kiểu `finish_to_start`), `task_watchers`, `comments` (hỗ trợ @mention), `attachments` (link ở phase 1, tệp ở [P2]), `activity_log` (ghi mọi thay đổi: ai, lúc nào, trường nào, giá trị cũ và mới).
 
-| Mã | Tên | Ghi chú |
-|---|---|---|
-| `FB` | Facebook | Chiếm 90% lead hiện tại |
-| `GOOGLE` | Google | |
-| `TIKTOK` | TikTok | |
-| `ZALO` | Zalo | |
-| `HOTLINE` | Hotline | |
-| `ORGANIC` | Organic / tự nhiên | Không thuộc campaign trả phí |
-| `REFERRAL` | Giới thiệu | Có chính sách giảm 5% cho người giới thiệu |
-| `KHAC` | Khác | |
+**Trạng thái "trễ hạn" là giá trị suy ra, không lưu:** `overdue = status NOT IN (done, cancelled) AND (due_date < hôm nay OR (due_date = hôm nay AND due_time < bây giờ))`.
 
-**Quy tắc:** lead thuộc nguồn `ORGANIC`, `REFERRAL`, `HOTLINE` **không được** gán vào campaign trả phí. Nếu gán, chi phí CPMQL của campaign đó sẽ bị làm đẹp giả tạo. Hệ thống phải chặn ở tầng validate.
+#### `recurring_rules`: xem mục 6.
+
+#### `content_items` (dòng content calendar)
+`brand_id`, `campaign_id` nullable, `sbu_id` nullable (nếu là nội dung của trung tâm), `publish_date`, `publish_time`, `channel`, `content_pillar`, `topic`, `target_audience`, `key_message`, `format`, `resource_source`, `owner_id`, `cta`, `target_metric`, `support_needed`, `status` (`brief` | `drafting` | `designing` | `in_review` | `approved` | `published` | `cancelled`), `post_url`, `parent_task_id`.
+
+#### `media_shoots`, `media_deliverables`
+`media_shoots`: `code`, `shoot_date`, `location`, `sbu_id` nullable, `brand_id` nullable, `purpose`, `crew text`, `equipment text`, `script_url`, `status` (`planned` | `prepared` | `shot` | `editing` | `done` | `cancelled`), `notes`. `media_deliverables`: `shoot_id`, `deliverable_type` (video ngắn, ảnh, reel, phỏng vấn...), `quantity`, `channel`, `brand_id`, `campaign_id`, `editor_id`, `due_date`, `result_url`.
+
+#### `requests` (yêu cầu từ phòng ban, trung tâm)
+`code` (`REQ-0001`), `received_date`, `source_channel` (`misa` | `email` | `zalo` | `direct` | `meeting` | `other`), `requester_name`, `requester_sbu_id`, `request_type` (`design` | `ads` | `content` | `media` | `posm` | `event` | `consulting` | `other`), `sbu_group` (Online/Offline x Inbound/Outbound), `description`, `reference_url` (MISA hoặc brief), `priority`, `desired_date`, `in_scope` (`yes` | `no` | `needs_review`), `accepted_by_id`, `committed_date`, `completed_date`, `status` (`new` | `accepted` | `in_progress` | `in_review` | `done` | `rejected` | `postponed`), `deliverable_url`, `reject_reason`, `task_id`. Khi request chuyển `accepted`, tự sinh task (mục 7.4).
+
+#### `sbu_catalog_items` và `sbu_item_status` (ma trận SBU)
+`sbu_catalog_items`: `code` (`OI-01`...), `group` (`online_inbound` | `online_outbound` | `offline_inbound` | `offline_outbound` | `cross`), `title`, `description`, `ho_plan boolean`, `ho_execute boolean`, `ho_control boolean`, `center_role text`, `cycle text`, `priority`, `reference_text`, `default_recurring_rule_id` nullable. Seed từ sheet `3_SBU_Marketing` của file Excel.
+`sbu_item_status`: `catalog_item_id`, `sbu_id`, `period` (ví dụ `2026-10`), `status` (`not_started` | `in_progress` | `done` | `blocked` | `not_applicable`), `status_source` (`derived_from_task` | `manual`), `task_id` nullable, `note`. Mặc định trạng thái **suy ra từ task** (mục 6.6), cho phép sửa tay.
+
+#### `notifications`, `import_batches`, `import_rows`, `saved_views`, `holidays`, `app_settings`
+Mô tả ở các mục 8, 10, 11 và 13.
 
 ---
 
-## 5. Kiến trúc kỹ thuật
+## 5. TASK ENGINE
 
-### 5.1. Ngăn xếp công nghệ đề xuất
+### 5.1 Vòng đời trạng thái
 
-| Lớp | Lựa chọn | Lý do |
-|---|---|---|
-| Framework | Next.js 15 (App Router) + TypeScript | Một codebase cho cả UI và API. Phù hợp làm việc với Claude Code |
-| CSDL | PostgreSQL 16 | Cần quan hệ, ràng buộc toàn vẹn, transaction. Đây là lý do chính rời khỏi sheet |
-| ORM | Drizzle ORM | Migration rõ ràng, SQL sinh ra dễ đọc, dễ kiểm tra khi debug số liệu |
-| Xác thực | Auth.js (NextAuth) - Credentials provider | Đội nhỏ, nội bộ. Không cần OAuth ngoài. Có thể bổ sung Google Workspace sau |
-| UI | Tailwind CSS + shadcn/ui | Nhanh, nhất quán, dễ áp bộ nhận diện VMG |
-| Bảng dữ liệu | TanStack Table v8 | Nền tảng cho yêu cầu filter/group by kiểu Airtable (Mục 14) |
-| Biểu đồ | Recharts | Đủ dùng cho dashboard, không cần thư viện nặng |
-| Tác vụ định kỳ | node-cron trong tiến trình, hoặc cron hệ điều hành | Cần cho cảnh báo 8h sáng |
-| Triển khai | Docker Compose trên VPS đặt tại Việt Nam | Chủ quyền dữ liệu. Xem 5.3 |
+```
+todo ──► in_progress ──► in_review ──► done
+  │            │              │
+  └─► blocked ◄┴──────────────┘     (blocked cần blocked_reason; gỡ chặn quay về trạng thái trước)
+  any ──► cancelled
+done ──► (mở lại) todo | in_progress
+```
 
-### 5.2. Nguyên tắc kiến trúc
+Cho phép chuyển trạng thái tự do giữa các trạng thái (không ép đúng thứ tự), nhưng mọi thay đổi ghi `activity_log`.
 
-1. **Tầng service là nơi duy nhất chứa logic nghiệp vụ.** Không viết logic tính CPMQL trong component React. Không viết trong query SQL rải rác. Tất cả nằm trong `/lib/services/metrics.ts` và được test riêng.
-2. **Không tính chỉ số ở client.** Client chỉ nhận số đã tính xong. Tránh lặp lại thảm họa "mỗi sheet một công thức".
-3. **Mọi mốc thời gian lưu ở UTC, hiển thị ở `Asia/Ho_Chi_Minh`.** Ranh giới "ngày" trong mọi báo cáo và cảnh báo là 00:00 giờ Việt Nam.
-4. **Soft delete mặc định.** Không xóa cứng bản ghi lead, campaign, doanh thu. Chỉ đánh dấu `deleted_at`.
-5. **Tất cả bảng dữ liệu nghiệp vụ đều có `created_at`, `updated_at`, `created_by`, `updated_by`.**
+### 5.2 Hành vi bắt buộc
 
-### 5.3. Ghi chú về hạ tầng và chủ quyền dữ liệu
+- Đặt `done` thì ghi `completed_at`; mở lại thì xóa.
+- Task cha chỉ tự động `done` khi mọi task con `done` hoặc `cancelled` [MẶC ĐỊNH], đồng thời hiển thị tiến độ con `x/y`.
+- Khi đổi `assignee`, gửi thông báo cho người nhận và người cũ.
+- Khi task có phụ thuộc: không cho chuyển `in_progress` hoặc `done` nếu task tiền nhiệm chưa `done`, trừ khi người dùng xác nhận "bỏ qua phụ thuộc". Dời hạn task tiền nhiệm hiển thị cảnh báo nếu làm lệch hạn task sau (không tự dời).
+- Mọi thao tác ghi dữ liệu có kiểm tra quyền (mục 3.2) và đưa vào `activity_log`.
+- Sắp xếp mặc định ở danh sách: `due_date` tăng dần, rồi `priority`, rồi `sort_order`.
 
-Hệ thống chứa dữ liệu cá nhân của khách hàng (họ tên, số điện thoại, email) trong đó có trẻ vị thành niên. Định hướng self-hosting trên hạ tầng Việt Nam đã được xác lập ở cấp phòng và spec này tuân theo.
+### 5.3 Giao việc và theo dõi
 
-Khuyến nghị cụ thể:
-- VPS tại Việt Nam, cấu hình tối thiểu 2 vCPU / 4GB RAM / 60GB SSD. Với ~570 lead và 10 người dùng, đây là quá đủ trong nhiều năm.
-- Docker Compose gồm 3 service: `app` (Next.js), `db` (PostgreSQL), `caddy` (reverse proxy, tự động HTTPS).
-- Backup: `pg_dump` tự động hằng ngày, giữ 30 bản, đồng bộ ra một nơi lưu trữ thứ hai khác nhà cung cấp.
-- **Phải kiểm thử khôi phục backup ít nhất một lần trước khi golive.** Backup chưa từng được khôi phục thử thì không phải backup.
-
-**Phản biện cần cân nhắc:** self-hosting đồng nghĩa với việc phòng phải tự chịu trách nhiệm vá bảo mật, giám sát uptime, và khôi phục sự cố - trong khi phòng hiện chỉ có một nhân sự kỹ thuật CRM duy nhất. Nếu người đó nghỉ, không ai vận hành được. Đề xuất giảm thiểu: viết `RUNBOOK.md` với quy trình khôi phục từng bước, và đặt toàn bộ cấu hình hạ tầng dưới dạng file trong repo (infrastructure as code), để bất kỳ ai đọc được cũng dựng lại được.
+- `@mention` trong bình luận gửi thông báo.
+- Người dùng có thể "theo dõi" (watch) task để nhận thông báo thay đổi.
+- Giao việc hàng loạt: chọn nhiều task rồi đổi người phụ trách, đổi hạn, đổi trạng thái.
+- Nhân bản task, nhân bản campaign (bao gồm task con, dời ngày theo khoảng lệch người dùng chọn). [MVP] chỉ nhân bản task; [P2] nhân bản campaign.
 
 ---
 
-# PHẦN II - MÔ HÌNH DỮ LIỆU
+## 6. VIỆC LẶP LẠI (RECURRING)
 
-## 6. Sơ đồ quan hệ tổng thể
+Đây là tính năng bắt buộc và hay làm sai. Đọc kỹ.
 
-```
-users ──┬──< leads (assigned_to)
-        ├──< lead_interactions (created_by)
-        ├──< tasks (assignee_id)
-        ├──< kpi_assignments (user_id)
-        └──< audit_logs (actor_id)
+### 6.1 Ví dụ cần chạy được ngay
 
-products ──┬──< campaigns
-           ├──< leads
-           └──< kpi_assignments (scope)
-
-campaigns ──┬──< campaign_daily_metrics   [số liệu nhập tay: spend, messages]
-            └──< leads                     [khóa ngoại thật, không phải chuỗi]
-
-leads ──┬──< lead_interactions             [nhật ký chăm sóc]
-        ├──< lead_stage_history            [lịch sử chuyển giai đoạn]
-        └──< enrollments                   [doanh thu, có thể nhiều dòng/lead]
-
-periods ──< period_locks                   [khóa sổ kỳ]
-```
-
-## 7. Định nghĩa bảng chi tiết
-
-### 7.1. `users`
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `email` | text | UNIQUE, NOT NULL | Dùng để đăng nhập |
-| `password_hash` | text | NOT NULL | bcrypt |
-| `full_name` | text | NOT NULL | |
-| `job_title` | text | NOT NULL | Chức danh, dùng trong tài liệu và báo cáo |
-| `role` | enum | NOT NULL | `ADMIN` \| `MANAGER` \| `MARKETING` \| `EC` \| `VIEWER` |
-| `is_active` | boolean | default true | Nghỉ việc thì tắt, không xóa |
-| `alias_names` | text[] | | Các biến thể tên cũ trên sheet, phục vụ migration: ví dụ `['Kien','Kiên']` |
-| `created_at` `updated_at` | timestamptz | | |
-
-### 7.2. `products`
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `code` | text | UNIQUE | `TESOL`, `FT15`, ... |
-| `name` | text | NOT NULL | Tên đầy đủ hiển thị |
-| `list_price` | bigint | | Giá niêm yết, VND. Dùng để tính room CAC |
-| `cac_room_pct` | numeric(5,2) | default 15.00 | % giá niêm yết được phép chi cho CAC |
-| `target_cpmql` | bigint | | Ngưỡng cảnh báo CPMQL riêng cho sản phẩm này |
-| `kill_threshold_no_mql` | bigint | | Mức spend tích lũy mà chưa ra MQL nào thì kill |
-| `budget_share_pct` | numeric(5,2) | | Tỷ trọng ngân sách phân bổ |
-| `priority` | int | | 1 = cao nhất |
-| `is_active` | boolean | default true | FT15 sẽ chuyển false từ Q4/2026 |
-| `sort_order` | int | | |
-
-### 7.3. `campaigns`
-
-Đây là bảng thay thế cho khóa văn bản tự do. Mỗi campaign là một thực thể có ID.
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `internal_code` | text | UNIQUE, NOT NULL | Sinh tự động theo quy ước, xem 7.3.1 |
-| `display_name` | text | NOT NULL | Tên hiển thị do người dùng đặt |
-| `external_id` | text | | ID campaign trên Meta / Google, ví dụ `120247600089430044` |
-| `product_id` | uuid | FK products, NOT NULL | |
-| `channel` | enum | NOT NULL | `FB` \| `GOOGLE` \| `TIKTOK` \| `KHAC` |
-| `objective` | enum | | `MESSAGE` \| `LEADFORM` \| `TRAFFIC` \| `KHAC` |
-| `owner_id` | uuid | FK users, NOT NULL | Người chịu trách nhiệm campaign |
-| `status` | enum | NOT NULL, default `ON` | `ON` \| `OFF` \| `PAUSED` |
-| `daily_budget` | bigint | | Ngân sách ngày, VND |
-| `started_on` | date | NOT NULL | |
-| `ended_on` | date | NULL | NULL nghĩa là chưa kết thúc. Campaign chạy ngân sách ngày, không có ngày kết thúc định trước |
-| `notes` | text | | |
-| `deleted_at` | timestamptz | | |
-
-**Ràng buộc:** khi `status` chuyển `OFF`, hệ thống ghi `ended_on = ngày hiện tại` và ghi audit log kèm lý do bắt buộc.
-
-#### 7.3.1. Quy ước mã campaign nội bộ
-
-Sinh tự động, không cho sửa tay:
-
-```
-{PRODUCT}-{CHANNEL}-{OBJECTIVE}-{YYMM}-{SEQ}
-Ví dụ:  TESOL-FB-MSG-2609-01
-        FT15-FB-LEADFORM-2608-03
-```
-
-Người dùng vẫn đặt `display_name` tự do để dễ nhận diện, nhưng mọi liên kết dữ liệu dùng `id`. Trường `external_id` để đối chiếu ngược với Meta Ads Manager khi cần.
-
-**Tại sao quan trọng:** hiện tại lead được gán campaign bằng cách gõ/chọn chuỗi văn bản. Sau khi đổi sang khóa ngoại, việc "campaign hiển thị 0 MQL vì gõ sai tên" trở thành bất khả thi về mặt kỹ thuật.
-
-### 7.4. `campaign_daily_metrics`
-
-Bảng này chứa **duy nhất** số liệu do Marketing Executive nhập tay.
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `campaign_id` | uuid | FK campaigns, NOT NULL | |
-| `metric_date` | date | NOT NULL | |
-| `spend` | bigint | NOT NULL, >= 0 | Chi tiêu thực, VND |
-| `messages` | int | NOT NULL, >= 0 | Số tin nhắn + đăng ký form. **Đây là con số Lead chính thức để báo cáo** |
-| `entered_by` | uuid | FK users | |
-| `entered_at` | timestamptz | | |
-| `note` | text | | |
-
-**UNIQUE(campaign_id, metric_date)** - một campaign một ngày chỉ có một dòng. Sửa thì cập nhật dòng cũ và ghi audit.
-
-**Không** có cột MQL, SQL, HV chốt ở bảng này. Các số đó luôn được tính từ bảng `leads`. Đây là điểm sửa lỗi so với sheet (nơi có cả `MQL (file gốc)` nhập tay lẫn `MQL (auto LS)`).
-
-### 7.5. `leads`
-
-Bảng trung tâm của hệ thống.
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `code` | text | UNIQUE | Mã lead dạng `L-2608-0421`, sinh tự động, dùng khi trao đổi nội bộ |
-| `received_at` | timestamptz | NOT NULL | Ngày tiếp nhận |
-| `full_name` | text | NOT NULL | |
-| `name_normalized` | text | index | Tên đã chuẩn hóa để dò trùng, xem 8.3 |
-| `phone` | text | index | Chuẩn hóa về dạng `0xxxxxxxxx`. Có thể NULL |
-| `phone_normalized` | text | index | Bỏ khoảng trắng, dấu chấm, đổi `+84` thành `0` |
-| `email` | text | | |
-| `fb_profile` | text | | Link hoặc tên page/profile Facebook |
-| `product_id` | uuid | FK products, NOT NULL | Sản phẩm chuẩn hóa |
-| `product_raw` | text | | Sản phẩm khách nói, dạng thô |
-| `source` | enum | NOT NULL | Xem 4.6 |
-| `campaign_id` | uuid | FK campaigns, NULL | NULL nếu nguồn organic/referral/hotline |
-| `stage` | enum | NOT NULL, default `NEW` | Giai đoạn hiện tại |
-| `max_stage` | enum | NOT NULL, default `NEW` | Do hệ thống tính, không cho sửa tay |
-| `outcome` | enum | NOT NULL, default `OPEN` | |
-| `assigned_to` | uuid | FK users, NULL | E-Commerce Executive phụ trách |
-| `next_contact_date` | date | NULL | **Ngày LH lại** - trường điều phối trung tâm |
-| `silence_count` | int | NOT NULL, default 0 | Số lần khách im lặng liên tiếp |
-| `last_contacted_at` | timestamptz | | Lần chăm sóc gần nhất |
-| `mql_at` | timestamptz | | Lần đầu đạt MQL |
-| `sql_at` | timestamptz | | Lần đầu đạt SQL |
-| `won_at` | timestamptz | | Ngày chốt |
-| `lost_reason` | text | | Bắt buộc khi outcome = LOST |
-| `disqualify_reason` | enum | | `SPAM` \| `WRONG_TARGET` \| `COMPETITOR` \| `DUPLICATE` \| `KHAC` |
-| `is_cold` | boolean | default false | Đã chuyển Cold Data |
-| `consult_note` | text | | Ghi chú tư vấn tổng hợp, dạng markdown |
-| `placement_test_result` | text | | Kết quả test đầu vào |
-| `class_assigned` | text | | Lớp được xếp |
-| `preferred_schedule` | text | | Lịch rảnh |
-| `desired_start_date` | date | | Ngày muốn học |
-| `ems_status` | enum | NOT NULL, default `CHUA` | `CHUA` \| `DA_NHAP` — bàn giao DotB EMS (gộp từ tab "Bàn giao EMS" cũ) |
-| `ems_link` | text | | Link hồ sơ học viên trên EMS |
-| `duplicate_of` | uuid | FK leads, NULL | Nếu được xác nhận là trùng |
-| `deleted_at` | timestamptz | | |
-
-> **Bàn giao EMS** (SPEC Mục 2.3 — "chỉ export"): không còn tab riêng. `ems_status` /
-> `ems_link` nằm trên chính lead, chỉ có nghĩa cho lead đã chốt (`outcome = WON`). Sửa
-> tại chỗ trên bảng `/lead` (view dựng sẵn "Chờ bàn giao EMS" = `WON AND ems_status =
-> CHUA`) hoặc ở trang chi tiết lead. Cột `enrollments.ems_student_id` giữ nguyên cho
-> tương thích, không dùng ở giao diện nữa.
-
-**Chỉ mục cần thiết:** `(next_contact_date, outcome)` cho hàng đợi quá hạn, `(campaign_id, max_stage)` cho tính chỉ số campaign, `(assigned_to, next_contact_date)` cho work queue cá nhân, `(mql_at)`, `(won_at)` cho báo cáo theo kỳ.
-
-### 7.6. `lead_interactions`
-
-Nhật ký chăm sóc. Bảng này là thứ file sheet hoàn toàn không có, và là điều kiện để quy tắc escalate 5 bước vận hành được.
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `lead_id` | uuid | FK leads, NOT NULL | |
-| `occurred_at` | timestamptz | NOT NULL, default now | |
-| `channel` | enum | NOT NULL | `CALL` \| `ZALO` \| `MESSENGER` \| `EMAIL` \| `SMS` \| `MEET` |
-| `direction` | enum | NOT NULL | `OUTBOUND` \| `INBOUND` |
-| `result` | enum | NOT NULL | `RESPONDED` \| `NO_RESPONSE` \| `REFUSED` \| `RESCHEDULED` |
-| `content` | text | | Nội dung trao đổi |
-| `stage_before` | enum | | Ghi nhận tự động |
-| `stage_after` | enum | | Ghi nhận tự động |
-| `next_contact_date_set` | date | | Ngày hẹn lại được đặt trong lần này |
-| `created_by` | uuid | FK users, NOT NULL | |
-
-### 7.7. `lead_stage_history`
-
-Ghi mọi lần chuyển giai đoạn. Tách riêng khỏi `lead_interactions` vì giai đoạn có thể thay đổi mà không có tương tác (ví dụ hệ thống tự chuyển Cold Data).
-
-| Cột | Kiểu | Ghi chú |
-|---|---|---|
-| `id` | uuid | PK |
-| `lead_id` | uuid | FK leads |
-| `from_stage` / `to_stage` | enum | |
-| `from_outcome` / `to_outcome` | enum | |
-| `changed_at` | timestamptz | |
-| `changed_by` | uuid | FK users, NULL nếu do hệ thống |
-| `reason` | text | |
-
-### 7.8. `enrollments`
-
-Tách doanh thu ra bảng riêng thay vì một cột trên `leads`.
-
-**Lý do:** một lead có thể mua nhiều lần (ví dụ mua IELTS Express 1 rồi mua tiếp Express 2), hoặc trả góp nhiều đợt. Dữ liệu hiện tại đã có dấu hiệu này (một số dòng doanh thu 7.920.000 lặp lại 8 lần, 37.152.000 một lần - biên độ rất rộng). Nếu để một cột, không thể phân biệt "một hợp đồng lớn" với "nhiều lần thanh toán".
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `lead_id` | uuid | FK leads, NOT NULL | |
-| `product_id` | uuid | FK products, NOT NULL | Có thể khác sản phẩm quan tâm ban đầu |
-| `contract_date` | date | NOT NULL | |
-| `gross_amount` | bigint | NOT NULL, > 0 | Doanh thu gộp trước giảm trừ |
-| `discount_amount` | bigint | default 0 | |
-| `net_amount` | bigint | GENERATED | `gross_amount - discount_amount` |
-| `collected_amount` | bigint | default 0 | Tiền thực thu, phục vụ KPI "Tiền thu" |
-| `student_count` | int | default 1 | Số HVM ghi nhận. Phục vụ KPI HVM và thưởng 50.000đ/HVM |
-| `ems_student_id` | text | | Mã học viên bên DotB EMS sau khi bàn giao |
-| `note` | text | | |
-
-**Ràng buộc nghiệp vụ:** khi tạo `enrollment` đầu tiên cho một lead, hệ thống tự động đặt `lead.outcome = WON`, `lead.stage = WON`, `lead.won_at = contract_date`. Ngược lại, **không cho phép** đặt outcome = WON bằng tay nếu chưa có enrollment. Đây là cách chặn triệt để tình trạng 23 lead Chốt HV nhưng chỉ 22 dòng có doanh thu.
-
-### 7.9. `tasks`
-
-| Cột | Kiểu | Ràng buộc | Ghi chú |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `title` | text | NOT NULL | |
-| `description` | text | | Markdown |
-| `group_code` | text | | Nhóm công việc, ví dụ `A. QUY TRÌNH CHUNG` |
-| `product_id` | uuid | FK products, NULL | Nếu task gắn sản phẩm cụ thể |
-| `type` | enum | NOT NULL | `PROJECT` \| `RECURRING` \| `SYSTEM` |
-| `assignee_id` | uuid | FK users, NOT NULL | |
-| `co_assignees` | uuid[] | | Người phối hợp |
-| `created_by` | uuid | FK users | |
-| `goal_kpi` | text | | Mục tiêu / KPI của đầu việc, dạng chữ |
-| `due_date` | date | | |
-| `status` | enum | NOT NULL, default `TODO` | `TODO` \| `IN_PROGRESS` \| `DONE` \| `BLOCKED` \| `CANCELLED` |
-| `priority` | enum | default `NORMAL` | `LOW` \| `NORMAL` \| `HIGH` \| `URGENT` |
-| `progress_pct` | int | 0-100 | |
-| `recurrence_rule` | text | | Chuỗi RRULE nếu type = RECURRING |
-| `parent_task_id` | uuid | FK tasks | Cho task con sinh từ task định kỳ |
-| `link_url` | text | | Link tài liệu ngoài (Canva, Drive) |
-| `blocked_reason` | text | | Bắt buộc khi status = BLOCKED |
-| `completed_at` | timestamptz | | |
-| `deleted_at` | timestamptz | | |
-
-### 7.10. `kpi_definitions` và `kpi_assignments`
-
-Tách định nghĩa chỉ tiêu khỏi việc giao chỉ tiêu.
-
-**`kpi_definitions`** - danh mục các loại chỉ tiêu có thể giao:
-
-| Cột | Kiểu | Ghi chú |
-|---|---|---|
-| `id` | uuid | PK |
-| `code` | text | UNIQUE, ví dụ `HVM`, `REVENUE_GROSS`, `CASH_COLLECTED`, `MQL_COUNT`, `CPMQL`, `DATA_COMPLIANCE` |
-| `name` | text | Tên hiển thị |
-| `unit` | enum | `COUNT` \| `VND` \| `PERCENT` \| `RATIO` |
-| `direction` | enum | `HIGHER_BETTER` \| `LOWER_BETTER` |
-| `source` | enum | `AUTO` \| `MANUAL` |
-| `formula_key` | text | Khóa trỏ tới hàm tính trong `metrics.ts`, chỉ dùng khi source = AUTO |
-| `description` | text | Định nghĩa chính thức, hiển thị khi hover |
-
-**`kpi_assignments`** - một chỉ tiêu cụ thể giao cho một người hoặc một nhóm trong một kỳ:
-
-| Cột | Kiểu | Ghi chú |
-|---|---|---|
-| `id` | uuid | PK |
-| `kpi_definition_id` | uuid | FK |
-| `period_type` | enum | `MONTH` \| `QUARTER` \| `YEAR` |
-| `period_start` / `period_end` | date | |
-| `scope_type` | enum | `USER` \| `TEAM` \| `PRODUCT` |
-| `user_id` | uuid | FK users, NULL nếu scope khác |
-| `product_id` | uuid | FK products, NULL nếu không giới hạn sản phẩm |
-| `target_value` | numeric | Chỉ tiêu |
-| `weight_pct` | numeric(5,2) | Trọng số trong tổng KPI của người đó. Tổng trọng số mỗi người mỗi kỳ phải bằng 100 |
-| `threshold_tiers` | jsonb | Các mốc hoàn thành, ví dụ `[{"pct":85},{"pct":90},{"pct":100}]` |
-| `manual_actual` | numeric | Chỉ dùng khi source = MANUAL |
-| `note` | text | |
-| `created_by` | uuid | FK users |
-
-**Ràng buộc:** hệ thống phải cảnh báo (không chặn cứng) khi tổng `weight_pct` của một user trong một kỳ khác 100.
-
-### 7.11. `saved_views`
-
-Phục vụ yêu cầu filter/group by kiểu Airtable.
-
-| Cột | Kiểu | Ghi chú |
-|---|---|---|
-| `id` | uuid | PK |
-| `entity` | enum | `LEADS` \| `CAMPAIGNS` \| `TASKS` \| `DAILY_METRICS` \| `ENROLLMENTS` |
-| `name` | text | Tên view |
-| `owner_id` | uuid | FK users |
-| `visibility` | enum | `PRIVATE` \| `SHARED` |
-| `config` | jsonb | Toàn bộ cấu hình filter, sort, group, cột hiển thị. Xem Mục 14.3 |
-| `is_default` | boolean | View mặc định của người đó cho entity đó |
-
-### 7.12. `audit_logs`
-
-| Cột | Kiểu | Ghi chú |
-|---|---|---|
-| `id` | bigserial | PK |
-| `occurred_at` | timestamptz | |
-| `actor_id` | uuid | FK users, NULL nếu hệ thống |
-| `entity` | text | Tên bảng |
-| `entity_id` | uuid | |
-| `action` | enum | `CREATE` \| `UPDATE` \| `DELETE` \| `LOGIN` \| `EXPORT` \| `LOCK` \| `UNLOCK` |
-| `changes` | jsonb | `{field: {from, to}}` |
-| `ip` | inet | |
-
-**Bắt buộc ghi audit cho:** mọi thay đổi `stage`, `outcome`, `assigned_to`, `next_contact_date` của lead; mọi thay đổi `spend`, `messages`; mọi thao tác trên `enrollments`; mọi thay đổi `kpi_assignments`; mọi lần export dữ liệu.
-
-### 7.13. `period_locks`
-
-| Cột | Kiểu | Ghi chú |
-|---|---|---|
-| `id` | uuid | PK |
-| `period_start` / `period_end` | date | |
-| `locked_at` | timestamptz | |
-| `locked_by` | uuid | FK users |
-| `note` | text | |
-
-Khi một kỳ bị khóa, mọi bản ghi có `metric_date`, `contract_date`, hoặc mốc `won_at` nằm trong kỳ đó trở thành chỉ đọc với tất cả vai trò trừ `ADMIN`. ADMIN muốn sửa phải mở khóa, và việc mở khóa được ghi audit.
-
-### 7.14. `notifications`
-
-| Cột | Kiểu | Ghi chú |
-|---|---|---|
-| `id` | uuid | PK |
-| `user_id` | uuid | FK users |
-| `type` | enum | `OVERDUE_LEADS` \| `CAMPAIGN_ALERT` \| `TASK_DUE` \| `KPI_RISK` \| `DATA_GAP` \| `ASSIGNMENT` |
-| `severity` | enum | `INFO` \| `WARNING` \| `CRITICAL` |
-| `title` / `body` | text | |
-| `link_url` | text | Đường dẫn tới màn hình xử lý |
-| `read_at` | timestamptz | |
-| `created_at` | timestamptz | |
-
----
-
-# PHẦN III - QUY TẮC NGHIỆP VỤ
-
-## 8. Vòng đời lead
-
-### 8.1. Máy trạng thái
-
-```
-                    ┌─────────────────────────────────────┐
-                    ▼                                     │
-  [NEW] ──▶ [NO_CONTACT] ──▶ [CONSULTING] ──▶ [MQL] ──▶ [SQL] ──▶ [WON]
-    │            │                 │            │          │
-    └────────────┴─────────────────┴────────────┴──────────┘
-                                   │
-                                   ▼
-                        outcome = LOST / DISQUALIFIED
-```
-
-**Quy tắc chuyển:**
-
-| Từ | Đến | Điều kiện |
-|---|---|---|
-| Bất kỳ | Giai đoạn cao hơn | Tự do, EC tự đánh giá |
-| Bất kỳ | Giai đoạn thấp hơn | Cho phép, nhưng `max_stage` giữ nguyên, và bắt buộc ghi lý do |
-| Bất kỳ (trừ WON) | `outcome = LOST` | Bắt buộc điền `lost_reason`. Không xóa `next_contact_date`, hệ thống tự đặt lại `+45 ngày` cho remarketing |
-| Bất kỳ | `outcome = DISQUALIFIED` | Bắt buộc chọn `disqualify_reason`. Xóa `next_contact_date` |
-| `SQL` | `WON` | Chỉ thông qua việc tạo `enrollment`. Không cho đổi trạng thái trực tiếp |
-| `WON` | Bất kỳ | Chỉ `MANAGER` trở lên, bắt buộc ghi lý do, kỳ chưa khóa sổ |
-
-**Quy tắc `max_stage`:** sau mỗi lần cập nhật, `max_stage = GREATEST(max_stage_cũ, stage_mới)`. Cài đặt bằng database trigger hoặc trong service layer, và có unit test riêng.
-
-**Quy tắc mốc thời gian:** khi `max_stage` lần đầu đạt `MQL`, ghi `mql_at = now()`. Nếu lead được nhập trễ (nhập ngày 20/8 cho khách nhắn ngày 15/8), cho phép EC sửa `mql_at` về quá khứ, có audit log.
-
-### 8.2. Cỗ máy chăm sóc theo "Ngày LH lại"
-
-Đây là trái tim vận hành của EC.
-
-**Nguyên tắc gốc:**
-> Mọi lead sau khi chăm sóc **bắt buộc** phải có Ngày LH lại, trừ lead ở trạng thái `DISQUALIFIED` (Không nhu cầu, spam).
-> Lead có Ngày LH lại nằm trong quá khứ = **đã trễ hẹn chăm sóc**.
-> **Chỉ thành Cold khi ĐÚNG 5 PHIÊN LIÊN TIẾP không phản hồi.** Khách phản hồi (kể cả
-> khi đã Cold) → reset chu kỳ.
-
-**Bảng escalate — `silence_count` = số phiên `NO_RESPONSE` LIÊN TIẾP:**
-
-| `silence_count` sau phiên vừa ghi | Ngày LH lại được đề xuất | Kịch bản hành động |
-|---|---|---|
-| 0 (khách vừa phản hồi) | T+3 | Hẹn theo dõi lại |
-| 1 | T+1 | Nhắc lại vào ngày hôm sau |
-| 2 | T+3 | Nhắc lại kèm chương trình ưu đãi |
-| 3 | T+7 | Nhắn hỏi thăm, không bán |
-| 4 | T+30 | Thăm dò lại nhu cầu — **nhịp cuối** |
-| >= 5 | Không đặt | Hệ thống tự chuyển `is_cold = true`, `outcome = LOST`, `lost_reason = 'Không phản hồi sau 5 phiên chăm sóc liên tiếp'` |
-
-Hằng số chung: `COLD_SILENCE_THRESHOLD = 5`, `WARM_FOLLOWUP_DAYS = 3` trong
-`src/lib/services/escalate.ts`. Job Cold Data (00:30) và `recordInteraction` dùng
-chung hằng số này.
-
-**Quy tắc tăng và reset `silence_count`:**
-
-```
-Khi EC ghi một interaction:
-  - result = NO_RESPONSE     → silence_count += 1
-  - result = RESPONDED       → silence_count = 0
-  - result = RESCHEDULED     → silence_count = 0  (khách chủ động hẹn lại)
-  - result = REFUSED         → không đổi, EC được nhắc chuyển outcome = LOST
-```
-
-**Khách ấm lại từ trạng thái Cold:** nếu lead đang `is_cold = true` / `outcome = LOST`
-mà EC ghi một interaction `RESPONDED` hoặc `RESCHEDULED` → hệ thống **tự gỡ**
-`is_cold = false`, đưa `outcome = OPEN`, xoá `lost_reason`, đặt Ngày LH lại mới (T+3),
-ghi `lead_stage_history` + audit. Không cần thao tác tay để "mở lại" lead.
-
-**Hành vi giao diện bắt buộc:** khi EC chọn `result = NO_RESPONSE`, hệ thống **tự động điền sẵn** Ngày LH lại theo bảng trên. EC được phép sửa (vì thực tế luôn có ngoại lệ), nhưng nếu sửa thì phải ghi lý do một dòng. Mục tiêu là làm cho việc tuân thủ quy trình trở thành đường ít trở ngại nhất, thay vì bắt buộc bằng luật.
-
-**Ngoại lệ về ngày nghỉ:** nếu Ngày LH lại đề xuất rơi vào Chủ nhật hoặc ngày lễ, hệ thống đẩy sang ngày làm việc kế tiếp. Danh sách ngày lễ là bảng cấu hình.
-
-### 8.3. Kiểm tra trùng lặp
-
-**Bối cảnh:** vì chấp nhận theo dõi lead không có số điện thoại, trường dò trùng phải bao gồm tên. Nhưng dữ liệu thực tế cho thấy tên **không đủ tin cậy** để làm khóa: trong 566 bản ghi có 533 tên phân biệt, với `Hoa Nguyen` xuất hiện 4 lần và `Khanh Ngoc` 3 lần. Đây là tên hiển thị Facebook, hoàn toàn có thể là 4 người khác nhau.
-
-**Vì vậy: không chặn cứng, chỉ cảnh báo có xếp hạng.**
-
-Thuật toán khi nhập lead mới:
-
-```
-Chuẩn hóa:
-  name_normalized  = bỏ dấu tiếng Việt, lowercase, gộp khoảng trắng, bỏ tiền tố
-                     "Phụ Huynh", "PH", "Chị", "Anh", "Cô", "Bạn"
-  phone_normalized = bỏ mọi ký tự không phải số, đổi "84xxx" và "+84xxx" thành "0xxx"
-
-Điểm trùng (thang 100):
-  +60  phone_normalized trùng khớp hoàn toàn
-  +25  name_normalized trùng khớp hoàn toàn
-  +15  name_normalized giống >= 85% (Levenshtein)
-  +10  cùng product_id
-  +10  cùng campaign_id
-  +10  received_at cách nhau <= 7 ngày
-  +15  email hoặc fb_profile trùng
-
-Xử lý:
-  >= 60  → cảnh báo đỏ, hiện bản ghi nghi trùng, mặc định nút "Gộp vào lead cũ"
-  35-59  → cảnh báo vàng, hiện danh sách, cho phép "Vẫn tạo mới"
-  < 35   → tạo bình thường
-```
-
-**Thao tác gộp:** giữ lead cũ làm bản chính, chuyển toàn bộ interaction của bản mới sang, đặt `duplicate_of` trên bản mới, ẩn khỏi mọi báo cáo nhưng không xóa. Lý do không xóa: cần giữ dấu vết để biết campaign nào đang tạo ra lead trùng (dấu hiệu targeting chồng lấn giữa các campaign).
-
-**Chỉ số cần theo dõi:** tỷ lệ lead trùng theo campaign. Nếu một campaign có tỷ lệ trùng cao bất thường, đó là tín hiệu audience overlap và đang đốt tiền hai lần cho cùng một người.
-
-### 8.4. Quy tắc kiểm tra dữ liệu (validation)
-
-| Mã | Quy tắc | Mức | Hành vi |
-|---|---|---|---|
-| V01 | Lead `outcome = OPEN` mà **(đã có người phụ trách và `stage != NEW`)** HOẶC **đã có ≥1 interaction** thì bắt buộc có `next_contact_date` | CHẶN | Không lưu được — áp cả khi tạo lead và khi cập nhật. Form "+ Lead mới" hiện ô Ngày LH lại (bắt buộc) ngay khi chọn giai đoạn khác 'Mới'. |
-| V02 | `outcome = DISQUALIFIED` thì không được có `next_contact_date` | CHẶN | Tự xóa khi chuyển trạng thái |
-| V03 | `outcome = LOST` bắt buộc có `lost_reason` dài >= 10 ký tự | CHẶN | |
-| V04 | `outcome = WON` bắt buộc có ít nhất 1 `enrollment` | CHẶN | Chỉ tạo được qua form enrollment |
-| V05 | Lead nguồn `ORGANIC`/`REFERRAL`/`HOTLINE` không được gán `campaign_id` | CHẶN | |
-| V06 | Lead `max_stage >= MQL` mà không có `phone` | CẢNH BÁO | Cho lưu, hiện cờ vàng. Vì có thể tư vấn hoàn toàn qua Messenger |
-| V07 | `stage != NEW` mà `assigned_to` rỗng | CHẶN | |
-| V08 | `next_contact_date` đặt xa hơn 90 ngày | CẢNH BÁO | Nhắc "Có phải bạn muốn chuyển Cold Data?" |
-| V09 | Số bản ghi lead của campaign vượt quá tổng `messages` đã nhập cho campaign đó | CẢNH BÁO cấp hệ thống | Hiện trên dashboard Marketing, nghĩa là thiếu số liệu ads |
-| V10 | Campaign `status = ON` nhưng 3 ngày liên tiếp không có `campaign_daily_metrics` | CẢNH BÁO | Nhắc Marketing Executive nhập số |
-| V11 | `enrollment.collected_amount > enrollment.net_amount` | CHẶN | |
-| V12 | Lead ở `stage = NEW` quá 24 giờ | CẢNH BÁO | Vi phạm cam kết phản hồi trong 15 phút |
-| V13 | Thao tác trên bản ghi thuộc kỳ đã khóa sổ | CHẶN | Trừ ADMIN |
-
-
----
-
-## 9. Công thức chỉ số - nguồn sự thật duy nhất
-
-Toàn bộ nội dung mục này được cài đặt trong một file duy nhất: `/lib/services/metrics.ts`. Không có ngoại lệ.
-
-### 9.1. Chỉ số cơ sở
-
-Với một phạm vi lọc bất kỳ (khoảng thời gian, campaign, sản phẩm, kênh, người phụ trách):
-
-| Chỉ số | Công thức | Nguồn |
-|---|---|---|
-| `spend` | `SUM(campaign_daily_metrics.spend)` | Nhập tay |
-| `leads` | `SUM(campaign_daily_metrics.messages)` | Nhập tay |
-| `leads_recorded` | `COUNT(leads WHERE duplicate_of IS NULL)` | Bản ghi |
-| `mql` | `COUNT(leads WHERE max_stage >= MQL)` | Bản ghi |
-| `sql` | `COUNT(leads WHERE max_stage >= SQL)` | Bản ghi |
-| `won` | `COUNT(leads WHERE outcome = WON)` | Bản ghi |
-| `hvm` | `SUM(enrollments.student_count)` | Bản ghi |
-| `revenue_gross` | `SUM(enrollments.gross_amount)` | Bản ghi |
-| `revenue_net` | `SUM(enrollments.net_amount)` | Bản ghi |
-| `cash_collected` | `SUM(enrollments.collected_amount)` | Bản ghi |
-
-### 9.2. Chỉ số dẫn xuất
-
-| Chỉ số | Công thức | Ghi chú |
-|---|---|---|
-| `CPL` | `spend / leads` | Mẫu số là số nhập tay |
-| `CPMQL` | `spend / mql` | **Chỉ số điều hành chính** |
-| `CPSQL` | `spend / sql` | |
-| `CAC` | `spend / won` | |
-| `CR_lead_mql` | `mql / leads` | |
-| `CR_mql_sql` | `sql / mql` | |
-| `CR_sql_won` | `won / sql` | |
-| `CR_lead_won` | `won / leads` | Tỷ lệ chuyển đổi toàn phễu |
-| `ROAS` | `revenue_gross / spend` | |
-| `AOV` | `revenue_gross / won` | Giá trị đơn trung bình |
-| `revenue_after_mkt` | `revenue_gross - spend - kol_cost` | Chỉ tiêu KPI theo cơ chế thưởng Q3 |
-
-**Quy tắc chia cho 0:** trả về `null`, hiển thị dấu `-`. **Tuyệt đối không** trả về 0, vì 0 và "không xác định" mang ý nghĩa quản trị trái ngược nhau. Sheet hiện tại trả về `"-"` là đúng, phải giữ nguyên tinh thần này.
-
-### 9.3. Quy tắc quy kết theo thời gian (attribution)
-
-Đây là điểm tinh vi nhất và là nơi số liệu dễ sai nhất.
-
-**Vấn đề:** chi phí phát sinh ngày 1/9. Lead đến ngày 1/9. Nhưng lead đó lên MQL ngày 4/9 và chốt ngày 15/9. Nếu tính CPMQL của ngày 1/9 vào cuối ngày 1/9, kết quả sẽ là vô cực (spend > 0, MQL = 0), và hệ thống sẽ báo động giả.
-
-**Quy tắc bắt buộc:**
-
-```
-Khi lọc theo khoảng thời gian [A, B]:
-  spend, leads   → lọc theo campaign_daily_metrics.metric_date
-  mql            → lọc theo leads.mql_at        (KHÔNG phải received_at)
-  sql            → lọc theo leads.sql_at
-  won, doanh thu → lọc theo enrollments.contract_date
-```
-
-**Cửa sổ quy kết (attribution window):** một lead chỉ được quy về campaign nếu `mql_at - received_at <= 90 ngày`. Ngoài khoảng đó, lead vẫn tính vào tổng nhưng không tính vào chỉ số campaign, vì mối quan hệ nhân quả đã quá loãng.
-
-**Cảnh báo hiển thị bắt buộc:** khi người dùng xem CPMQL của một khoảng thời gian kết thúc trong vòng 7 ngày gần nhất, hệ thống hiển thị dòng nhắc:
-> "Dữ liệu chưa chín. Lead phát sinh trong 7 ngày gần đây có thể chưa kịp lên MQL. CPMQL của giai đoạn này có xu hướng cao hơn thực tế."
-
-Không có dòng nhắc này, sẽ có người tắt nhầm một campaign tốt chỉ vì nó mới chạy 2 ngày.
-
-### 9.4. Quy tắc cảnh báo campaign
-
-**Theo yêu cầu:** ngưỡng báo động CPMQL là 600.000đ. Với campaign chưa có MQL nào, mốc là 900.000đ (bằng 1,5 lần ngưỡng) thì kill.
-
-**Cài đặt:**
-
-```
-Với mỗi campaign đang ON, tính trên hai cửa sổ:
-  - Lifetime:  từ started_on đến hôm nay
-  - Rolling:   14 ngày gần nhất
-
-Quy tắc:
-  R1 [CRITICAL - Đề xuất KILL]
-     mql_lifetime = 0  AND  spend_lifetime >= kill_threshold_no_mql (mặc định 900.000)
-
-  R2 [CRITICAL - Đề xuất KILL]
-     mql_rolling >= 1  AND  cpmql_rolling > target_cpmql × 1.5
-
-  R3 [WARNING - Cần tối ưu]
-     mql_rolling >= 1  AND  cpmql_rolling > target_cpmql
-
-  R4 [WARNING - Thiếu dữ liệu]
-     campaign ON nhưng không có metric 3 ngày liên tiếp
-
-  R5 [INFO - Đang tốt]
-     cpmql_rolling <= target_cpmql × 0.7
-     → gợi ý cân nhắc tăng ngân sách ngày
-```
-
-**Vì sao phải có hai cửa sổ:** campaign chạy ngân sách ngày, không có ngày kết thúc. Một campaign chạy 3 tháng, tháng đầu tệ và hai tháng sau tốt, nếu chỉ nhìn lifetime sẽ mãi mãi bị đánh dấu đỏ và bị kill oan. Ngược lại nếu chỉ nhìn rolling, sẽ không phát hiện được campaign đã đốt 20 triệu tổng cộng. Cần cả hai.
-
-### 9.5. Phản biện quan trọng về ngưỡng 600.000đ
-
-**Tôi không đồng tình với việc dùng một ngưỡng CPMQL duy nhất cho toàn bộ sản phẩm, và đề nghị anh cân nhắc lại trước khi cài cứng vào hệ thống.**
-
-Lý do: các sản phẩm có giá niêm yết chênh nhau nhiều lần. Một MQL của TESOL E-PATH và một MQL của Tiếng Anh Giao tiếp không có cùng giá trị kinh tế. Áp cùng ngưỡng 600.000đ sẽ dẫn tới hai lỗi ngược chiều cùng lúc:
-- Kill nhầm campaign TESOL đang có lãi tốt vì CPMQL 700.000đ (trong khi room CAC của TESOL thừa sức gánh);
-- Nuôi campaign Giao tiếp lỗ vì CPMQL 500.000đ vẫn "dưới ngưỡng" (trong khi giá sản phẩm không đỡ nổi).
-
-**Cách đúng để suy ra ngưỡng, dựa trên nguyên tắc room CAC = 15% giá niêm yết đã chốt trong chiến lược:**
-
-```
-CPMQL_target = (giá_niêm_yết × room_CAC%) × tỷ_lệ_MQL→Chốt
-
-Ví dụ minh họa (số cần P.TCKT xác nhận):
-  TESOL, giá 10.000.000, room 15% → CAC trần 1.500.000
-  Nếu tỷ lệ MQL→Chốt là 30%      → CPMQL_target = 1.500.000 × 0,30 = 450.000
-  Nếu tỷ lệ MQL→Chốt là 20%      → CPMQL_target = 300.000
-```
-
-Nghĩa là ngưỡng CPMQL **không phải một con số cố định**, mà là hàm của giá sản phẩm và tỷ lệ chuyển đổi thực tế. Hệ thống có đủ dữ liệu để tính `CR_mql_won` theo từng sản phẩm, nên hoàn toàn làm được.
-
-**Đề xuất cài đặt thỏa hiệp:**
-- Lưu `target_cpmql` ở cấp **sản phẩm** (bảng `products`), không phải hằng số toàn cục.
-- Khởi tạo tất cả bằng 600.000 để không thay đổi hành vi hiện tại.
-- Bổ sung một màn hình "Gợi ý ngưỡng" hiển thị song song: ngưỡng đang dùng, ngưỡng suy ra từ giá và tỷ lệ chuyển đổi thực tế 90 ngày qua, và chênh lệch.
-- Sau 1-2 quý có đủ dữ liệu, đưa lên BOD/TCKT để chốt ngưỡng theo từng sản phẩm.
-
-Ghi chú: trong file sheet hiện tại có một khối số ở `Campaign Monitor` cột T-U (FAST TRACK 1.5: 250.000 / EXPRESS: 200.000 / TESOL: 490.000 / GIAO TIẾP: 100.000) mà tôi **không xác định được** là ngưỡng CPMQL hay ngân sách ngày. Cần anh xác nhận. Nếu đó là ngưỡng CPMQL theo sản phẩm thì phòng đã đi đúng hướng này rồi và chỉ cần đưa vào hệ thống. Đánh dấu `[CẦN XÁC NHẬN]`.
-
-### 9.6. Chỉ số kỷ luật vận hành
-
-Nhóm chỉ số này không có trong sheet nhưng là thứ trực tiếp phục vụ mục tiêu M2 và M5.
-
-| Chỉ số | Công thức | Ý nghĩa |
-|---|---|---|
-| `overdue_leads` | `COUNT(leads WHERE outcome = OPEN AND next_contact_date < hôm_nay)` | Số lead trễ hẹn chăm sóc |
-| `overdue_rate` | `overdue_leads / COUNT(leads WHERE outcome = OPEN)` | Tỷ lệ trễ hẹn |
-| `avg_overdue_days` | `AVG(hôm_nay - next_contact_date)` với lead trễ | Mức độ trễ trung bình |
-| `no_next_date_rate` | Tỷ lệ lead OPEN đã có interaction mà thiếu Ngày LH lại | Đo mức tuân thủ quy trình |
-| `first_response_rate` | Tỷ lệ lead rời `NEW` trong vòng 24h | Đo tốc độ phản hồi |
-| `daily_clear_rate` | Số lead đến hẹn hôm nay đã được xử lý / tổng số đến hẹn hôm nay | Chỉ số làm việc hằng ngày của EC |
-| `data_entry_compliance` | Số ngày Marketing nhập đủ số liệu / tổng số ngày trong kỳ | Đo kỷ luật của Marketing Executive |
-
-**Đề xuất:** `daily_clear_rate` và `data_entry_compliance` nên trở thành KPI chính thức có trọng số nhỏ (5-10%) cho EC và Marketing Executive. Lý do: nếu không gắn KPI, dữ liệu sẽ thối dần và toàn bộ hệ thống mất giá trị trong 3 tháng. Đây là bài học đã thấy rõ từ chính file sheet hiện tại.
-
----
-
-# PHẦN IV - ĐẶC TẢ CÁC MODULE
-
-## 10. Module 1 - Campaign và số liệu quảng cáo
-
-### 10.1. Màn hình `Campaigns`
-
-Bảng danh sách dùng component Data Grid chung (Mục 16). **Sửa tại chỗ** (nhấp đôi,
-role có `campaign.update`): `status` (ON/PAUSED/OFF — chọn OFF phải nhập lý do),
-`display_name`, `daily_budget`, `channel`, `started_on`, `external_id`. Việc nhập số
-liệu ads hằng ngày cũng nằm ngay ở bảng này (xem 10.2) qua 2 cột `Spend (ngày)` /
-`Mess (ngày)` — chọn ngày ở đầu bảng. Cột mặc định:
-
-| Cột | Nguồn | Định dạng |
-|---|---|---|
-| Trạng thái | `status` | Công tắc bật/tắt trực tiếp trên dòng |
-| Mã nội bộ | `internal_code` | |
-| Tên hiển thị | `display_name` | Link sang chi tiết |
-| Sản phẩm | `product.code` | Chip màu |
-| Kênh | `channel` | |
-| Ngân sách/ngày | `daily_budget` | VND |
-| Spend (kỳ) | tính | VND |
-| Lead | tính, nhập tay | số nguyên |
-| MQL | tính, bản ghi | số nguyên |
-| SQL | tính | số nguyên |
-| HV Chốt | tính | số nguyên |
-| CPL | tính | VND |
-| **CPMQL** | tính | VND, **tô màu theo ngưỡng** |
-| CAC | tính | VND |
-| CR Lead→HV | tính | % |
-| Doanh thu | tính | VND |
-| ROAS | tính | x |
-| Người phụ trách | `owner` | |
-| Cờ cảnh báo | tính | Biểu tượng R1-R5 |
-
-**Quy tắc tô màu CPMQL:**
-- Xanh: `<= target × 0,7`
-- Trung tính: `> target × 0,7` và `<= target`
-- Vàng: `> target` và `<= target × 1,5`
-- Đỏ: `> target × 1,5`, hoặc chưa có MQL và spend đã vượt ngưỡng kill
-
-Dòng tổng cố định ở đầu bảng, tính lại theo bộ lọc đang áp dụng.
-
-### 10.2. Nhập số liệu ads hằng ngày (gộp vào bảng Campaign)
-
-**Không còn tab riêng "Nhập số liệu ads".** Việc nhập số liệu nằm ngay trong bảng
-`/campaign` (10.1): chọn ngày ở đầu bảng (mặc định hôm nay), mỗi dòng campaign có 2
-cột sửa tại chỗ **Spend (ngày)** và **Mess (ngày)**. Nhấp đôi để nhập, Enter lưu,
-gọi `upsertDailyMetric` (UNIQUE campaign_id+metric_date, ghi audit `spend`/`messages`,
-V13 chặn kỳ khóa). Các cột chỉ số 30 ngày (Spend/MQL/CPMQL…) hiển thị cạnh đó để
-Marketing thấy hệ quả tức thì. Server action `copyYesterdayAction` vẫn còn cho tương
-lai (nút "sao chép từ hôm qua").
-
-Lý do gộp: đội 4–6 người, một bảng Campaign có đủ lọc/sắp xếp/nhập là đủ nhanh;
-bớt một tab, bớt một chỗ dữ liệu lệch nhau.
-
-### 10.4. Trang "Theo dõi Ads" — `/ads` (Gói L)
-
-Trang giám sát riêng cho vận hành ads (MARKETING / MANAGER / ADMIN). *(Route `/ads`
-trước đây redirect sang `/campaign` — nay là trang thật, không còn redirect.)*
-
-**Bộ lọc thời gian (Gói R):** cùng bộ **Nhanh · Năm · Quý · Tháng · Tuần** với
-Dashboard (component dùng chung `src/components/period-selects.tsx`; helper
-`resolveRange` trong `src/lib/time.ts`). Tất cả khối *theo kỳ* (thẻ tổng, xu hướng
-theo ngày, theo kênh, theo sản phẩm, ma trận 8 tuần gần nhất tính đến hết kỳ) đổi
-theo bộ lọc; "Nhập liệu hôm nay" và "Nhịp ngân sách" luôn tính cho **hôm nay**. Thẻ
-tổng so với **kỳ liền trước cùng độ dài**.
-
-- **Nhập liệu hôm nay:** `X/Y` campaign ON đã có `campaign_daily_metrics` của hôm nay
-  + danh sách campaign còn thiếu (link sang `/campaign?date=<hôm nay>`). Cùng nguồn với
-  task tự tạo ở Mục 13.4.
-- **Cảnh báo campaign:** gom R1–R5 từ `evaluateCampaignAlerts` theo nhóm KILL / cần tối
-  ưu / đang tốt.
-- **Hiệu suất theo tuần:** ma trận campaign × 8 tuần báo cáo VMG, ô = CPMQL tuần đó, tô
-  màu theo `target_cpmql` của sản phẩm (≤ target xanh, ≤ 1,5× vàng, > 1,5× đỏ; ô trống
-  = 0 MQL).
-- **Tổng 14 ngày (Gói Q):** thẻ Spend / Tin nhắn / MQL / CPMQL / CAC / ROAS kèm so
-  với 14 ngày liền trước.
-- **Nhịp ngân sách ngày:** Σ `daily_budget` các campaign ON · spend hôm nay · spend
-  TB 7 ngày · % nhịp (spend hôm nay / ngân sách ngày).
-- **Xu hướng 30 ngày:** biểu đồ cột spend + đường tin nhắn / MQL / CPMQL theo ngày.
-- **Theo kênh (30 ngày):** FB / Google / TikTok / Khác — spend, % ngân sách, tin nhắn,
-  MQL, CPMQL.
-- **Theo sản phẩm (30 ngày):** spend, MQL, CPMQL, % NS thực tế vs phân bổ.
-
-Helper trong `dashboard.ts`: `campaignWeeklyPerf` / `recentReportWeekStarts` /
-`adsDailySeries` / `adsByChannel` / `adsBudgetPacing`. Toàn bộ gói dữ liệu qua
-`getAdsMonitorCached` (cache 60s, tag `dashboard`).
-
-### 10.3. Màn hình chi tiết campaign
-
-Bố cục: hàng thẻ chỉ số ở trên, biểu đồ ở giữa, hai bảng ở dưới.
-
-- **Thẻ chỉ số:** Spend, Lead, MQL, SQL, HV Chốt, CPMQL, CAC, ROAS - kèm mũi tên so sánh với 14 ngày trước.
-- **Biểu đồ 1:** đường kép theo ngày - Spend (cột) và MQL (đường), cùng đường CPMQL trên trục phải, có đường kẻ ngang ở ngưỡng target.
-- **Biểu đồ 2:** phễu Lead → MQL → SQL → HV Chốt với tỷ lệ chuyển đổi từng bậc.
-- **Bảng 1:** số liệu theo ngày (spend, messages, MQL phát sinh trong ngày).
-- **Bảng 2:** danh sách lead thuộc campaign, nhúng Data Grid.
-- **Hộp lịch sử:** các lần bật/tắt, đổi ngân sách, kèm lý do và người thực hiện.
-
----
-
-## 11. Module 2 - Quản lý lead và hàng đợi công việc của EC
-
-### 11.1. Hàng đợi chăm sóc — gộp vào Module Task (Gói D)
-
-> **Cập nhật:** không còn màn hình `/hom-nay` riêng. **Mỗi lead đến hẹn chăm sóc =
-> 1 bản ghi `tasks` type `LEAD_CARE`** (`lead_id`, `assignee_id` = người phụ trách,
-> `due_date` = `next_contact_date`, `priority` theo `silence_count` / lead mới). Sinh
-> tự động mỗi sáng (`spawnLeadCareTasks`, trong `runAllMorningJobs`) và bỏ qua lead đã
-> có task đang mở. **1 task = 1 phiên chăm sóc:** ghi 1 tương tác (`recordInteraction`)
-> hoặc lead chuyển WON/LOST/DISQUALIFIED → task tự chuyển `DONE`; sáng hôm sau nếu vẫn
-> đến hẹn thì sinh task mới. Xem và xử lý ở **Công việc** (`/cong-viec`), lọc theo
-> "đến hạn hôm nay / quá hạn". `/hom-nay` redirect sang `/cong-viec`.
-
-Bố cục gốc (giữ để tham chiếu ưu tiên hiển thị trong Công việc):
-
-Bố cục ba khối xếp dọc, theo đúng thứ tự ưu tiên:
-
-**Khối 1 - QUÁ HẠN (nền đỏ nhạt)**
-- Tiêu đề: "Trễ hẹn chăm sóc: N khách"
-- Sắp xếp: **lead trễ lâu nhất lên đầu** (theo đúng nguyên tắc anh nêu)
-- Mỗi dòng hiển thị: tên, sản phẩm, số ngày trễ, giai đoạn, `silence_count`, ghi chú tư vấn gần nhất (2 dòng đầu), nút hành động nhanh
-- Không cho phép thu gọn khối này khi còn lead quá hạn
-
-**Khối 2 - ĐẾN HẸN HÔM NAY**
-- Sắp xếp theo `silence_count` giảm dần (khách sắp rơi vào Cold Data được ưu tiên)
-
-**Khối 3 - LEAD MỚI CHƯA XỬ LÝ**
-- Lead `stage = NEW` được phân công cho mình
-- Hiển thị đồng hồ đếm thời gian kể từ khi tiếp nhận, chuyển đỏ sau 24h
-
-Bên cạnh: thanh tiến độ ngày - "Đã xử lý 8/23 khách hôm nay", cập nhật theo thời gian thực. Đây là `daily_clear_rate`.
-
-### 11.2. Thao tác chăm sóc nhanh
-
-Từ hàng đợi, EC bấm vào một lead, mở panel trượt bên phải (không chuyển trang, giữ nguyên vị trí trong hàng đợi).
-
-Panel gồm:
-- Thông tin khách, nút gọi và nút mở Zalo trực tiếp
-- Toàn bộ lịch sử tương tác, mới nhất trên cùng
-- **Form ghi nhận nhanh:** kênh, kết quả, nội dung, giai đoạn mới
-- Khi chọn kết quả = Không phản hồi: Ngày LH lại **tự điền** theo bảng escalate, kèm dòng chữ giải thích "Đây là lần im lặng thứ 3, hệ thống đề xuất nhắc lại sau 3 ngày kèm ưu đãi"
-- Gợi ý kịch bản: hiển thị nội dung mẫu tương ứng với nhịp escalate hiện tại, có nút sao chép
-- Nút "Lưu và sang khách tiếp theo" - đây là nút chính, giúp EC chạy hết hàng đợi mà không rời màn hình
-
-### 11.3. Màn hình nhập lead mới
-
-Ràng buộc UX cứng: **hoàn thành trong dưới 30 giây.**
-
-- Chỉ 5 trường bắt buộc: Họ tên, Sản phẩm, Nguồn, Campaign (ẩn nếu nguồn không phải paid), Giai đoạn.
-- SĐT không bắt buộc (đúng theo nguyên tắc vận hành đã chốt).
-- Kiểm tra trùng chạy nền, hiện cảnh báo ngay dưới ô tên khi gõ xong.
-- Các trường học thuật (kết quả test, xếp lớp, lịch rảnh) nằm trong khối gập lại, mặc định đóng.
-- Người phụ trách mặc định là người đang đăng nhập.
-- Nút "Lưu và nhập tiếp" giữ nguyên Sản phẩm, Nguồn, Campaign cho lead kế tiếp.
-
-### 11.4. Màn hình danh sách lead
-
-Data Grid đầy đủ (Mục 16).
-
-**Sửa tại chỗ trên bảng** (nhấp đôi — Gói F). Trường có tập giá trị cố định hiển thị
-**dropdown (`<select>`)**, trường ngày hiển thị **date picker**, còn lại là ô nhập chữ.
-Mọi thay đổi đi qua service (`updateLead` hoặc `reassignLead`), **không** bỏ qua
-validate, và **ghi audit_logs**.
-
-| Nhóm | Trường | Kiểu ô | Quyền | Ghi chú |
-|---|---|---|---|---|
-| Thông tin | họ tên, SĐT, email, ghi chú tư vấn | chữ | `lead.update` | họ tên không được rỗng |
-| Danh mục | **Sản phẩm** (list từ `products` đang bật — "Cấu hình sản phẩm"), **Campaign** (list từ `campaigns`), **Nguồn** | dropdown | `lead.update` | lưu `product_id` / `campaign_id` / `source`; V05 khi Nguồn/Campaign xung khắc |
-| Trạng thái | **Giai đoạn**, **Kết quả** | dropdown | `lead.update` **và** `lead.statusChange` | chạy đủ máy trạng thái 8.1: max_stage GREATEST, đóng dấu `mql_at`/`sql_at`, đóng task `LEAD_CARE`. Hạ giai đoạn → hỏi lý do. `LOST` → hỏi lý do ≥10 ký tự (V03). `DISQUALIFIED` → hỏi mã lý do (V02). **Lên `WON` phải qua enrollment** (V04) — chặn ở bảng |
-| Lịch | **Ngày LH lại** | date | `lead.update` | V01 khi OPEN + đã có tương tác |
-| Phân công | **Phụ trách** | dropdown (EC) | `lead.reassign` | đi qua `reassignLead`, giữ `originally_assigned_to` |
-| EMS | trạng thái EMS, link EMS | dropdown / chữ | `lead.update` | xem 7.5 |
-
-Audit các key: `full_name` `phone` `email` `source` `product_id` `consult_note`
-`campaign_id` `stage` `outcome` `assigned_to` `next_contact_date` `ems_status` `ems_link`.
-Khi bật quyền sửa, cột "Khách" bỏ liên kết (mở chi tiết qua cột "Mã") để nhấp đôi
-không điều hướng.
-
-Các view dựng sẵn chia sẻ cho cả đội:
-
-| Tên view | Bộ lọc |
+| Việc | Quy tắc |
 |---|---|
-| Quá hạn chăm sóc | `outcome = OPEN AND next_contact_date < hôm nay` |
-| Hôm nay | `next_contact_date = hôm nay` |
-| Mới chưa xử lý | `stage = NEW` |
-| Thiếu Ngày LH lại | `outcome = OPEN AND next_contact_date IS NULL AND có ít nhất 1 interaction` |
-| Đang nóng | `max_stage = SQL AND outcome = OPEN` |
-| Sắp thành Cold | `silence_count >= 4 AND outcome = OPEN` |
-| 🔥 Nhiệt độ: Nóng | `score_band = hot` (sắp xếp điểm giảm dần) |
-| Nhiệt độ: Ấm / Nguội | `score_band ∈ {warm, cool}` |
-| ❄️ Nhiệt độ: Lạnh | `score_band = cold` |
-| Chốt tháng này | `outcome = WON AND won_at trong tháng` |
-| Kho remarketing | `outcome = LOST AND next_contact_date <= hôm nay` |
-| Thiếu SĐT nhưng là MQL | `max_stage >= MQL AND phone IS NULL` |
+| Báo cáo marketing tháng | Hàng tháng, ngày làm việc cuối cùng của tháng, giao Trưởng phòng |
+| Kiểm tra hiện trạng POSM từng trung tâm | Hàng tháng, ngày 28, mỗi nhân sự HO nhận việc cho các trung tâm mình phụ trách |
+| Báo cáo ads tuần | Hàng tuần, thứ Hai |
+| HO gửi bản nháp Brand Campaign tháng sau cho GĐKV | Hàng tháng, ngày 10 |
+| Họp thống nhất Brand Theme tháng | Hàng tháng, [CẦN XÁC NHẬN ngày] |
+| Trung tâm gửi Content Plan | Hàng tháng, ngày 25, theo dõi từng trung tâm |
+| Rà soát Google Maps các trung tâm | Hàng tháng, ngày làm việc đầu tiên |
+| Nhắc nhập lịch tuần gửi BOD | Hàng tuần, [CẦN XÁC NHẬN ngày giờ] |
 
-**Cột "Nhiệt độ" (Gói T).** Cột enum tô màu (Gói P) lấy từ `scoreLead()` (SPEC 21):
-🔥 **Nóng** (điểm ≥ 70, rose) · **Ấm** (≥ 45, amber) · **Nguội** (≥ 20, slate) ·
-❄️ **Lạnh** (< 20 hoặc `is_cold` / `DISQUALIFIED`, gray; `WON` → Nóng). Lọc / gom
-nhóm / xem nhanh theo cột này. `is_cold` (5 phiên im lặng — Mục 8.2) luôn ép về Lạnh.
+### 6.2 Mô hình `recurring_rules`
 
-### 11.5. Phân công và chuyển giao lead
+| Trường | Ghi chú |
+|---|---|
+| `name`, `description` | |
+| `task_template` (jsonb) | `title` (hỗ trợ biến), `description`, `type`, `priority`, `channel`, `campaign_id`, `labels`, `checklist` (mảng), `estimated_hours`, `time_slot` |
+| `freq` | `daily` / `weekly` / `monthly` / `yearly` |
+| `interval` | số nguyên, mặc định 1 (ví dụ 2 tuần một lần) |
+| `by_weekday` | mảng 1-7, dùng cho `weekly` |
+| `by_month_day` | số 1-31, hoặc `-1` = ngày cuối tháng; dùng cho `monthly` |
+| `by_nth_weekday` | ví dụ "thứ Hai đầu tiên" của tháng |
+| `day_rule` | `calendar_day` / `last_working_day` / `first_working_day` |
+| `holiday_policy` | `none` / `shift_earlier` / `shift_later` khi rơi vào ngày nghỉ hoặc lễ [MẶC ĐỊNH `shift_earlier` cho hạn nộp, `shift_later` cho việc bắt đầu] |
+| `due_offset_days` | số ngày từ ngày danh nghĩa đến `due_date` (mặc định 0) |
+| `start_offset_days` | số ngày trước hạn mà task được tạo và hiện ra, mặc định 3 |
+| `due_time` | giờ hạn (tùy chọn) |
+| `starts_on` | ngày bắt đầu áp dụng quy tắc |
+| `ends_on` hoặc `max_occurrences` | giới hạn (tùy chọn) |
+| `assignment_mode` | `fixed_user` / `sbu_ho_owner` / `round_robin` / `unassigned` |
+| `fixed_assignee_id` | dùng với `fixed_user` |
+| `round_robin_user_ids` | dùng với `round_robin` |
+| `scope_mode` | `single` / `per_sbu` (xem 6.5) |
+| `scope_sbu_ids` | tập SBU áp dụng |
+| `fan_out_mode` | `checklist_per_owner` / `task_per_sbu` (xem 6.5) |
+| `generation_horizon_days` | sinh trước bao nhiêu ngày, mặc định 45 |
+| `completion_behavior` | `fixed_schedule` (mặc định) / `after_completion` |
+| `active`, `paused_until` | |
 
-- ADMIN/MANAGER phân công lại được, đơn lẻ hoặc hàng loạt.
-- Khi chuyển, hệ thống ghi audit và tạo thông báo cho cả hai bên.
-- **Câu hỏi cần chốt:** khi một lead được chuyển từ EC A sang EC B rồi chốt, ai được tính HVM cho KPI và thưởng? Xem Mục 24-QĐ05. Đây là tranh chấp chắc chắn sẽ xảy ra, phải có quy tắc trước khi golive.
+Biến dùng trong `title` và `description`: `{{month}}`, `{{month_name}}`, `{{year}}`, `{{prev_month}}`, `{{next_month}}`, `{{week_number}}`, `{{due_date}}`, `{{sbu_code}}`, `{{sbu_name}}`, `{{owner_name}}`. Ví dụ tiêu đề: `Báo cáo Marketing tháng {{month}}/{{year}}`.
 
----
+### 6.3 Cơ chế sinh task
 
-## 12. Module 3 - Dashboard
+- Một **tiến trình chạy lịch** (cron) chạy mỗi đêm (ví dụ 00:30) và khi quy tắc vừa được tạo hoặc sửa. Với mỗi quy tắc đang hoạt động, tính các ngày danh nghĩa trong khoảng `[hôm nay, hôm nay + generation_horizon_days]` và tạo task còn thiếu.
+- **Chống tạo trùng bắt buộc:** ràng buộc duy nhất `(recurring_rule_id, occurrence_date, scope_key)` ở cơ chế cơ sở dữ liệu, tiến trình chạy lại bao nhiêu lần cũng không sinh trùng. (`scope_key` là `sbu_id` khi `task_per_sbu`, hoặc `owner_id` khi `checklist_per_owner`, hoặc rỗng.)
+- Dùng thư viện `rrule` (hoặc tương đương đã được kiểm chứng) cho tính ngày; **ngày làm việc cuối cùng, ngày làm việc đầu tiên và dịch ngày lễ do mã ứng dụng xử lý** dựa trên bảng `holidays` và `users.work_days`/cấu hình tuần làm việc của phòng.
+- Tháng ngắn: `by_month_day = 31` rơi vào tháng không có ngày 31 thì lấy ngày cuối tháng.
+- Sinh task `todo` với `source_type = recurring`.
 
-### 12.1. Nguyên tắc thiết kế
+### 6.4 Sửa và xóa
 
-Dashboard hiện tại của sheet có 46 dòng số dày đặc. Nó trả lời được "số là bao nhiêu" nhưng không trả lời được "tôi phải làm gì". Dashboard mới phải đảo ngược thứ tự đó.
+Khi sửa hoặc xóa một task thuộc chuỗi, hỏi người dùng:
+1. **Chỉ lần này**: chỉ sửa task đó, đánh dấu ngoại lệ (task giữ nguyên dù quy tắc đổi).
+2. **Lần này và các lần sau**: tách quy tắc (kết thúc quy tắc cũ, tạo quy tắc mới bắt đầu từ ngày đó).
+3. **Toàn bộ chuỗi**: sửa quy tắc và cập nhật mọi task chưa `done` chưa bị sửa tay.
 
-Ba tầng, từ trên xuống:
-1. **Cần hành động** - những gì đang sai, kèm nút xử lý
-2. **Sức khỏe hiện tại** - các chỉ số chính so với kỳ trước và so với chỉ tiêu
-3. **Chi tiết bóc tách** - theo sản phẩm, campaign, kênh, nhân sự
+Task đã `done` không bao giờ bị sửa tự động. Có thao tác "Bỏ qua lần này" (skip) cho một lần lặp (ghi lại ngày bị bỏ qua để tiến trình không sinh lại).
 
-### 12.2. Bộ lọc toàn cục
+### 6.5 Quy tắc "mỗi trung tâm một việc" (fan-out)
 
-Áp dụng cho toàn bộ dashboard, ghi nhớ theo người dùng (localStorage):
-- **Bộ chọn thời gian 4 cấp (Gói H):** 5 ô chọn cạnh nhau — **Nhanh · Năm · Quý ·
-  Tháng · Tuần** — kiểu phân cấp, chọn tới đâu áp phạm vi tới đó:
-  - *Nhanh:* Hôm nay / 7 ngày / 14 ngày (preset ngắn, độc lập với 4 cấp dưới).
-  - *Năm:* 4 năm gần nhất → `year:YYYY` = cả năm.
-  - *Quý:* Cả năm | Quý 1–4 → `quarter:YYYY-Q#`.
-  - *Tháng:* Cả kỳ | các tháng (bó theo quý nếu đã chọn quý) → `month:YYYY-MM`.
-  - *Tuần:* khóa cho tới khi chọn Tháng; sau đó liệt kê các **tuần báo cáo VMG**
-    giao với tháng → `week:YYYY-MM-DD` (ngày Thứ 7 bắt đầu tuần).
-  - Chọn cấp sâu hơn ghi đè cấp trên; bỏ (`Cả …`) lùi về cấp cha.
-  - **Tuần báo cáo VMG = Thứ 7 tuần trước → Thứ 6 tuần này** (7 ngày). `weeklyTrend`
-    và ô chọn tuần đều theo mốc này. Helper trong `src/lib/time.ts`:
-    `reportWeekBounds` / `yearBounds` / `monthsOfYear` / `weeksOfMonth` /
-    `parsePeriodParts` / `resolvePeriodValue` (kèm cấp `year:`).
-- So sánh với: kỳ liền trước / cùng kỳ năm trước / không so sánh
-- Sản phẩm (nhiều lựa chọn)
-- Kênh (nhiều lựa chọn)
-- Người phụ trách (nhiều lựa chọn)
+Nhiều việc định kỳ áp dụng cho 12 SBU. Sinh 12 task rời mỗi tháng cho mỗi loại việc sẽ làm ngập danh sách. Hỗ trợ hai chế độ:
 
-**Tab "Báo cáo" cũ đã gộp vào Dashboard.** Khối "Bóc tách" (12.5) hiển thị breakdown
-theo sản phẩm / campaign / nhân sự / xu hướng tuần / cohort cho kỳ đang chọn, kèm nút
-**Xuất XLSX** (5 sheet) — chỉ ADMIN/MANAGER. Không còn route `/bao-cao`.
+- **`checklist_per_owner` [MẶC ĐỊNH]**: mỗi nhân sự HO nhận **1 task** cho kỳ đó, bên trong có checklist liệt kê các SBU mà người đó phụ trách (`checklist_items.sbu_id`). Ví dụ "Kiểm tra POSM tháng 10": Khiết nhận 1 task có checklist VTS, PVT, NKN, TBM, TMDT; Đạt nhận 1 task có checklist LDN, TPU, PTA, NTI, HVG, BPH, VMP_VMT. Task `done` khi mọi mục checklist xong. Mỗi mục checklist tick được kèm ghi chú và link ảnh.
+- **`task_per_sbu`**: mỗi SBU một task riêng (dùng cho việc nặng, cần theo dõi riêng, ví dụ "Gửi Content Plan" do trung tâm thực hiện, giao cho `center_contributor` của SBU đó).
 
-**Hiệu năng render (Gói E1).** Shell trang + bộ lọc phải hiển thị **tức thì**, không chờ
-truy vấn. "Sức khỏe" (12.4) và "Bóc tách" (12.5) là hai `<Suspense>` riêng, khóa theo
-bộ lọc — đổi kỳ thì khối cũ hiện skeleton lại ngay, phần nhẹ (Sức khỏe) về trước, phần
-nặng (Bóc tách) về sau. Bộ lọc dùng `useTransition`: select nhảy giá trị ngay khi bấm
-(giá trị lạc quan), hiện "đang tải…" trong lúc server render. Nhóm `(app)` có
-`loading.tsx` chung để mọi lần điều hướng thấy phản hồi ngay thay vì đứng ở trang cũ.
+Người phụ trách của mỗi SBU lấy từ `sbus.ho_owner_id`. Đổi người phụ trách SBU thì chỉ áp dụng cho task **chưa sinh** hoặc **chưa `done`**.
 
-**Gộp truy vấn breakdown (Gói E2).** Các hàm bóc tách (`breakdownByProduct` /
-`ByCampaign` / `ByUser`, `weeklyTrend`) **không** gọi `getBaseMetrics` lặp theo từng
-id/tuần nữa. Thay bằng 3 hàm gộp trong `metrics.ts` (vẫn là nguồn công thức duy nhất,
-có test đối chiếu `metrics-breakdown.test.ts` chốt "gộp == lặp"):
-`getBaseMetricsGrouped(filter, "product"|"campaign"|"assignee")` → `Map<id, BaseMetrics>`
-bằng 3–4 `GROUP BY` / bảng nguồn; `getTrendSeries(weekStarts, filter)` → chuỗi tuần
-bằng 3 truy vấn; `getOpsDisciplineGrouped({from,to})` → overdue/first-response theo
-người bằng 2 truy vấn. Mỗi lần tải "Bóc tách" giảm từ ~vài trăm round-trip xuống ~15.
-Chỉ số phái sinh vẫn đi qua `deriveMetrics` duy nhất.
+### 6.6 Liên kết ma trận SBU với task
 
-**Cache 60s (Gói I).** "Sức khỏe" và "Bóc tách" là số tổng hợp, **không** riêng theo
-người xem → bọc `unstable_cache` (`src/app/(app)/dashboard-cache.ts`), khóa theo
-`(from, to, productIds, channels[, cmpMode])`, `revalidate: 60`, tag `"dashboard"`.
-Người thứ hai chọn cùng kỳ / bấm qua lại vài kỳ quen thuộc → lấy từ cache, không đụng
-DB. Thêm index `leads.received_at` và `lead_stage_history(lead_id, from_stage)`
-(migration 0007) cho các truy vấn gộp.
-
-### 12.3. Tầng 1 - Khối cần hành động
-
-Chỉ hiện khi có vấn đề. Không có vấn đề thì khối này biến mất, không hiện dòng "Mọi thứ đều ổn" chiếm chỗ.
-
-| Thẻ | Điều kiện | Nút |
-|---|---|---|
-| Campaign đề xuất KILL | Có campaign vi phạm R1 hoặc R2 | Xem danh sách |
-| Lead quá hạn chăm sóc | `overdue_leads > 0` | Mở hàng đợi |
-| Lead mới chưa xử lý quá 24h | V12 | Mở danh sách |
-| Thiếu số liệu ads | V10 | Mở màn hình nhập |
-| Lead thiếu Ngày LH lại | V01 vi phạm ở dữ liệu cũ | Mở danh sách |
-| KPI có nguy cơ trượt | Tiến độ thực tế thấp hơn tiến độ thời gian trên 15% | Mở KPI |
-
-### 12.4. Tầng 2 - Sức khỏe
-
-Hàng thẻ chỉ số, mỗi thẻ có: giá trị, biến động so với kỳ so sánh (mũi tên và %), và biểu đồ tia nhỏ 30 ngày.
-
-Thứ tự: Spend | Lead | MQL | SQL | HV Chốt | Doanh thu | CPMQL | CAC | ROAS
-
-Dưới đó, phễu tổng quan dạng ngang với tỷ lệ chuyển đổi từng bậc, và bên cạnh là cùng phễu đó của kỳ trước để so sánh trực quan.
-
-### 12.5. Tầng 3 - Bóc tách
-
-**Bảng theo sản phẩm:**
-Sản phẩm | Spend | Lead | **MQL | SQL** | HV Chốt | Doanh thu | CPMQL | ROAS | Nhiệt độ | **% ngân sách** (tỷ trọng spend thực tế của sản phẩm trong tổng spend kỳ).
-
-*(Bỏ cột "% phân bổ" / cảnh báo lệch — Gói V: tỷ trọng phân bổ gốc không cố định,
-tùy plan và thời điểm nên không dùng làm mốc đối chiếu cứng.)*
-
-**Bảng theo campaign:** như Mục 10.1, giới hạn top 20 theo spend. Có cột **SQL**.
-
-**Bảng "Tiến độ đội"** (Gói M — thay bảng "theo nhân sự" cũ; **bỏ bảng cohort**):
-mỗi hàng một nhân sự (EC + MARKETING), cột:
-Lead được giao | MQL | HV Chốt | HVM | Doanh thu | CR MQL→Chốt | **Phiên chăm sóc**
-(số `lead_interactions` trong kỳ) | **Task xong/tổng** (task có `due_date` trong kỳ) |
-**% task** | **Task trễ** | Tỷ lệ trễ hẹn | Tốc độ phản hồi lead mới.
-Dòng cuối **TỔNG ĐỘI** (cộng các số đếm; CR & %task tính lại theo tổng; hai tỷ lệ ops
-để "–"). Mục đích: BOD/quản lý nhìn ra ai đang tải nặng / chậm việc / chăm sóc ít.
-Grouped queries trong `dashboard.ts` (`getTeamAux` + `breakdownByUser`), cache 60s.
-
-**Nhiệt độ pipeline (Gói U).** Ngay dưới "Sức khỏe": 4 thẻ đếm lead **đang OPEN**
-theo `scoreLead().band` — 🔥 Nóng / Ấm / Nguội / ❄️ Lạnh (kèm % và thanh tỉ lệ xếp
-chồng, màu theo bảng TagColor). Cảnh báo "🔥 N lead Nóng chưa đặt Ngày LH lại". Bảng
-"Theo sản phẩm" và "Tiến độ đội" có thêm cột **Nhiệt độ (đang theo)** — thanh tỉ lệ
-nhỏ + số Nóng/Lạnh của từng sản phẩm / từng người. Nguồn: `getLeadTempBreakdown`
-(`src/lib/services/lead-temp.ts`, 1 truy vấn, không khóa theo kỳ, cache 60s
-`getLeadTempCached`).
-
-**Biểu đồ xu hướng:** đường theo tuần cho Spend, MQL, HV Chốt, CPMQL trong 12 tuần gần nhất.
-
-### 12.6. Dashboard riêng cho vai trò VIEWER (BOD)
-
-Bản rút gọn, một màn hình:
-- Doanh thu lũy kế so với chỉ tiêu quý, dạng thanh tiến độ
-- HVM lũy kế so với chỉ tiêu
-- ROAS tổng và theo sản phẩm
-- Xu hướng doanh thu 12 tuần
-- **Bảng "Tiến độ đội"** (12.5) — theo yêu cầu BOD (điều chỉnh so với bản gốc):
-  BOD được xem tiến độ **theo từng người có tên** (task, chăm sóc, chuyển đổi, trễ hẹn)
-  kèm dòng TỔNG ĐỘI. Đây là dữ liệu hiệu suất công việc, không phải dữ liệu cá nhân
-  của khách hàng.
-- **Nhiệt độ pipeline** (Gói U) — 4 thẻ đếm lead OPEN theo Nóng/Ấm/Nguội/Lạnh, và
-  cột Nhiệt độ trong bảng "Tiến độ đội".
-- **Vẫn không** hiển thị thông tin liên hệ khách hàng cho VIEWER.
+Với hạng mục trong `sbu_catalog_items` có quy tắc lặp mặc định: khi mục checklist của một SBU được tick xong (hoặc task per-SBU `done`), tự cập nhật `sbu_item_status` của `(hạng mục, SBU, kỳ)` thành `done`. Task quá hạn chưa xong: ô hiển thị `blocked` hoặc `in_progress` tùy cấu hình, và nổi lên màn hình quản lý. Nhờ vậy sheet "SBU Marketing" cập nhật **tự động từ công việc thật**, không phải nhập tay thêm một lần nữa.
 
 ---
 
-## 13. Module 4 - Quản trị công việc
+## 7. SINH TASK TỰ ĐỘNG TỪ CÁC NGUỒN KHÁC
 
-### 13.1. Phân biệt hai loại công việc
+Mọi quy tắc dưới đây cấu hình được trong trang cài đặt (mục 13.4). Các độ lệch ngày là [MẶC ĐỊNH].
 
-Đây là quyết định thiết kế quan trọng, cần nói rõ để tránh làm sai.
+### 7.1 Từ Campaign / Action plan [MVP]
+Mỗi dòng action plan trong file import = 1 task `campaign_action` (nếu có cột "việc con" thì tạo task con). Gán `campaign_id`, `workstream`, người phụ trách, hạn từ file.
 
-**Không tạo task cho từng lead cần chăm sóc.** Nếu làm vậy, mỗi ngày hệ thống sinh 20-40 task, danh sách task trở thành rác và không ai dùng nữa.
+### 7.2 Từ Content calendar [P2]
+Mỗi `content_item` sinh **1 task cha** "Đăng: {chủ đề} - {kênh}" có hạn là `publish_date`/`publish_time`, kèm các task con theo `content_workflow_template` của từng brand hoặc kênh:
 
-Thay vào đó:
-
-| Loại | Nơi quản lý | Ví dụ |
+| Task con mặc định | Hạn | Người phụ trách |
 |---|---|---|
-| Việc chăm sóc lead | **task `LEAD_CARE`** sinh tự động từ lead đến hẹn (Mục 11.1) — hiển thị chung ở Công việc | Gọi lại khách A, nhắn ưu đãi cho khách B |
-| Việc dự án, việc định kỳ | Module Task (`PROJECT` / `RECURRING`) | Xây sale kit TESOL, gửi quy trình tư vấn |
+| Soạn nội dung | `publish_date` - 3 ngày làm việc | `owner_id` của content item |
+| Thiết kế | `publish_date` - 2 ngày làm việc | nhân sự thiết kế [CẦN XÁC NHẬN: ai], hoặc theo bảng định tuyến |
+| Duyệt | `publish_date` - 1 ngày làm việc | Trưởng phòng hoặc người duyệt |
+| Đăng bài | `publish_date` | `owner_id` |
 
-Cầu nối giữa hai loại: chỉ số `daily_clear_rate` xuất hiện trên dashboard quản lý như một dòng "công việc" của EC, dù không phải task.
+Trạng thái `content_item` đồng bộ hai chiều với các task con (xong "Đăng bài" thì `published`). Có tùy chọn "chỉ 1 task, không task con" cho nội dung đơn giản.
 
-### 13.2. Cấu trúc task
+### 7.3 Từ Kế hoạch quay chụp (Media production plan) [P2]
+Mỗi `media_shoot` sinh:
+- Task chuẩn bị (kịch bản, địa điểm, liên hệ trung tâm): hạn `shoot_date` - 5 ngày làm việc.
+- Task thực hiện quay: đúng `shoot_date`, `time_slot` theo cấu hình.
+- Task hậu kỳ cho **mỗi** `media_deliverable`: giao `editor_id`, hạn `due_date` của deliverable.
 
-Kế thừa cấu trúc đang dùng ở sheet "Kế hoạch T9", vốn đã hợp lý: Nhóm | Đầu việc | Mục tiêu/KPI | Vai trò chính | Timeline | Trạng thái | Link.
+Hỗ trợ **tạo tự động lịch quay định kỳ**: nhập ngày đợt 1 và số đợt, hệ thống tạo các `media_shoot` cách nhau 14 ngày. Có thể dời từng đợt.
 
-Bổ sung:
-- `type = RECURRING` với luật lặp, ví dụ "Nhập số liệu ads" lặp mỗi ngày làm việc, tự sinh task con mỗi sáng
-- `type = SYSTEM` cho task do hệ thống sinh, ví dụ "Xử lý 12 lead quá hạn"
-- Trạng thái `BLOCKED` bắt buộc kèm lý do - phục vụ việc phát hiện điểm nghẽn, đặc biệt là nút thắt thiết kế
+### 7.4 Từ Request [MVP]
+Khi request chuyển sang `accepted`: sinh 1 task `request`, giao cho người được định tuyến (bảng `request_routing`: `request_type` + `sbu_id` tùy chọn đến `assignee_id`, ví dụ thiết kế đến designer), hạn là `committed_date`. [CẦN XÁC NHẬN] SLA mặc định theo loại request; chưa có SLA thì bắt buộc người tiếp nhận nhập `committed_date`. Trạng thái request đồng bộ hai chiều với task (task `done` thì request `done`).
 
-### 13.3. Màn hình
+### 7.5 Từ Nhịp điều phối Brand Campaign hàng tháng [MVP]
+Seed sẵn các quy tắc lặp theo cơ chế 6 mốc (Phụ lục C). Quy tắc sinh task trước hạn đủ để người liên quan kịp chuẩn bị.
 
-**Task của tôi:** ba cột Kanban (Cần làm / Đang làm / Xong), lọc theo tuần.
+### 7.6 Từ Ma trận SBU [P2]
+Hạng mục trong `sbu_catalog_items` có `default_recurring_rule_id` thì khi bật cho một SBU, quy tắc lặp tương ứng được kích hoạt (mục 6.5).
 
-**Lưu trữ (Gói G).** Task đã **Xong** có nút **"Lưu trữ"** → đặt `tasks.archived_at`,
-ẩn khỏi bảng (không phải xóa — bản ghi vẫn còn, vẫn tính vào thẻ tổng / `% hoàn thành`).
-Nút **"Đã lưu trữ (N)"** trên thanh công cụ bật `?archived=1` để xem lại, mỗi thẻ khi đó
-có nút **"bỏ lưu trữ"**. Chỉ lưu trữ được task `DONE`. Ghi `audit_logs` key `archived_at`.
-`listTasks` mặc định lọc `archived_at IS NULL`, trừ khi truyền `includeArchived`.
+### 7.7 Trần khối lượng
+Một lần import hoặc một lần quy tắc sinh vượt **200 task** thì hiển thị cảnh báo xác nhận trước khi tạo (để tránh nạp nhầm file).
 
-**Toàn đội (chỉ MANAGER trở lên):**
-- Chế độ bảng: Data Grid, mặc định gom nhóm theo người phụ trách
-- Chế độ dòng thời gian: thanh ngang theo tuần, mỗi hàng một người, thấy được ai đang quá tải
-- Thẻ tổng: tổng đầu việc, đã xong, % hoàn thành, số việc quá hạn, số việc bị chặn
+---
 
-Chỉ số `% hoàn thành` tính giống sheet Kế hoạch T9: `số task DONE / tổng số task trong kỳ`.
+## 8. GIAO DIỆN VÀ CÁC CHẾ ĐỘ XEM
 
-### 13.4. Việc định kỳ cần cấu hình sẵn
+### 8.1 Điều hướng
 
-**Task "Nhập số liệu ads hôm nay" (Gói K).** Job sáng (`runSpawnAdsEntry` trong
-`runAllMorningJobs`) tạo **1 task/ngày cho mỗi user vai trò `MARKETING`** đang hoạt
-động — `type = SYSTEM`, `group_code = 'ADS'`, `due_date = hôm nay`, link `/ads`.
-Idempotent trong ngày (bỏ qua nếu người đó đã có task ADS `due_date = hôm nay`).
-Task **tự chuyển DONE** (`completeAdsEntryTasksIfDone`) khi trong ngày mọi campaign
-đang ON đều đã có bản ghi `campaign_daily_metrics` — gọi sau mỗi lần lưu số liệu
-campaign và trong job sáng. Không cần bảng template; logic ở
-`src/lib/services/ads-entry-tasks.ts`.
+Thanh bên trái: **Việc của tôi** (mặc định) | **Tất cả task** | **Lịch** | **Gantt** | **Campaign** | **Content** | **Quay chụp** | **Request** | **SBU** | **Nền tảng (Foundation)** | **Báo cáo** | **Nhập liệu (Import)** | **Cài đặt**. Hiển thị theo quyền. Ô tìm kiếm toàn cục và nút "+ Task nhanh" luôn có. Giao diện phải dùng được trên điện thoại cho trang "Việc của tôi" và cập nhật trạng thái.
 
-| Việc | Người | Tần suất | Hạn trong ngày |
+### 8.2 Dashboard "Việc của tôi" [MVP]
+
+Trang đầu tiên sau đăng nhập:
+- Thẻ tổng quan: **Trễ hạn** (đỏ), **Hôm nay**, **Ngày mai**, **Tuần này**, **Chưa có hạn**, **Đang bị chặn**.
+- Danh sách "Cần làm hôm nay" gồm task trễ hạn và hạn hôm nay, đánh dấu xong ngay trên dòng.
+- "Việc sắp tới" 7 ngày.
+- Mục "Tôi đang phối hợp" và "Tôi đang theo dõi".
+- Thanh chọn nhanh view: List | Kanban | Lịch | Gantt (chỉ task của mình).
+- Nút "Thêm task nhanh" (gõ tiêu đề, `@` người, `#` campaign, ngày kiểu "mai", "t6", "25/10").
+
+### 8.3 Các view task (dùng chung bộ lọc) [MVP trừ Gantt]
+
+Bộ lọc dùng chung: người phụ trách, người phối hợp, campaign, brand, SBU, loại, trạng thái, mức ưu tiên, kênh, nhãn, khoảng ngày (hạn), trễ hạn, nguồn (thủ công/lặp/import/request...). Nhóm theo: người, campaign, SBU, trạng thái, hạn (hôm nay/tuần này/...), ưu tiên. **Lưu view cá nhân và view dùng chung** (`saved_views`).
+
+| View | Yêu cầu |
+|---|---|
+| **List** | Bảng có cột chọn được, sắp xếp, nhóm, sửa nhanh tại dòng, chọn nhiều để sửa hàng loạt, thu gọn task con |
+| **Kanban** | Cột theo trạng thái; có thể đổi sang cột theo người hoặc theo ưu tiên; kéo thả đổi trạng thái; swimlane theo campaign hoặc người; hiển thị hạn, avatar, nhãn trễ hạn |
+| **Lịch** | Tháng/tuần/ngày; hiển thị task theo `due_date` (và khoảng `start_date`-`due_date`); [P2] hiển thị cả bài đăng content và lịch quay; kéo thả đổi ngày; tô màu theo campaign hoặc người; [P2] xuất ICS đăng ký vào Google Calendar |
+| **Gantt** [P2] | Thanh theo `start_date`-`due_date`, nhóm theo campaign, mũi tên phụ thuộc, kéo để đổi ngày, mốc (milestone), đường "hôm nay", thu phóng theo tuần/tháng |
+| **Workload** [P2] | Ma trận người x tuần: số task hoặc tổng giờ ước tính; tô màu quá tải (ngưỡng cấu hình) |
+
+### 8.4 Trang chi tiết task
+
+Ngăn kéo (drawer) bên phải, mở không rời trang. Gồm: tiêu đề, trạng thái, người phụ trách, người phối hợp, hạn, ưu tiên, campaign, brand, SBU, kênh, mô tả (markdown), checklist, task con, phụ thuộc, link bàn giao, bình luận (mention), tệp/link đính kèm, nguồn sinh (có link tới campaign, content, request, quy tắc lặp), và **lịch sử thay đổi**. Task sinh từ quy tắc lặp hiển thị biểu tượng lặp và nút "Sửa quy tắc".
+
+---
+
+## 9. CÁC TAB MASTER (HOẠCH ĐỊNH)
+
+Các tab này là nơi **xem và quản lý kế hoạch**; công việc thực thi nằm ở task. Mỗi tab master phải có liên kết hai chiều với task (từ campaign mở danh sách task, từ task mở campaign).
+
+### 9.1 Campaign master [MVP]
+- Bảng danh sách xếp theo thời gian (tuyến tính theo `start_date`), lọc theo brand, loại, trạng thái, tháng. Mỗi dòng: mã, tên, loại, brand, thời gian, trạng thái, tiến độ (`% task done`), số task trễ.
+- Chế độ xem **dòng thời gian theo tháng** (mỗi campaign một thanh) bên cạnh dạng bảng.
+- Trang chi tiết campaign gồm: thông tin (insight/thông điệp, mục tiêu, hero activity, CTA, kênh, vai trò HO/trung tâm, ngân sách dạng chữ, KPI dạng chữ), tab **Action plan** (task nhóm theo `workstream`, có list/kanban/gantt riêng của campaign), tab Content, tab Quay chụp, tab Tài liệu, tab Lịch sử.
+- Với campaign loại `brand_theme`: hiển thị 5 mốc điều phối (ngày 10, 15, 20, 25, 29 của tháng trước tháng chạy) tính tự động từ `start_date`, liên kết đến task tương ứng.
+
+### 9.2 Foundation (nền tảng brand/sản phẩm) [P2]
+- Lưới: **cột là brand, dòng là cấu phần** (A1 đến I2, theo sheet `1_Brand_Foundation` trong file Excel). Mỗi ô là văn bản có trạng thái (`confirmed` / `needs_confirmation` / `proposed`) và lịch sử phiên bản.
+- Chỉ báo hoàn thiện theo brand: số ô còn `needs_confirmation`.
+- Cho phép tạo task từ một ô ("Làm rõ ô C1 - VMT") để biến khoảng trống thành việc cụ thể.
+- Đây là nội dung ít thay đổi, **không cần làm đẹp ở phase 1**. Chấp nhận nhập bằng import hoặc sửa trực tiếp trong ô.
+
+### 9.3 SBU master [P2, riêng phần xem danh sách và task theo SBU là MVP]
+- Ma trận **hạng mục (dòng) x 12 SBU (cột)** theo sheet `3_SBU_Marketing`: mỗi ô là trạng thái (`sbu_item_status`) của kỳ đang chọn, tô màu, bấm vào mở task liên quan.
+- Hàng đầu hiển thị khu vực và HO phụ trách của từng SBU. Lọc theo nhóm (Online/Offline x Inbound/Outbound/Chung) và theo người phụ trách HO.
+- Cột phụ: số SBU xong, % hoàn thành, số SBU vướng, link sang module chi tiết (ads hàng tháng, monitoring).
+- Trang chi tiết **một SBU**: mọi task, request, campaign, trạng thái hạng mục của trung tâm đó.
+
+### 9.4 Ads hàng tháng theo SBU [P3]
+Theo dõi từng tháng, từng SBU: sản phẩm chạy, kênh, mục tiêu, ngân sách trung tâm đặt hàng, ngân sách hệ thống HO hỗ trợ, chi tiêu thực tế, lead thực tế, CPL (tính), mã order MISA, trạng thái, link báo cáo. **Quy tắc đã chốt:** "Ngân sách Trung tâm" chỉ tính phần trung tâm tự order; phần HO hỗ trợ thêm cho một trung tâm luôn ghi vào "Ngân sách Hệ thống (HO)", không cộng vào ngân sách của trung tâm đó. Hạn chế phase 1: dùng task có `type = ads` và trường link báo cáo, chưa làm bảng số liệu.
+
+### 9.5 Monitoring hạng mục thay mới định kỳ [P2]
+POSM, bảng hiệu, OOH, Google Maps, quầy tư vấn VMP, phòng thi: mỗi dòng có hiện trạng, ngày cập nhật gần nhất, chu kỳ thay mới (tháng), ngày thay mới kế tiếp (tính), số ngày còn lại, cảnh báo (`Quá hạn` / `Sắp đến hạn trong 30 ngày` / `Còn hạn` / `Chưa có dữ liệu`), link ảnh. Cảnh báo `Quá hạn` hoặc `Sắp đến hạn` tự sinh task cho người phụ trách HO. Ở phase 1 thay bằng task lặp có checklist theo SBU (mục 6.5).
+
+### 9.6 Content calendar [P2]
+Bảng và lịch theo từng brand (tab theo brand), mỗi dòng là một `content_item`; cập nhật hàng tháng bởi người phụ trách. Trạng thái hiển thị đồng bộ với task con (mục 7.2). Cột theo 12 trường tối thiểu của Quy chuẩn Phối hợp Marketing HO - Trung tâm: ngày đăng, kênh, nhóm nội dung, chủ đề, đối tượng, thông điệp, định dạng, nguồn tài nguyên, người phụ trách, CTA, chỉ số mục tiêu, nhu cầu hỗ trợ.
+
+### 9.7 Media production plan [P2]
+Lịch các đợt quay chụp (mặc định 2 tuần/đợt), danh sách đợt và deliverable, trạng thái, người dựng, hạn.
+
+### 9.8 Request [MVP]
+Danh sách có bộ lọc (SBU, loại, trạng thái, trễ hạn), biểu mẫu tạo request (cho cả `center_contributor`), thống kê: tổng, theo trạng thái, theo loại, tỷ lệ trễ hạn, ngoài phạm vi HO, thời gian xử lý trung bình, nhóm theo SBU. **Mục đích kép:** vận hành request và thu thập dữ liệu để chủ sản phẩm chốt giải pháp phân tầng dịch vụ (hiện chưa chốt), nên các thống kê này quan trọng hơn vẻ ngoài.
+
+---
+
+## 10. NHẬP LIỆU BẰNG FILE TEMPLATE [MVP]
+
+### 10.1 Nguyên lý
+
+- Định dạng: `.xlsx` (ưu tiên) và `.csv` (UTF-8). [P2] nhập từ Google Sheets bằng liên kết.
+- Hệ thống cung cấp **tải template** cho từng loại nhập. Template là một workbook có: sheet `HUONG_DAN` (hướng dẫn và ví dụ), sheet dữ liệu, sheet `DANH_MUC` (danh sách giá trị hợp lệ, có kiểm tra dữ liệu dạng danh sách thả xuống cho các cột enum; danh mục SBU, brand, người dùng cập nhật theo hệ thống lúc tải).
+- Luồng 4 bước, **không ghi dữ liệu trước khi người dùng xác nhận**:
+  1. **Tải lên** và chọn loại template.
+  2. **Kiểm tra (validate)** từng dòng: bắt buộc, kiểu dữ liệu, giá trị enum, email người dùng tồn tại, mã brand/SBU/campaign tồn tại, ngày hợp lệ, hạn không nhỏ hơn ngày bắt đầu, khóa trùng trong file.
+  3. **Xem trước (dry-run)**: bảng "sẽ tạo mới / sẽ cập nhật / sẽ bỏ qua / lỗi", hiển thị khác biệt của từng bản ghi sẽ cập nhật, danh sách xung đột (mục 10.3).
+  4. **Xác nhận** để ghi. Có nút tải **file lỗi** (xlsx, thêm cột `loi` cạnh dòng gốc) để sửa và nạp lại.
+- Mỗi lần nạp là một `import_batch` (người nạp, thời gian, tên file, tóm tắt kết quả). **Hoàn tác (undo) cả đợt** trong 72 giờ cho các bản ghi chưa bị người dùng sửa sau đó.
+- Quy tắc chặn: dòng lỗi không làm hỏng cả file nếu người dùng chọn "chỉ nạp các dòng hợp lệ"; mặc định là dừng và báo lỗi nếu có dòng lỗi bắt buộc.
+
+### 10.2 Khóa cập nhật (idempotency)
+
+Mỗi dòng có cột khóa do người dùng đặt (ví dụ `action_code` hoặc `content_code`). Hệ thống upsert theo `(loại, khóa)`. Nếu cột khóa trống, hệ thống tự sinh khóa ổn định từ nội dung (băm của campaign + tiêu đề + hạn) và cảnh báo rằng nạp lại có thể tạo trùng nếu sửa tiêu đề. Nạp lại **đúng file cũ** phải cho kết quả "0 mới, 0 cập nhật".
+
+### 10.3 Chính sách xung đột khi nạp lại
+
+- Bản ghi chưa ai sửa tay: cập nhật theo file.
+- Trường người dùng đã sửa tay (`manually_edited_fields`): **không ghi đè**, đưa vào danh sách xung đột để chọn "giữ bản trong hệ thống" hoặc "lấy bản trong file" từng dòng hoặc cả loạt.
+- Task đã `done` hoặc `cancelled`: không đổi trạng thái; chỉ cập nhật nếu người dùng chọn rõ.
+- Dòng có trong lần nạp trước nhưng vắng trong file mới: **không tự xóa**; liệt kê ở mục "Có thể đã bị loại" để người dùng tự quyết.
+
+### 10.4 Các template (cột chi tiết ở Phụ lục B)
+
+| Mã | Tên | Sheet dữ liệu | Phase |
 |---|---|---|---|
-| Nhập spend và messages các campaign | Marketing Executive | Hằng ngày (T2-T7) | 10:00 |
-| Xử lý hàng đợi lead quá hạn | E-Commerce Executive | Hằng ngày | 17:30 |
-| Rà soát cảnh báo campaign | Marketing Executive | Hằng ngày | 11:00 |
-| Cập nhật đầy đủ trạng thái lead trong ngày | E-Commerce Executive | Hằng ngày | Cuối ngày |
-| Review CPMQL theo sản phẩm | Trưởng phòng | Hằng tuần, thứ Hai | |
-| Chốt số liệu tháng, khóa sổ | Trưởng phòng | Hằng tháng, ngày 3 | |
+| T1 | Plan campaign tháng | `CAMPAIGN` (1 hoặc nhiều dòng) + `ACTIONS` | MVP |
+| T2 | Người dùng và SBU | `USERS`, `SBUS` | MVP |
+| T3 | Task lẻ hàng loạt | `TASKS` | MVP |
+| T4 | Quy tắc lặp | `RECURRING` | MVP |
+| T5 | Request hàng loạt | `REQUESTS` | P2 |
+| T6 | Content calendar | `CONTENT` | P2 |
+| T7 | Media production plan | `SHOOTS` + `DELIVERABLES` | P2 |
+| T8 | Foundation | `FOUNDATION` | P2 |
+| T9 | Danh mục hạng mục SBU | `CATALOG` | P2 |
 
+**T1 là template quan trọng nhất**: mỗi tháng một workbook gồm thông tin campaign (hoặc nhiều campaign) và toàn bộ action plan; sau khi nạp, mọi task xuất hiện ở tab Campaign và ở "Việc của tôi" của từng người.
 
----
-
-## 14. Module 5 - Giao và quản trị KPI
-
-### 14.1. Mô hình
-
-KPI trong hệ thống này phải khớp với cơ chế thưởng hiệu suất TMĐT đã chốt, nếu không sẽ có hai bộ số và tranh chấp là chắc chắn.
-
-Cấu trúc đã chốt cần được hệ thống hỗ trợ:
-- 3 chỉ tiêu với trọng số **30 / 30 / 40**: HVM / Tiền thu / Doanh thu gộp sau trừ chi phí Marketing và KOL-KOC
-- Các mốc hoàn thành: **85% / 90% / 100%**
-- Kỳ tính: theo quý
-
-Hệ thống không hard-code các con số này. Chúng là dữ liệu trong `kpi_definitions` và `kpi_assignments`, để khi cơ chế thưởng thay đổi ở quý sau thì chỉ cần cấu hình lại.
-
-### 14.2. Danh mục chỉ tiêu khởi tạo
-
-| Mã | Tên | Đơn vị | Nguồn | Công thức |
-|---|---|---|---|---|
-| `HVM` | Học viên mới | Số | AUTO | `SUM(enrollments.student_count)` trong kỳ |
-| `CASH_COLLECTED` | Tiền thu | VND | AUTO | `SUM(enrollments.collected_amount)` |
-| `REVENUE_GROSS` | Doanh thu gộp | VND | AUTO | `SUM(enrollments.gross_amount)` |
-| `REVENUE_AFTER_MKT` | Doanh thu gộp sau chi phí MKT và KOL/KOC | VND | AUTO | `REVENUE_GROSS - spend - kol_cost` |
-| `MQL_COUNT` | Số MQL tạo ra | Số | AUTO | `COUNT(max_stage >= MQL)` theo `mql_at` |
-| `CPMQL` | Chi phí mỗi MQL | VND | AUTO, thấp hơn tốt hơn | `spend / mql` |
-| `DAILY_CLEAR_RATE` | Tỷ lệ xử lý hàng đợi đúng hẹn | % | AUTO | Mục 9.6 |
-| `DATA_COMPLIANCE` | Tỷ lệ ngày nhập đủ số liệu ads | % | AUTO | Mục 9.6 |
-| `TASK_COMPLETION` | Tỷ lệ hoàn thành đầu việc | % | AUTO | Task DONE / tổng task |
-| `CUSTOM_MANUAL` | Chỉ tiêu nhập tay | tùy | MANUAL | Trưởng phòng tự nhập số thực tế |
-
-**Lưu ý về `kol_cost`:** hiện chưa có nơi lưu chi phí KOL/KOC. Cần bổ sung một bảng `other_costs` đơn giản (kỳ, loại chi phí, sản phẩm, số tiền, ghi chú) để công thức `REVENUE_AFTER_MKT` chạy được. Nếu không có bảng này, chỉ tiêu trọng số 40% sẽ phải nhập tay và mất tính tự động.
-
-### 14.3. Màn hình giao KPI
-
-- Chọn kỳ (**Quý** hoặc **Tháng** — Gói J; BOD phê duyệt KPI theo cả 2 nhịp),
-  chọn phạm vi (cá nhân / đội / sản phẩm)
-- Thêm từng dòng chỉ tiêu: loại KPI, chỉ tiêu, trọng số, **Ngân sách đã giao (đ)**
-  — số BOD phê duyệt cho chỉ tiêu/kỳ đó (`kpi_assignments.allocated_budget`, cho
-  trống nếu KPI không gắn ngân sách). Ghi audit key `allocated_budget`.
-- Thanh kiểm tra tổng trọng số, cảnh báo khi khác 100%
-- Nút "Sao chép từ kỳ trước"
-- Sau khi lưu, hệ thống gửi thông báo cho người được giao
-- **KPI đã giao và kỳ đã bắt đầu thì không sửa được chỉ tiêu**, trừ ADMIN với lý do bắt buộc và ghi audit. Đây là điều kiện để KPI có sức nặng.
-
-### 14.4. Màn hình theo dõi KPI
-
-**Cho cá nhân:**
-Mỗi chỉ tiêu một thẻ: tên, chỉ tiêu, thực tế, % hoàn thành, trọng số, điểm quy đổi, thanh tiến độ có vạch mốc 85/90/100.
-
-Bên cạnh mỗi thanh có **vạch tiến độ thời gian**: nếu hôm nay là ngày 40 của một quý 90 ngày, vạch nằm ở 44%. Nếu tiến độ thực tế thấp hơn vạch này quá 15 điểm phần trăm, hiển thị cảnh báo "Có nguy cơ trượt chỉ tiêu".
-
-Dòng cuối: **Điểm KPI tổng** = `Σ (% hoàn thành từng chỉ tiêu × trọng số)`, giới hạn trần 100% cho mỗi chỉ tiêu khi cộng dồn (tránh việc vượt mạnh một chỉ tiêu bù cho việc trượt hoàn toàn chỉ tiêu khác).
-
-**Cho quản lý:** bảng tất cả người, mỗi hàng một người, các cột là từng chỉ tiêu, ô hiển thị % và tô màu. Cột cuối là điểm tổng.
-
-**Trên Dashboard — mục "Theo KPI" (Gói J).** Khi bộ lọc thời gian đang ở một Tháng
-hoặc Quý khớp đúng mốc `kpi_assignments.period_start/period_end`: hiện bảng chỉ tiêu
-(mã · phạm vi · mục tiêu · thực tế · % hoàn thành · trọng số · cờ *trễ nhịp*) và dải
-**ngân sách**: giao (`Σ allocated_budget` các chỉ tiêu trùng kỳ) · đã giải ngân
-(`getBaseMetrics(kỳ).spend` — nguồn công thức duy nhất) · còn lại · % giải ngân ·
-nhịp kỳ. Kỳ không khớp (tuần / năm / nhanh) → hiện gợi ý chọn Tháng/Quý. Dữ liệu
-cache 60s như các khối khác (`getKpiFollowCached`). Helper `getBudgetProgressForPeriod`
-trong `src/lib/services/kpi.ts`.
-
-### 14.5. Phản biện về thiết kế KPI
-
-Hai điểm cần cân nhắc trước khi cài đặt:
-
-**(a) Cả 3 chỉ tiêu của EC đều là chỉ tiêu kết quả cuối phễu, phụ thuộc nặng vào chất lượng lead do Marketing tạo ra.** Nếu Marketing chạy ads kém, EC không đạt KPI dù làm tốt phần việc của mình. Ngược lại, EC có thể đạt KPI mà không cần chăm sóc tốt nếu lead đang chảy vào dồi dào. Đề xuất: bổ sung 1 chỉ tiêu quy trình trọng số nhỏ (5-10%) như `DAILY_CLEAR_RATE`, lấy từ phần trọng số của chỉ tiêu HVM. Điều này đưa phần EC kiểm soát được vào trong công thức đánh giá.
-
-**(b) Nguyên tắc "KPI phải đi cùng quyền điều hành".** Nếu một người bị đo bằng chỉ số mà họ không kiểm soát được đầu vào, đó là bẫy trách nhiệm. Cụ thể: nếu Marketing Executive bị đo bằng CPMQL, thì Marketing Executive phải có quyền tắt campaign, đổi ngân sách, đổi nội dung - chứ không phải chỉ có quyền nhập số. Hệ thống nên phản ánh đúng thực tế phân quyền đó, hoặc phải điều chỉnh KPI.
+### 10.5 Xuất dữ liệu
+- Xuất mọi view task ra `.xlsx` và `.csv`. 
+- [P2] **Xuất lịch tuần gửi BOD:** từ task theo `time_slot` của một tuần, xuất file Excel theo mẫu: mỗi nhân sự một khối, dòng là Thứ - ngày, cột Sáng và Chiều. Lý do: BOD yêu cầu các trưởng phòng gửi lịch làm việc hàng tuần của toàn bộ nhân sự. [CẦN XÁC NHẬN] phạm vi nhân sự đưa vào file sau khi TMĐT sáp nhập vào Trung tâm Kinh doanh TMĐT.
 
 ---
 
-## 15. Module 6 - Sale Enablement
+## 11. THÔNG BÁO VÀ NHẮC VIỆC [MVP]
 
-### 15.1. Phạm vi
+### 11.1 Kênh
 
-Trang tra cứu nội bộ cho EC, mở nhanh trong lúc đang tư vấn khách.
+| Kênh | Phase |
+|---|---|
+| Trong ứng dụng (chuông, số chưa đọc, danh sách) | MVP |
+| Email | MVP |
+| Web push (PWA) | P2 |
+| Zalo (qua Zalo OA hoặc ZNS, có chi phí) | P3, [CẦN XÁC NHẬN] có làm không |
 
-Nội dung:
-- Thông tin sản phẩm: mô tả, đối tượng phù hợp, lộ trình, thời lượng, hình thức học
-- Bảng giá và các gói
-- Lịch khai giảng gần nhất
-- Chương trình khuyến mãi đang hiệu lực
-- Hình ảnh báo giá, sale kit, template (nhúng hoặc link Canva)
-- Kịch bản tư vấn: nguyên tắc HỎI - HIỂU - HƯỚNG, xử lý phản đối thường gặp
-- Câu hỏi thường gặp
+### 11.2 Ma trận sự kiện
 
-### 15.2. Yêu cầu bắt buộc
+| Sự kiện | Người nhận | Kênh | Thời điểm |
+|---|---|---|---|
+| Được giao task | Người phụ trách, người phối hợp | App + email | Ngay |
+| Task sắp đến hạn | Người phụ trách | App | Sáng ngày đến hạn 08:00 |
+| **Task đến hạn hôm nay chưa xong** | Người phụ trách | Email (trong bản tóm tắt) + app | 16:30 cùng ngày [MẶC ĐỊNH] |
+| **Task trễ hạn** | Người phụ trách | App + email | Sáng ngày kế tiếp 08:00, sau đó nằm trong bản tóm tắt hằng ngày |
+| **Trễ hạn kéo dài** | Quản lý (admin/manager) | App + email | Khi trễ từ 2 ngày làm việc trở lên [MẶC ĐỊNH], nhắc lại mỗi tuần |
+| Được @mention hoặc có bình luận ở task đang theo dõi | Người liên quan | App (+ email nếu bật) | Ngay |
+| Đổi trạng thái, đổi hạn, đổi người | Người phụ trách, người theo dõi | App | Ngay |
+| Task bị chặn (`blocked`) | Quản lý, người theo dõi | App + email | Ngay |
+| Task phụ thuộc: tiền nhiệm xong | Người phụ trách task sau | App | Ngay |
+| Request mới | Người định tuyến hoặc admin | App + email | Ngay |
+| Request gần trễ hạn cam kết | Người tiếp nhận | App | 1 ngày trước |
+| Import hoàn tất / có lỗi | Người nạp | App | Ngay |
+| **Tóm tắt hằng ngày** | Mọi nhân sự | Email | 08:00 mỗi ngày làm việc: trễ hạn, hôm nay, ngày mai |
+| **Tóm tắt hằng tuần** | Quản lý | Email | Sáng thứ Hai: tải, trễ hạn theo người, tiến độ campaign |
 
-- **Mỗi mục nội dung có `valid_until`.** Khi quá hạn, hệ thống tự ẩn và cảnh báo người phụ trách. Lý do: báo giá và khuyến mãi hết hạn nằm lẫn trong tài liệu là nguồn gốc của việc EC báo sai giá cho khách.
-- **Mọi nội dung có trạng thái duyệt.** Chỉ nội dung `APPROVED` mới hiển thị cho EC.
-- **Áp dụng nguyên tắc chống bịa số liệu của phòng:** không đưa vào trang này bất kỳ con số, chứng nhận, cam kết kết quả, hay lời chứng thực nào chưa được xác nhận. Nội dung chưa xác nhận phải được gắn nhãn `[CẦN XÁC NHẬN]` và không được hiển thị cho EC.
-- Tìm kiếm toàn văn, mở được bằng phím tắt từ mọi màn hình.
-- Nút sao chép nhanh cho từng đoạn nội dung, để dán thẳng vào Zalo hoặc Messenger.
+### 11.3 Quy tắc chống làm phiền
+- **Mỗi task trễ hạn không có hơn 1 thông báo riêng mỗi ngày**; mọi thứ khác gộp vào bản tóm tắt. Nếu một người có hơn 5 sự kiện cùng loại trong một đợt (ví dụ vừa sinh 12 task định kỳ), gộp thành **một** thông báo.
+- Tuân theo giờ yên lặng cấu hình (mặc định không gửi email ngoài 07:30-19:00 trừ tóm tắt đã lên lịch).
+- Mỗi người chỉnh được kênh và loại thông báo của mình (`notification_prefs`), nhưng **nhắc trễ hạn của task mình phụ trách không tắt được**.
+- Chống gửi trùng bằng khóa duy nhất `(task_id, loại_sự_kiện, ngày)`.
 
-### 15.3. Ghi chú về mức độ ưu tiên
-
-Module này có giá trị thực nhưng **không nên làm ở Phase 1**. Nó cạnh tranh nguồn lực với các module cốt lõi, và trong ngắn hạn có thể thay thế bằng một thư mục Drive được tổ chức tốt. Xếp vào Phase 3.
+### 11.4 Thông báo tới người không đăng nhập
+Email cho `center_contributor` chứa nút "Xác nhận đã xong" và "Báo vướng" dùng liên kết ký số một lần (mục 3.3), kèm mô tả việc, hạn, mã tham chiếu.
 
 ---
 
-## 16. Module 7 - Data Grid kiểu Airtable
+## 12. DASHBOARD VÀ BÁO CÁO
 
-Đây là yêu cầu được nhấn mạnh là "quan trọng". Xây một component dùng chung cho mọi bảng dữ liệu trong hệ thống.
+### 12.1 Nhân viên [MVP]: xem mục 8.2.
 
-### 16.1. Tính năng bắt buộc
+### 12.2 Quản lý (admin, manager, viewer) [P2]
+- **Trễ hạn theo người** (số task, số ngày trễ trung bình).
+- **Tải công việc theo người** theo tuần.
+- **Tiến độ campaign:** % task xong, task trễ, mốc sắp tới.
+- **Ma trận SBU:** % hoàn thành theo SBU và theo hạng mục.
+- **Request:** tổng, mới, đang xử lý, trễ hạn, thời gian xử lý trung bình, phân theo SBU và loại.
+- **Việc lặp:** tỷ lệ hoàn thành đúng hạn theo quy tắc.
+- **Tỷ lệ đúng hạn** theo người và theo loại task (dùng để đo, không dùng để chấm điểm; đừng hiển thị bảng xếp hạng công khai).
 
-**Lọc:**
-- Nhiều điều kiện, ghép bằng AND hoặc OR
-- Nhóm điều kiện lồng nhau tối thiểu 2 cấp: `(A và B) hoặc (C và D)`
-- Toán tử theo kiểu dữ liệu:
-  - Chữ: chứa, không chứa, bằng, khác, rỗng, không rỗng, bắt đầu bằng
-  - Số và tiền: `=`, `≠`, `>`, `>=`, `<`, `<=`, trong khoảng, rỗng
-  - Ngày: đúng ngày, trước, sau, trong khoảng, hôm nay, hôm qua, 7 ngày qua, 30 ngày qua, tháng này, tháng trước, quý này, **quá hạn**, trong X ngày tới
-  - Danh mục: là, không là, là một trong, không là một trong
-  - Có/không: đúng, sai
-- **Màu cho giá trị danh mục (Gói P).** Cột enum khai báo `enumColors` (value → màu
-  trong bảng `TAG_CLASS` ở `src/components/data-grid/tag.tsx`) hiển thị mỗi giá trị là
-  một **"tag" màu** ở ô, ở **tiêu đề nhóm** khi gom nhóm, và **chấm màu** trong danh
-  sách chọn của bộ lọc. Áp cho: Lead — Giai đoạn / Cao nhất (`NEW` xám → `WON` xanh
-  lá), Kết quả, Nguồn, EMS; Campaign — Trạng thái (ON xanh / PAUSED vàng / OFF xám),
-  Kênh. Trang chi tiết lead dùng cùng bảng màu.
-- **Ô nhập giá trị khớp kiểu cột (Gói N).** Cột danh mục hiển thị **dropdown** đúng
-  tập giá trị của cột đó — không phải ô chữ tự do. Nguồn tập giá trị: `enumOptions`
-  của cột, hoặc `filterOptions` khai báo riêng (khi giá trị hiển thị khác mã lưu — ví
-  dụ Campaign, Người phụ trách), hoặc grid **tự suy ra** từ dữ liệu đang có khi số
-  giá trị khác nhau ≤ 60. Toán tử "là một trong / không là một trong" hiển thị
-  **chọn nhiều** (checkbox). Cột số → ô số, cột ngày → lịch. Cột chữ tự do (tên,
-  SĐT, mã…) giữ ô chữ + "chứa".
+### 12.3 Định nghĩa chỉ số
+- Tỷ lệ đúng hạn = số task `done` có `completed_at <= hạn` / số task `done` trong kỳ.
+- Task trễ hạn = định nghĩa ở mục 4.2.
+- Tải công việc = tổng `estimate_hours` của task chưa `done` trong tuần; nếu không có ước tính thì đếm số task.
 
-**Gom nhóm:**
-- Tối đa 3 cấp
-- Nhóm mở rộng và thu gọn được, ghi nhớ trạng thái. **Nút "Thu gọn tất cả" /
-  "Mở tất cả"** trên thanh công cụ (Gói N).
-- Mỗi nhóm hiển thị dòng tổng hợp: đếm, tổng, trung bình, nhỏ nhất, lớn nhất - cấu hình được theo từng cột
-- Ví dụ dùng thực tế: gom lead theo Campaign rồi theo Giai đoạn, xem tổng doanh thu từng nhóm
+---
 
-**Sắp xếp:** nhiều cấp, kéo thả để đổi thứ tự ưu tiên.
+## 13. KỸ THUẬT
 
-**Cột:** ẩn hiện, kéo đổi thứ tự, ghim cột trái, chỉnh độ rộng.
+### 13.1 Khuyến nghị công nghệ [MẶC ĐỊNH, agent có thể đề xuất thay thế kèm lý do]
 
-**Sửa tại chỗ:** nhấp đôi để sửa, Enter lưu, Escape hủy, Tab sang ô kế. Ô bị khóa (kỳ đã chốt, không đủ quyền) hiển thị mờ.
+| Lớp | Chọn | Lý do |
+|---|---|---|
+| Ngôn ngữ | TypeScript xuyên suốt | Một ngôn ngữ cho giao diện và máy chủ |
+| Framework | Next.js (App Router) | Một ứng dụng cho UI và API |
+| Cơ sở dữ liệu | **PostgreSQL** | Quan hệ phức tạp, RLS, giao dịch |
+| Truy cập dữ liệu | Drizzle ORM hoặc Prisma | Kiểu an toàn, migration |
+| Xác thực | Auth.js (Google OAuth, giới hạn miền) hoặc Supabase Auth | |
+| Chạy lịch / hàng đợi | `pg-boss` (chạy trên Postgres) hoặc cron của hệ điều hành | Không thêm hạ tầng mới |
+| Email | SMTP của Google Workspace hoặc dịch vụ như Resend | |
+| UI | Tailwind CSS + shadcn/ui | |
+| Kéo thả | `dnd-kit` | Kanban, sắp xếp |
+| Lịch | FullCalendar (lõi) hoặc `react-big-calendar` | Kiểm tra giấy phép khi dùng tính năng trả phí |
+| Gantt | Tự dựng bằng SVG hoặc dùng thư viện giấy phép MIT (ví dụ `frappe-gantt`) | Tránh thư viện thương mại |
+| Lặp lại | `rrule` + lớp xử lý ngày làm việc và ngày lễ tự viết | |
+| Excel | `exceljs` (tạo template có danh sách thả xuống, đọc file) | |
+| Kiểm tra dữ liệu | `zod` | Dùng chung cho form, API và import |
+| Ngày giờ | `date-fns` + `date-fns-tz` | |
+| Kiểm thử | `vitest` (đơn vị), `playwright` (luồng chính) | |
 
-**Chọn nhiều dòng và thao tác hàng loạt:** đổi trạng thái, phân công lại, đặt Ngày LH lại, xuất file.
+**Ràng buộc kiến trúc:**
+- **Không dùng `localStorage` hoặc kho dữ liệu trình duyệt làm nguồn dữ liệu chính.** Mọi dữ liệu nằm ở máy chủ, nhiều người dùng chung theo thời gian thực hoặc gần thực (làm mới 15-30 giây là chấp nhận được ở phase 1).
+- Không hosting tĩnh thuần (không có backend). Cần một tiến trình chạy lịch hoạt động liên tục.
+- Truy cập dữ liệu đặt sau một lớp repository để đổi nhà cung cấp Postgres mà không viết lại ứng dụng.
+- Không dùng microservice, không dùng message broker ngoài. Quy mô không cần.
 
-**View lưu được:**
-- Đặt tên, lưu toàn bộ cấu hình lọc, sắp xếp, gom nhóm, cột
-- Riêng tư hoặc chia sẻ toàn đội
-- Đặt view mặc định
-- Chia sẻ bằng link chứa cấu hình
+### 13.2 Triển khai và dữ liệu [CẦN XÁC NHẬN: chủ sản phẩm quyết định]
 
-**Xuất dữ liệu:** CSV và XLSX, xuất đúng những gì đang lọc và những cột đang hiện. Mọi lần xuất đều ghi audit log.
+Có hai hướng, **thiết kế phải chạy được trên cả hai** (chỉ dùng Postgres chuẩn, không phụ thuộc tính năng độc quyền của một nhà cung cấp):
+- **Tự lưu trữ (self-host)** bằng Docker Compose (app + Postgres + worker) trên máy chủ ảo tại Việt Nam. Phù hợp hướng self-hosting đã chọn cho các dự án dữ liệu của VMG.
+- **Dịch vụ quản lý** (Supabase Cloud hoặc tương đương) kèm ứng dụng triển khai trên nền tảng serverless. Nhanh hơn, nhưng dữ liệu ở máy chủ nước ngoài.
 
-**Hiệu năng:** cuộn ảo cho danh sách dài. Với quy mô dưới 5.000 dòng có thể lọc phía client, trên mức đó chuyển sang lọc phía server. Với dữ liệu hiện tại (570 lead) thì client là quá đủ và nhanh hơn.
+Vì MKT OS chỉ lưu tên, email nhân sự và thông tin công việc, **không lưu dữ liệu cá nhân học viên** (mục 1.3), rủi ro pháp lý về chuyển dữ liệu ra nước ngoài thấp hơn các hệ thống CRM. Dù vậy chủ sản phẩm nên xin ý kiến bộ phận pháp chế trước khi chọn hướng dịch vụ nước ngoài. Có các tệp cấu hình mẫu, `.env.example`, và hướng dẫn chạy bằng một lệnh.
 
-### 16.2. Cấu trúc lưu cấu hình view
+### 13.3 Yêu cầu phi chức năng
+- **Hiệu năng:** trang danh sách 2.000 task mở dưới 2 giây, phân trang hoặc cuộn ảo.
+- **Bảo mật:** phân quyền ở tầng dữ liệu; chống CSRF; mã hóa kết nối HTTPS; liên kết ký số một lần có hạn và chỉ dùng một lần; nhật ký kiểm toán cho thay đổi quyền và import.
+- **Sao lưu:** sao lưu cơ sở dữ liệu hằng ngày, lưu 30 ngày, có hướng dẫn khôi phục đã kiểm thử.
+- **Khả dụng:** không cần HA; cần giám sát tiến trình chạy lịch (nếu không chạy trong 26 giờ thì cảnh báo admin qua email).
+- **Truy cập:** hoạt động tốt trên Chrome, Edge, Safari và trình duyệt di động; bố cục responsive.
+- **Quốc tế hóa:** toàn bộ chuỗi giao diện tách ra tệp ngôn ngữ (mặc định `vi-VN`).
+- **Nhật ký:** ghi log có cấu trúc, không ghi dữ liệu nhạy cảm.
 
-```json
-{
-  "filters": {
-    "conjunction": "and",
-    "conditions": [
-      { "field": "outcome", "operator": "is", "value": "OPEN" },
-      { "conjunction": "or", "conditions": [
-          { "field": "next_contact_date", "operator": "is_overdue" },
-          { "field": "silence_count", "operator": ">=", "value": 4 }
-      ]}
-    ]
-  },
-  "sorts": [
-    { "field": "next_contact_date", "direction": "asc" },
-    { "field": "silence_count", "direction": "desc" }
-  ],
-  "groupBy": [
-    { "field": "assigned_to", "collapsed": false },
-    { "field": "product_id", "collapsed": true }
-  ],
-  "columns": [
-    { "field": "full_name", "visible": true, "width": 200, "pinned": "left" },
-    { "field": "phone", "visible": true, "width": 130 },
-    { "field": "revenue", "visible": true, "aggregate": "sum" }
-  ],
-  "rowHeight": "medium"
-}
+### 13.4 Cài đặt hệ thống (admin)
+Quản lý người dùng và vai trò; SBU (mã, tên, khu vực, người phụ trách HO); brand; ngày làm việc trong tuần; bảng ngày lễ (`holidays`, nhập sẵn lễ Việt Nam năm 2026 và 2027, cần kiểm tra lại bằng dữ liệu chính thức); giờ gửi tóm tắt và giờ yên lặng; ngưỡng nhắc trễ kéo dài; quy trình content (`content_workflow_template`); định tuyến request (`request_routing`); ngưỡng quá tải workload.
+
+---
+
+## 14. PHÂN PHA VÀ TIÊU CHÍ NGHIỆM THU
+
+### 14.1 Phase 0 - Nền tảng (ước tính 1 tuần)
+Khung ứng dụng, cơ sở dữ liệu, migration, đăng nhập, phân quyền, seed dữ liệu (mục 15), CI, triển khai thử.
+
+### 14.2 Phase 1 - MVP "Không bao giờ quên việc" (ước tính 3 đến 4 tuần)
+
+Phạm vi: Task (CRUD, giao việc, trạng thái, ưu tiên, task con, checklist, bình luận, mention, đính kèm link, lịch sử) | Dashboard "Việc của tôi" | View List, Kanban, Lịch | Recurring đầy đủ kể cả fan-out | Thông báo trong app và email, tóm tắt hằng ngày | Campaign master (xem, sửa) | Request | Import T1, T2, T3, T4 | Seed quy tắc lặp điều phối 6 mốc.
+
+**Tiêu chí nghiệm thu (viết dạng kiểm thử được):**
+
+1. *Import lại không trùng.* Cho file T1 có 1 campaign và 20 action. Khi nạp lần 1, tạo 1 campaign và 20 task. Khi nạp lần 2 đúng file đó, báo "0 mới, 0 cập nhật" và không có task trùng.
+2. *Không ghi đè sửa tay.* Sau khi nạp, người dùng đổi hạn của task A. Khi nạp lại file có hạn khác cho task A, hiển thị xung đột, hạn trong hệ thống giữ nguyên cho đến khi người dùng chọn.
+3. *Lặp cuối tháng.* Quy tắc "ngày làm việc cuối cùng của tháng" cho tháng 10/2026 sinh task hạn 30/10/2026 (thứ Sáu) [kiểm tra theo lịch thực]; cho tháng 2/2027 xử lý đúng ngày cuối và ngày nghỉ.
+4. *Chống trùng lặp.* Chạy tiến trình lịch 3 lần liên tiếp không sinh thêm task so với lần 1.
+5. *Fan-out.* Quy tắc "Kiểm tra POSM" `checklist_per_owner` sinh đúng 2 task (Khiết: 5 mục; Đạt: 7 mục) cho dữ liệu seed; tick hết checklist thì task `done`.
+6. *Quá hạn.* Task `todo` có hạn hôm qua xuất hiện ở "Trễ hạn" trên dashboard và trong email 08:00 hôm nay; sau 2 ngày làm việc quản lý nhận thông báo. Tắt thông báo trễ hạn trong cài đặt cá nhân không có tác dụng.
+7. *Quyền.* `member` mở API sửa task của người khác bị từ chối (kiểm tra bằng gọi API trực tiếp, không chỉ ẩn nút). `center_contributor` của VTS không thấy task của TPU.
+8. *Magic link.* Bấm liên kết trong email đánh dấu đúng một task `done` mà không cần đăng nhập; dùng lại lần 2 bị từ chối; hết hạn sau 7 ngày.
+9. *Hiệu năng.* 2.000 task, trang danh sách tải dưới 2 giây.
+10. *Múi giờ.* Task hạn 31/10 lúc 23:00 giờ Việt Nam không bị hiển thị hoặc tính thành ngày 1/11.
+
+### 14.3 Phase 2 - Vận hành đầy đủ (ước tính 4 đến 5 tuần)
+Gantt | Workload | Dashboard quản lý | Content calendar và Media plan kèm sinh task tự động | SBU master có trạng thái suy ra từ task | Monitoring | Foundation | Import T5-T9 | Lịch xuất ICS | Xuất lịch tuần gửi BOD | Nhân bản campaign | Web push | Bộ lọc lưu và view dùng chung.
+
+### 14.4 Phase 3 - Mở rộng (làm sau, đánh giá lại)
+Ads hàng tháng có bảng số liệu | Đồng bộ Google Calendar hai chiều | Nhắc qua Zalo | Tải tệp đính kèm lên kho lưu trữ | Trợ lý AI (gợi ý tách một tài liệu kế hoạch thành danh sách action plan để nạp, luôn có bước người duyệt) | Báo cáo xuất định kỳ.
+
+---
+
+## 15. DỮ LIỆU SEED BAN ĐẦU
+
+Lấy từ file `VMG_Marketing_Strategy_Operations_2026.xlsx` (đi kèm):
+
+- **12 SBU** (sheet `3_SBU_Marketing`): `VTS`, `PVT`, `NKN`, `TBM` (KV1, HO phụ trách: Khiết); `LDN`, `TPU`, `PTA`, `NTI`, `HVG`, `BPH` (KV2/KV3, HO phụ trách: Đạt); `TMDT` (Trung tâm Kinh doanh TMĐT, Online, HO phụ trách: Khiết); `VMP_VMT` (nhóm nội bộ, HO phụ trách: Đạt). [CẦN XÁC NHẬN] danh sách trung tâm thuộc KV2 và KV3.
+- **7 brand:** VMG, VMG IELTS, VMG TESOL, VMG Tiếng Trung, VMP by VMG, VMT, UpLearn by VMG.
+- **Người dùng ban đầu:** Trưởng phòng Marketing (`admin`), Khiết và Đạt (`member`), Trân - thiết kế (`member`). Người khác (CRM, nhân sự TMĐT sau sáp nhập, GĐKV, BOD) thêm qua template T2. [CẦN XÁC NHẬN] danh sách và email.
+- **Campaign:** 17 chủ đề Brand Campaign 08/2026 đến 12/2027 và 11 campaign khác (sheet `2_Campaign_Master`). Giữ nguyên `status` đã ghi (nhiều dòng là `needs_confirmation`).
+- **Danh mục hạng mục SBU:** 46 hạng mục (sheet `3_SBU_Marketing`).
+- **Quy tắc lặp điều phối 6 mốc** (Phụ lục C).
+- **Ngày lễ Việt Nam 2026-2027.**
+- **Không** seed trạng thái "xong" hoặc "đang làm" cho bất kỳ SBU nào; mặc định `not_started`.
+- Các dòng ví dụ trong file Excel (nền vàng nhạt) là dữ liệu minh họa, **không seed**.
+
+---
+
+## 16. RỦI RO VÀ QUYẾT ĐỊNH CẦN CHỐT
+
+### 16.1 Rủi ro chính và cách xử lý trong thiết kế
+
+| Rủi ro | Mức | Xử lý |
+|---|---|---|
+| **Ngập task** do sinh tự động (12 SBU x nhiều hạng mục x hàng tháng) khiến nhân sự bỏ không dùng | Cao | Fan-out dạng checklist (mục 6.5); gộp thông báo (11.3); trần 200 task mỗi lần (7.7); bắt đầu chỉ với khoảng 15 hạng mục ưu tiên cao trong số 46 |
+| **Trung tâm không chịu dùng**, vì đã quá tải và có xu hướng không nhận thêm việc từ Marketing | Cao | Trung tâm chỉ nhận ít việc, xác nhận bằng một cú bấm trong email, không bắt học app; đo đếm thực tế rồi mới mở rộng |
+| **Nhiều hệ thống song song** (Excel, Zalo, MISA, CommerceOS) và không rõ đâu là nguồn thật | Cao | Quy định: MISA là nơi phê duyệt chính thức, MKT OS là nơi theo dõi thực thi và lưu link MISA; sau khi chạy ổn thì ngừng cập nhật sheet 2, 3, 4 bằng tay |
+| **Nút cổ chai thiết kế** (một designer nhận việc từ nhiều nguồn) | Trung bình | Workload view, ước tính giờ, hạn cam kết ở request |
+| Nhập sai file template làm hỏng dữ liệu | Trung bình | Dry-run, undo 72 giờ, trần số lượng |
+| Chất lượng dữ liệu import kém (người điền thiếu) | Trung bình | Template có danh sách thả xuống và hướng dẫn; ô bắt buộc rõ ràng |
+| Phạm vi phình ra (Foundation, ads, AI...) | Trung bình | Ranh giới phase nghiêm ngặt; Foundation chỉ là lưới văn bản |
+| Thay đổi tổ chức (sáp nhập TMĐT, nhân sự ra vào) | Trung bình | Người dùng, SBU, người phụ trách là dữ liệu cấu hình, không viết cứng trong mã |
+| Thông báo quá nhiều gây mệt | Trung bình | Mục 11.3 |
+
+### 16.2 Quyết định chủ sản phẩm cần chốt (kèm giá trị mặc định agent dùng nếu chưa có phản hồi)
+
+| # | Câu hỏi | Mặc định |
+|---|---|---|
+| 1 | Hướng triển khai: tự lưu trữ tại Việt Nam hay dịch vụ quản lý nước ngoài? | Chạy được cả hai, chưa cố định |
+| 2 | Công ty có dùng Google Workspace để đăng nhập không? | Có, miền `vmg.edu.vn` |
+| 3 | Tuần làm việc của phòng: thứ 2-6 hay có thứ 7? | Thứ 2 đến thứ 6 |
+| 4 | SLA xử lý từng loại request? | Chưa có; người tiếp nhận tự nhập hạn cam kết |
+| 5 | Ai thiết kế, ai duyệt trong quy trình content? | Trân thiết kế, Trưởng phòng duyệt |
+| 6 | Trung tâm thuộc KV2 và KV3? | Gộp "KV2/KV3" |
+| 7 | Phạm vi người dùng sau sáp nhập TMĐT (Trung tâm Kinh doanh TMĐT có dùng MKT OS không)? | Chỉ là một SBU trong danh sách, chưa có người dùng riêng |
+| 8 | Nhắc qua Zalo có làm không? | Không, để phase 3 |
+| 9 | Ngày giờ họp thống nhất Brand Theme hàng tháng? | Bỏ trống, task không có hạn cố định |
+| 10 | Có cần nhân bản campaign ngay phase 1 không? | Không, phase 2 |
+
+### 16.3 Hai điều phản biện cần chủ sản phẩm cân nhắc trước khi giao agent
+
+1. **Tự xây hay dùng công cụ có sẵn.** ClickUp hoặc Asana có sẵn task, lặp, Kanban, Gantt, lịch, thông báo và import CSV. Việc tự xây chỉ đáng khi cần ba thứ công cụ có sẵn làm không tốt: (a) nạp plan campaign theo template riêng thành task kèm quan hệ campaign-brand-SBU, (b) quy tắc lặp "mỗi trung tâm một việc" gom theo người phụ trách, (c) ma trận SBU tự cập nhật từ task. Nếu ba điều này không thực sự cần, một bản cấu hình ClickUp có thể đạt 70% giá trị trong 1 tuần. Phần còn lại của spec chỉ nên làm nếu chấp nhận chi phí bảo trì một sản phẩm nội bộ (đặc biệt khi người xây chính cũng là người vận hành và quản lý phòng).
+2. **Task chỉ hiệu quả nếu đầu vào đủ tốt.** Hệ thống nhắc việc rất tốt nhưng không tạo ra kỷ luật lập kế hoạch. Nếu file plan hàng tháng không có người điền đủ và đúng hạn, OS sẽ chỉ là nơi chứa các task thiếu thông tin. Nên coi việc ra plan đúng mốc ngày 10 (mốc 02) là một đầu việc quan trọng của chính hệ thống.
+
+---
+
+## PHỤ LỤC A - GỢI Ý LƯỢC ĐỒ CƠ SỞ DỮ LIỆU (RÚT GỌN, THAM KHẢO)
+
+Agent được phép chỉnh tên cột và kiểu, miễn giữ đúng ý nghĩa và các ràng buộc duy nhất ghi chú.
+
+```sql
+create type task_status as enum ('todo','in_progress','in_review','blocked','done','cancelled');
+create type task_priority as enum ('urgent','high','medium','low');
+create type task_type as enum ('campaign_action','content','media','request','monitoring','ads','report','meeting','general');
+create type task_source as enum ('manual','import','recurring','content_item','media_shoot','request','campaign_template');
+
+create table users (
+  id uuid primary key default gen_random_uuid(),
+  email text unique not null,
+  full_name text not null,
+  role text not null check (role in ('admin','manager','member','center_contributor','viewer')),
+  team text not null default 'ho_marketing',
+  sbu_id uuid references sbus(id),
+  can_assign boolean not null default false,
+  active boolean not null default true,
+  notification_prefs jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create table tasks (
+  id uuid primary key default gen_random_uuid(),
+  code text unique not null,                       -- T-000123
+  title text not null,
+  description text,
+  type task_type not null default 'general',
+  status task_status not null default 'todo',
+  blocked_reason text,
+  priority task_priority not null default 'medium',
+  assignee_id uuid references users(id),
+  creator_id uuid references users(id),
+  start_date date,
+  due_date date,
+  due_time time,
+  time_slot text check (time_slot in ('morning','afternoon','all_day')),
+  estimate_hours numeric(6,2),
+  completed_at timestamptz,
+  parent_id uuid references tasks(id),
+  campaign_id uuid references campaigns(id),
+  brand_id uuid references brands(id),
+  workstream text, channel text, deliverable_url text, reference_url text,
+  is_milestone boolean not null default false,
+  source_type task_source not null default 'manual',
+  source_id uuid,
+  recurring_rule_id uuid references recurring_rules(id),
+  occurrence_date date,
+  scope_key text,                                   -- sbu_id hoặc owner_id khi fan-out
+  external_key text, import_scope text,
+  import_batch_id uuid references import_batches(id),
+  manually_edited_fields text[] not null default '{}',
+  sort_order numeric not null default 0,
+  deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+-- Chống sinh trùng việc lặp:
+create unique index tasks_recurring_uniq
+  on tasks (recurring_rule_id, occurrence_date, coalesce(scope_key,''))
+  where recurring_rule_id is not null and deleted_at is null;
+-- Khóa upsert khi import:
+create unique index tasks_import_uniq
+  on tasks (import_scope, external_key)
+  where external_key is not null and deleted_at is null;
+create index tasks_assignee_due on tasks (assignee_id, due_date) where deleted_at is null;
+create index tasks_campaign on tasks (campaign_id) where deleted_at is null;
+
+create table recurring_rules (
+  id uuid primary key default gen_random_uuid(),
+  name text not null, description text,
+  task_template jsonb not null,
+  freq text not null check (freq in ('daily','weekly','monthly','yearly')),
+  interval int not null default 1,
+  by_weekday int[], by_month_day int, by_nth_weekday jsonb,
+  day_rule text not null default 'calendar_day',
+  holiday_policy text not null default 'none',
+  due_offset_days int not null default 0,
+  start_offset_days int not null default 3,
+  due_time time,
+  starts_on date not null, ends_on date, max_occurrences int,
+  assignment_mode text not null default 'fixed_user',
+  fixed_assignee_id uuid references users(id),
+  round_robin_user_ids uuid[],
+  scope_mode text not null default 'single',
+  scope_sbu_ids uuid[],
+  fan_out_mode text not null default 'checklist_per_owner',
+  generation_horizon_days int not null default 45,
+  completion_behavior text not null default 'fixed_schedule',
+  skipped_dates date[] not null default '{}',
+  active boolean not null default true, paused_until date,
+  created_by uuid references users(id),
+  created_at timestamptz not null default now()
+);
+
+create table notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id),
+  kind text not null,                               -- assigned, due_today, overdue, escalation, mention, digest...
+  task_id uuid references tasks(id),
+  title text not null, body text,
+  channel text not null,                            -- in_app, email, push
+  dedupe_key text,                                  -- (task_id, kind, ngày)
+  read_at timestamptz, sent_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create unique index notifications_dedupe on notifications (user_id, channel, dedupe_key) where dedupe_key is not null;
 ```
 
-### 16.3. Ghi chú kỹ thuật
-
-Component tự xây trên `filter-engine` / `aggregations` thuần (không phụ thuộc TanStack
-Table). **Không** dùng thư viện grid thương mại nặng nề - quy mô dữ liệu không cần đến,
-và chi phí bảo trì sẽ vượt lợi ích.
-
-**Cuộn ảo (đã làm):** dùng `@tanstack/react-virtual`. Cả cây nhóm được **phẳng hoá**
-thành một mảng "dòng nhìn thấy" (tiêu đề nhóm + dòng dữ liệu, bỏ qua con của nhóm đã
-thu), rồi chỉ render cửa sổ đang thấy + overscan. Nhờ vậy gom nhóm trên vài trăm dòng
-không còn giật (trước đây render toàn bộ cây). Bảng dùng `table-layout: fixed` +
-`<colgroup>` (bề rộng lấy từ `view.columns[].width` → `column.defaultWidth` → mặc định
-theo kiểu dữ liệu) để chiều rộng cột ổn định khi các dòng liên tục vào/ra DOM. Vùng
-cuộn cao tối đa `70vh`, header dính (`position: sticky`).
-
-Xây component này **trước** khi xây các màn hình danh sách, vì cả 5 màn hình bảng đều phụ thuộc vào nó. Đây là hạng mục nằm trên đường găng của dự án.
-
 ---
 
-## 17. Thông báo và cảnh báo
+## PHỤ LỤC B - CỘT CỦA CÁC TEMPLATE IMPORT
 
-### 17.1. Kênh
+Quy ước chung: ngày nhập `dd/mm/yyyy`; nhiều giá trị trong một ô ngăn cách bằng dấu chấm phẩy `;`; người dùng được nhận diện bằng **email**; brand và SBU bằng **mã**; cột có dấu `*` là bắt buộc.
 
-| Kênh | Phase | Ghi chú |
-|---|---|---|
-| Trong ứng dụng (chuông + trung tâm thông báo) | 1 | Bắt buộc |
-| Email | 2 | Cho cảnh báo mức CRITICAL |
-| Zalo OA | 4 | Cần đăng ký Zalo OA và API. Đánh giá sau |
+### B1. Template T1 - Plan campaign tháng
 
-**Khuyến nghị thực tế:** đừng làm push Zalo ở giai đoạn đầu. Đội chỉ 4-6 người, ngồi cùng văn phòng, và cảnh báo trong ứng dụng cộng với email là đủ. Đầu tư vào tích hợp Zalo lúc này là tối ưu sai chỗ.
+**Sheet `CAMPAIGN`** (khóa: `campaign_code`)
 
-### 17.2. Lịch chạy tự động
-
-| Thời điểm (giờ Việt Nam) | Việc | Người nhận |
-|---|---|---|
-| 08:00 hằng ngày | Tổng hợp lead quá hạn theo từng EC, tạo thông báo | Từng EC + Trưởng phòng |
-| 08:00 hằng ngày | Rà soát quy tắc R1-R5 cho tất cả campaign ON | Marketing Executive + Trưởng phòng |
-| 08:00 hằng ngày | Sinh task con từ task định kỳ | Người phụ trách |
-| 10:30 hằng ngày | Kiểm tra V10 - campaign ON thiếu số liệu | Marketing Executive |
-| 00:30 hằng ngày | Chuyển Cold Data cho lead `silence_count >= 6` | Ghi log, không thông báo |
-| Thứ Hai 08:00 | Tổng kết tuần: chỉ số chính, biến động, cảnh báo | Trưởng phòng |
-| Ngày 1 hằng tháng 08:00 | Nhắc chốt số và khóa sổ tháng trước | Trưởng phòng |
-
-Nội dung thông báo lead quá hạn phải cụ thể, không chung chung:
-> "Bạn có 12 khách trễ hẹn chăm sóc, trễ nhất là 8 ngày (Nguyễn Văn A - TESOL - đã im lặng 3 lần). Mở hàng đợi."
-
----
-
-## 18. Kiểm toán, khóa sổ và bảo mật
-
-### 18.1. Vì sao phần này bắt buộc
-
-Hệ thống này tạo ra các con số quyết định tiền thưởng. Ngay khi điều đó đúng, mọi con số đều có thể trở thành đối tượng tranh chấp: ai chốt khách này, doanh thu ghi ngày nào, ai đổi trạng thái lúc nào.
-
-Không có audit log và khóa sổ, hệ thống sẽ không được tin, và mọi người sẽ quay lại đối chiếu bằng file riêng - tức là quay lại đúng vấn đề ban đầu.
-
-### 18.2. Quy tắc
-
-- Ghi audit đầy đủ cho các nhóm thao tác nêu ở Mục 7.12.
-- Màn hình audit log có bộ lọc theo người, theo bảng, theo khoảng thời gian, chỉ ADMIN và MANAGER xem được.
-- Trên mỗi bản ghi lead và enrollment có tab "Lịch sử thay đổi" hiển thị dạng dòng thời gian, dễ đọc.
-- Khóa sổ theo tháng: sau khi khóa, dữ liệu thuộc tháng đó chỉ đọc với tất cả trừ ADMIN.
-- Không cho phép tạo enrollment với `contract_date` thuộc kỳ đã khóa.
-
-### 18.3. Bảo mật và dữ liệu cá nhân
-
-- Mật khẩu băm bằng bcrypt, tối thiểu 10 vòng.
-- Bắt buộc đổi mật khẩu ở lần đăng nhập đầu.
-- Phiên đăng nhập hết hạn sau 12 giờ không hoạt động.
-- Giới hạn số lần đăng nhập sai: khóa 15 phút sau 5 lần.
-- HTTPS bắt buộc.
-- Số điện thoại và email hiển thị đầy đủ cho EC được phân công và cấp quản lý; che một phần cho các vai trò khác.
-- Mọi lần xuất dữ liệu đều ghi log kèm số dòng đã xuất.
-- **Lưu ý pháp lý:** hệ thống chứa dữ liệu cá nhân của người dưới 18 tuổi. Cần rà soát cùng Phòng Pháp chế về nghĩa vụ theo Nghị định về bảo vệ dữ liệu cá nhân, đặc biệt về cơ sở pháp lý xử lý dữ liệu và thời hạn lưu trữ. Đánh dấu `[CẦN XÁC NHẬN]`.
-- Cần bổ sung chính sách xóa dữ liệu: lead ở trạng thái Cold Data quá 24 tháng sẽ được ẩn danh hóa (giữ số liệu thống kê, xóa thông tin liên hệ).
-
----
-
-## 19. Di chuyển dữ liệu từ Google Sheet
-
-### 19.1. Phạm vi
-
-Chuyển toàn bộ dữ liệu lịch sử từ `VMG_Ads_Lead_Tracker.xlsx`:
-- `Lead Sheet` → `leads`, `enrollments`
-- `Campaign Monitor` + `Ads tracker` → `campaigns`, `campaign_daily_metrics`
-- `Kế hoạch T9` → `tasks`
-- `Định nghĩa lead`, `Rule tiếp nhận`, `Quy trình tư vấn Tesol` → nội dung Sale Enablement
-
-**Không** chuyển: `Dashboard`, `Bản sao của Dashboard`, `ADS TRACKER-` (bản trùng), `Lịch làm việc`.
-
-### 19.2. Các bước bắt buộc trước khi nhập
-
-**Bước 1 - Xây bảng ánh xạ campaign.**
-Xuất danh sách tất cả giá trị phân biệt ở cột `Campaign ID` của Lead Sheet (38 giá trị) và cột tên campaign của Ads tracker. Đối chiếu thủ công, gộp các bản trùng ("... - Bản sao"), gán mỗi giá trị vào một `campaign.id` mới. Đây là công việc thủ công không tránh được, do dữ liệu gốc là văn bản tự do. Ước tính 2-3 giờ.
-
-**Bước 2 - Chuẩn hóa tư vấn viên.**
-Ánh xạ 15 giá trị về đúng số người thật, dùng trường `users.alias_names`. Các giá trị ghép như `Hiền/ Thy`, `Hiền/ Kiên` phải được quyết định gán cho ai (đề xuất: người đứng đầu, và ghi chú trong `consult_note`).
-
-**Bước 3 - Chuẩn hóa ngày tháng.**
-Xử lý cả kiểu datetime lẫn chuỗi `dd/mm/yyyy`. Bỏ khoảng trắng thừa. Các dòng có serial number ngày không hợp lệ (dòng 206-213) phải xuất ra danh sách riêng để xử lý tay. Ô ngày nằm nhầm ở cột `Lý do từ chối` phải được nhận diện và bỏ qua.
-
-**Bước 4 - Suy ra `max_stage` và các mốc thời gian.**
-Đây là điểm không thể khôi phục chính xác, vì sheet không lưu lịch sử. Quy tắc suy luận:
-```
-max_stage = stage hiện tại  (không thể biết lead từng lên cao hơn rồi rơi)
-mql_at    = NULL nếu max_stage < MQL, ngược lại = received_at  [XẤP XỈ]
-won_at    = ngày trong cột doanh thu nếu có, ngược lại = received_at  [XẤP XỈ]
-```
-**Phải đánh dấu rõ:** mọi lead di chuyển từ sheet được gắn cờ `migrated = true`. Báo cáo theo tháng cho giai đoạn trước golive phải ghi chú "số liệu ước tính từ dữ liệu di chuyển". Không được trộn lẫn số ước tính với số đo thật mà không ghi chú.
-
-**Bước 5 - Suy ra `silence_count`.**
-Không có dữ liệu để suy. Đặt tất cả về 0, trừ lead có Ngày LH lại đã quá hạn trên 30 ngày thì đặt `silence_count = 4` để chúng vào đúng nhịp escalate cuối.
-
-**Bước 6 - Tách doanh thu thành enrollments.**
-22 dòng có doanh thu. Với dòng có `stage = Chot HV` nhưng thiếu doanh thu, tạo enrollment với `gross_amount = 0` và gắn cờ `[CẦN XÁC NHẬN]`, giao EC bổ sung trong tuần đầu golive.
-
-### 19.3. Báo cáo đối chiếu sau khi nhập
-
-Script migration phải xuất ra một file đối chiếu bắt buộc phải được duyệt trước khi golive:
-
-| Chỉ số | Trên sheet | Sau khi nhập | Chênh lệch | Giải thích |
-|---|---|---|---|---|
-| Tổng số dòng lead | | | | |
-| Số lead theo từng trạng thái | | | | |
-| Tổng spend | | | | |
-| Tổng doanh thu | | | | |
-| Số campaign | | | | Dự kiến giảm do gộp bản trùng |
-| Số dòng bị loại | | | | Kèm lý do từng dòng |
-
-### 19.4. Chiến lược chuyển đổi
-
-**Chạy song song 2 tuần.** Trong 2 tuần đó, dữ liệu nhập vào cả web và sheet. Cuối mỗi tuần đối chiếu số. Chỉ khi hai bên khớp trong 2 tuần liên tiếp mới ngừng sheet.
-
-**Đây là chi phí đáng bỏ ra.** Cắt chuyển đột ngột sẽ dẫn tới việc mất niềm tin ngay tuần đầu nếu có bất kỳ số nào lệch, và rất khó lấy lại.
-
-Sau khi ngừng, sheet chuyển sang chế độ chỉ đọc, giữ nguyên làm lưu trữ, không xóa.
-
----
-
-## 20. Giao diện và bộ nhận diện
-
-### 20.1. Màu sắc
-
-Theo bộ nhận diện VMG:
-
-| Vai trò | Mã màu |
+| Cột | Ghi chú |
 |---|---|
-| Đỏ VMG - màu chính | `#BE202F` |
-| Vàng đồng VMG - màu bổ trợ | `#8B672A` |
-| Nền | Trắng và xám rất nhạt |
-| Chữ | Đen 80% cho nội dung, đen 50% cho chú thích |
+| `campaign_code`* | `BT-2026-11` |
+| `name`* | |
+| `type`* | `brand_theme` / `product_gtm` / `business_program` / `rebrand` / `data_program` / `internal_program` / `other` |
+| `brand_codes` | `VMG;VMG_IELTS` |
+| `start_date`*, `end_date`* | |
+| `status` | |
+| `owner_email` | |
+| `tagline`, `occasion`, `target_audience`, `insight_message`, `objective`, `hero_activity`, `cta`, `channels`, `role_split`, `budget_note`, `kpi_note`, `notes` | văn bản tự do |
 
-**Lưu ý quan trọng:** tỷ lệ 60% đỏ / 30% vàng của bộ nhận diện là quy tắc cho **ấn phẩm truyền thông**, không áp dụng cho giao diện phần mềm quản trị. Một dashboard 60% màu đỏ sẽ không đọc được và làm mất tác dụng của màu đỏ khi dùng để báo động.
+**Sheet `ACTIONS`** (khóa: `action_code`, duy nhất trong phạm vi `campaign_code`)
 
-Nguyên tắc áp dụng cho phần mềm:
-- Đỏ VMG chỉ dùng cho: thanh điều hướng, nút hành động chính, logo
-- Màu trạng thái tách riêng, không dùng màu thương hiệu: xanh lá cho tốt, hổ phách cho cảnh báo, đỏ cam cho nghiêm trọng
-- Nền và bảng giữ trung tính để số liệu nổi lên
-
-### 20.2. Chữ
-
-Font hệ thống của giao diện: Inter hoặc Be Vietnam Pro (hỗ trợ tiếng Việt tốt). Số liệu dùng biến thể chữ số cùng chiều rộng (tabular numerals) để các cột số thẳng hàng.
-
-Font VMG chỉ dùng cho tài liệu xuất ra, không dùng cho giao diện.
-
-### 20.3. Nguyên tắc trình bày số
-
-- Tiền tệ: `1.234.567 đ`, dấu chấm phân cách nghìn
-- Số lớn trên thẻ chỉ số rút gọn: `12,3 tr`, `1,45 tỷ`
-- Phần trăm: 1 chữ số thập phân
-- Không có dữ liệu: hiển thị `-`, **không** hiển thị `0`
-- Biến động: mũi tên kèm số, xanh khi tốt, đỏ khi xấu - theo chiều tốt của từng chỉ số (CPMQL giảm là xanh)
-
-### 20.4. Giao diện di động
-
-EC thường xuyên chăm sóc khách ngoài giờ và trên điện thoại. Ưu tiên tối ưu di động cho:
-- Màn hình "Hôm nay"
-- Panel chăm sóc nhanh
-- Nhập lead mới
-
-Các màn hình bảng và dashboard chấp nhận trải nghiệm cơ bản trên di động.
-
----
-
-# PHẦN V - TRIỂN KHAI
-
-## 21. Lộ trình theo giai đoạn
-
-### Phase 0 - Nền tảng (tuần 1)
-- Khởi tạo dự án, Docker Compose, CI cơ bản
-- Schema đầy đủ và migration
-- Xác thực, phân quyền, quản lý người dùng
-- **Component Data Grid** (Mục 16) - làm trước vì mọi thứ phụ thuộc
-- Dữ liệu danh mục: sản phẩm, nguồn, trạng thái
-
-### Phase 1 - Vận hành cốt lõi (tuần 2-4)
-- Module Campaign, nhập số liệu hằng ngày
-- Module Lead: nhập, danh sách, chi tiết, tương tác
-- Cỗ máy Ngày LH lại và escalate
-- Màn hình "Hôm nay" của EC
-- Kiểm tra trùng
-- Enrollment và doanh thu
-- Script migration và chạy đối chiếu
-- Audit log
-
-**Kết thúc Phase 1 là có thể chạy song song với sheet.**
-
-### Phase 2 - Nhìn thấy và điều hành (tuần 5-6)
-- Dashboard đầy đủ 3 tầng
-- Quy tắc cảnh báo campaign R1-R5
-- Tác vụ định kỳ, thông báo trong ứng dụng và email
-- Khóa sổ kỳ
-- Xuất báo cáo
-
-**Kết thúc Phase 2 là có thể ngừng sheet.**
-
-### Phase 3 - Quản trị đội (tuần 7-9)
-- Module Task
-- Module KPI
-- Dashboard cho VIEWER
-- Sale Enablement
-
-### Phase 4 - Mở rộng (sau khi ổn định, đánh giá lại nhu cầu)
-- Tích hợp Meta Marketing API để tự kéo spend
-- Push Zalo OA
-- Xuất dữ liệu sang DotB EMS
-- Chấm điểm lead tự động
-
-**Cảnh báo về tiến độ:** ước tính trên giả định một người làm toàn thời gian cùng Claude Code. Nếu việc phát triển là kiêm nhiệm bên cạnh công việc phòng, nhân đôi thời gian. Đừng cam kết với BOD theo con số lạc quan.
-
----
-
-## 22. Tiêu chí nghiệm thu
-
-### 22.1. Kịch bản kiểm thử bắt buộc
-
-| # | Kịch bản | Kết quả mong đợi |
-|---|---|---|
-| T01 | Tạo lead mới, chuyển lên MQL, rồi chuyển outcome sang LOST | Số đếm MQL **không giảm**. `max_stage` vẫn là MQL |
-| T02 | Tạo lead trùng tên với lead cũ cùng campaign trong 3 ngày | Hiện cảnh báo vàng, cho phép tạo mới |
-| T03 | Tạo lead trùng số điện thoại | Hiện cảnh báo đỏ, mặc định gợi ý gộp |
-| T04 | Ghi interaction kết quả Không phản hồi lần thứ 3 | Ngày LH lại tự điền T+3, gợi ý kịch bản kèm ưu đãi |
-| T05 | Ghi interaction Không phản hồi lần thứ 6 | Lead tự chuyển Cold Data, outcome = LOST |
-| T06 | Đặt outcome = WON mà chưa có enrollment | Bị chặn |
-| T07 | Tạo enrollment | Lead tự chuyển WON, ghi `won_at` |
-| T08 | Campaign chi 950.000đ, chưa có MQL | Cảnh báo CRITICAL R1 xuất hiện trên dashboard |
-| T09 | Campaign CPMQL 14 ngày = 700.000đ, target 600.000đ | Cảnh báo WARNING R3 |
-| T10 | Sửa spend của một ngày thuộc kỳ đã khóa | Bị chặn với vai trò MANAGER, cho phép với ADMIN kèm log |
-| T11 | Lọc lead: `(outcome = OPEN và quá hạn) hoặc silence_count >= 4`, gom nhóm theo EC rồi theo sản phẩm | Kết quả đúng, dòng tổng theo nhóm đúng |
-| T12 | Lưu view, đăng xuất, đăng nhập lại | View được khôi phục nguyên trạng |
-| T13 | Vai trò MARKETING mở lead và thử đổi trạng thái | Không thấy nút sửa trạng thái |
-| T14 | Vai trò VIEWER mở dashboard | Không thấy số điện thoại, không thấy tên lead |
-| T15 | Xem CPMQL của 3 ngày gần nhất | Hiển thị cảnh báo dữ liệu chưa chín |
-| T16 | Đối chiếu tổng spend, tổng doanh thu, số MQL giữa dashboard và bảng chi tiết | Khớp tuyệt đối |
-| T17 | Chạy migration trên bản sao dữ liệu | Báo cáo đối chiếu không có chênh lệch ngoài dự kiến |
-| T18 | Khôi phục hệ thống từ bản backup | Thành công, dữ liệu nguyên vẹn |
-
-### 22.2. Điều kiện golive
-
-- Toàn bộ T01-T18 đạt
-- Chạy song song 2 tuần, số liệu khớp 2 tuần liên tiếp
-- Đã kiểm thử khôi phục backup thành công
-- Đã có `RUNBOOK.md`
-- Đã đào tạo và mỗi người dùng đã tự thao tác được nghiệp vụ của mình
-
----
-
-## 23. Rủi ro và biện pháp
-
-| # | Rủi ro | Mức | Biện pháp |
-|---|---|---|---|
-| R01 | EC quay lại dùng sheet vì web chậm hơn | **Cao** | Ràng buộc UX cứng Mục 11.3, đo thời gian nhập lead thực tế trong tuần đầu, sửa ngay nếu vượt 30 giây |
-| R02 | Marketing không nhập số liệu hằng ngày, dashboard rỗng | **Cao** | Cảnh báo V10, đưa `DATA_COMPLIANCE` thành KPI có trọng số |
-| R03 | Số liệu web lệch số liệu sheet trong giai đoạn song song, mất niềm tin | **Cao** | Báo cáo đối chiếu Mục 19.3, giải thích từng chênh lệch trước khi golive |
-| R04 | Một người duy nhất hiểu hệ thống, nghỉ là tắc | **Cao** | RUNBOOK, hạ tầng dạng file trong repo, spec này được cập nhật liên tục |
-| R05 | Phình phạm vi, không bao giờ golive | Trung bình | Danh sách phi mục tiêu Mục 2.3 được đóng băng, mọi bổ sung đẩy sang Phase 4 |
-| R06 | Ngưỡng CPMQL sai dẫn tới kill nhầm campaign tốt | Trung bình | Ngưỡng theo sản phẩm, màn hình gợi ý ngưỡng, xem 9.5 |
-| R07 | Tranh chấp tính công khi lead chuyển tay | Trung bình | Chốt quy tắc QĐ05 trước golive |
-| R08 | Rò rỉ dữ liệu cá nhân | Trung bình | Phân quyền chặt, che số điện thoại, log mọi lần xuất |
-| R09 | Mất dữ liệu do sự cố VPS | Trung bình | Backup hằng ngày ra nơi thứ hai, kiểm thử khôi phục |
-| R10 | Dữ liệu di chuyển bị coi là số đo thật | Thấp | Gắn cờ `migrated`, ghi chú trên mọi báo cáo giai đoạn cũ |
-
-
----
-
-## 24. Quyết định còn treo - PHẢI CHỐT TRƯỚC KHI CODE
-
-Đây là mục quan trọng nhất của tài liệu đối với anh. Mỗi mục dưới đây là một chỗ tôi **không thể tự quyết** vì thiếu thông tin hoặc vì đó là quyết định quản trị, không phải quyết định kỹ thuật. Nếu code trên giả định, chi phí sửa về sau sẽ rất lớn.
-
-| Mã | Câu hỏi | Ảnh hưởng tới | Khuyến nghị của tôi | Hạn chốt |
-|---|---|---|---|---|
-| **QĐ01** | Khối số ở `Campaign Monitor` cột T-U (FT15: 250.000 / Express: 200.000 / TESOL: 490.000 / Giao tiếp: 100.000) là ngưỡng CPMQL theo sản phẩm hay ngân sách ngày? | Toàn bộ quy tắc cảnh báo | Nếu là ngưỡng CPMQL thì dùng ngay, thay cho hằng số 600.000 | Trước Phase 2 |
-| **QĐ02** | Giá niêm yết chính thức của từng sản phẩm và room CAC thực tế do TCKT xác nhận | Công thức suy ngưỡng CPMQL, Mục 9.5 | Lấy từ mô hình tài chính của P.TCKT, không tự đặt | Trước Phase 2 |
-| **QĐ03** | Cửa sổ đo CPMQL để ra quyết định kill: lifetime, rolling 14 ngày, hay cả hai? | Quy tắc R1-R5 | Cả hai, như đã đề xuất ở 9.4 | Trước Phase 2 |
-| **QĐ04** | EC có được xem lead của EC khác không? | Phân quyền | Có, chỉ đọc | Trước Phase 1 |
-| **QĐ05** | Lead chuyển từ EC A sang EC B rồi chốt: ai được tính HVM và doanh thu cho KPI/thưởng? | KPI, thưởng, báo cáo nhân sự | Tính cho người chốt (`assigned_to` tại thời điểm tạo enrollment), nhưng lưu thêm `originally_assigned_to` để tra cứu khi có tranh chấp | **Trước Phase 1** |
-| **QĐ06** | Lead nguồn Organic và Giới thiệu có được tính vào MQL của KPI EC không? | KPI | Có, vì EC vẫn phải chăm sóc. Nhưng **không** tính vào chỉ số campaign | Trước Phase 3 |
-| **QĐ07** | Chi phí KOL/KOC hiện được ghi nhận ở đâu? | Chỉ tiêu `REVENUE_AFTER_MKT` trọng số 40% | Cần bảng `other_costs` trong hệ thống, nếu không chỉ tiêu này phải nhập tay | Trước Phase 3 |
-| **QĐ08** | Có kết nối Meta Marketing API để tự kéo spend không? | Phạm vi Phase 4, và cách thiết kế bảng `campaign_daily_metrics` | Không ở giai đoạn đầu. Nhưng thiết kế bảng đã sẵn sàng: chỉ cần thêm cột `source = MANUAL/API` | Phase 4 |
-| **QĐ09** | Hạ tầng cụ thể: nhà cung cấp VPS, ai chịu trách nhiệm vận hành, ai là người dự phòng? | Toàn bộ | Xem cảnh báo ở 5.3 về rủi ro một người | **Trước Phase 0** |
-| **QĐ10** | Có cần dữ liệu B2G và các sản phẩm ngoài TMĐT trong hệ thống này không? | Phạm vi | Không. Giữ hệ thống chỉ cho TMĐT. Mở rộng sang toàn phòng là dự án khác | Trước Phase 0 |
-| **QĐ11** | Chính sách lưu trữ và xóa dữ liệu cá nhân, đặc biệt với người dưới 18 tuổi | Tuân thủ pháp lý | Rà soát cùng Phòng Pháp chế | Trước golive |
-| **QĐ12** | Hệ thống này quan hệ thế nào với quyết định One Data Architecture A1/A2/A3 sẽ chốt cuối 2026? | Chiến lược | **Xem phân tích bên dưới** | **Trước Phase 0** |
-
-### Ghi chú riêng cho QĐ12 - điểm cần cân nhắc nghiêm túc nhất
-
-Phòng đang có một quyết định kiến trúc dữ liệu lớn treo đến cuối 2026: chọn giữa A1 (Kwise), A2 (tự xây cùng đối tác ngoài), A3 (vendor khác), với Kịch bản B làm cầu tạm một năm. Nguyên tắc đã chốt xuyên suốt là "Quy trình - Con người - Nền tảng".
-
-Dự án web này, nếu không định vị rõ, có thể trở thành **một biến số làm phức tạp thêm quyết định đó**: sáu tháng nữa khi BOD chọn A, sẽ có câu hỏi "vậy cái web TMĐT tự xây kia thì sao, có phải bỏ đi không, có phải tích hợp không".
-
-Hai cách định vị, và tôi khuyến nghị cách thứ hai:
-
-**Cách 1 - Coi đây là ứng cử viên cho hướng A2 (tự xây).**
-Rủi ro cao. Một công cụ vận hành cho 6 người rất khác một EMIS cho 44.000 học viên và 10 trung tâm. Việc dùng thành công công cụ nhỏ để lập luận rằng tự xây được hệ thống lớn là một bước nhảy logic không có cơ sở, và nếu BOD tin theo rồi thất bại thì hậu quả thuộc về phòng.
-
-**Cách 2 - Coi đây là công cụ vận hành chuyên biệt của TMĐT, nằm ngoài phạm vi quyết định A.**
-Lập luận: đây là lớp **pre-enrollment**, xử lý khách hàng tiềm năng trước khi trở thành học viên. DotB EMS và mọi phương án A đều xử lý lớp **post-enrollment**. Hai lớp này khác nhau về bản chất dữ liệu và vòng đời. Việc có một công cụ riêng cho lớp trước là chuẩn mực phổ biến, không mâu thuẫn với bất kỳ phương án A nào.
-
-Nếu chọn cách 2, cần nói rõ ngay trong tài liệu trình BOD (nếu có): **hệ thống này không tranh chấp phạm vi với One Data Architecture, và điểm bàn giao dữ liệu là thời điểm chốt học viên.** Điều này bảo vệ dự án khỏi bị cuốn vào cuộc tranh luận A1/A2/A3, đồng thời tránh cho phòng bị hiểu là đang tự ý xây EMIS song song.
-
-Có một lợi ích phụ đáng kể nếu định vị đúng: sau 6-12 tháng vận hành, phòng sẽ có dữ liệu thực về những gì một hệ thống quản trị khách hàng cần - danh sách trường thực dùng, quy trình thực chạy, chỗ nào nhân sự làm sai. Đây là đầu vào có giá trị cho việc viết yêu cầu của phương án A, đúng theo nguyên tắc "Quy trình là gốc". Nhưng đó là **sản phẩm phụ**, không phải mục tiêu, và không nên dùng làm lý do biện minh cho dự án.
-
----
-
-## PHỤ LỤC A - Ánh xạ cột từ file sheet sang hệ thống
-
-### A.1. `Lead Sheet`
-
-| Cột sheet | Trường hệ thống | Ghi chú xử lý |
-|---|---|---|
-| STT | (bỏ) | Thay bằng `leads.code` sinh tự động |
-| Ngay tiep nhan | `received_at` | Chuẩn hóa cả kiểu date lẫn chuỗi dd/mm/yyyy |
-| Ho ten | `full_name` + `name_normalized` | |
-| So dien thoai | `phone` + `phone_normalized` | |
-| Email/Page | `email` hoặc `fb_profile` | Tách theo định dạng: có `@` thì là email |
-| SP quan tam (raw) | `product_raw` | |
-| SP (chuan) | `product_id` | Ánh xạ theo bảng 4.5 |
-| Ghi chu MKT | `consult_note` (thêm tiền tố "MKT:") | |
-| Nguon/Kenh | `source` | Ánh xạ theo bảng 4.6, chuẩn hóa `Gioi thieu` → `REFERRAL` |
-| Campaign ID (dropdown) | `campaign_id` | **Cần bảng ánh xạ thủ công**, xem 19.2 bước 1 |
-| Co SDT (auto) | (bỏ) | Trở thành trường tính: `phone IS NOT NULL` |
-| Trang Thai (dropdown) | `stage` + `outcome` + `max_stage` | Tách theo bảng dưới |
-| Tu van vien | `assigned_to` | Ánh xạ qua `alias_names` |
-| Ghi chu Tu Van | `consult_note` | |
-| Ngay LH lai | `next_contact_date` | Chuẩn hóa, loại giá trị không hợp lệ |
-| Ly do tu choi | `lost_reason` | Có ô chứa nhầm giá trị ngày, phải lọc |
-| Ket qua Placement Test | `placement_test_result` | |
-| Comment xep lop | `consult_note` (nối thêm) | |
-| Xep lop | `class_assigned` | |
-| Lich ranh | `preferred_schedule` | |
-| Ngay muon hoc | `desired_start_date` | |
-| Match lop | `class_assigned` (nối) | |
-| Doanh thu | `enrollments.gross_amount` | Tạo bản ghi enrollment |
-
-**Ánh xạ trạng thái:**
-
-| Giá trị sheet | `stage` | `outcome` | `max_stage` |
-|---|---|---|---|
-| New | `NEW` | `OPEN` | `NEW` |
-| KLH duoc | `NO_CONTACT` | `OPEN` | `NO_CONTACT` |
-| Da tu van | `CONSULTING` | `OPEN` | `CONSULTING` |
-| MQL | `MQL` | `OPEN` | `MQL` |
-| SQL | `SQL` | `OPEN` | `SQL` |
-| Chot HV | `WON` | `WON` | `WON` |
-| Khong chot | `CONSULTING` | `LOST` | `MQL` (giả định, vì đã tư vấn đủ mới không chốt) |
-| Khong nhu cau | `NEW` | `DISQUALIFIED` | `NEW` |
-
-Giả định ở dòng "Khong chot" cần được anh xác nhận. Nếu không đồng ý, đặt `max_stage = CONSULTING` và số MQL lịch sử sẽ thấp hơn 24 đơn vị.
-
-### A.2. `Campaign Monitor` và `Ads tracker`
-
-| Cột sheet | Trường hệ thống |
+| Cột | Ghi chú |
 |---|---|
-| ID Campaign (rút gọn) / Tên Campaign | `campaigns.display_name` + `external_id` (tách phần "ID: ...") |
-| SP | `campaigns.product_id` |
-| Kênh | `campaigns.channel` |
-| Status | `campaigns.status` |
-| Spend thực (VND) | `campaign_daily_metrics.spend` |
-| Lead + mess | `campaign_daily_metrics.messages` |
-| MQL (file gốc) | (bỏ) - thay bằng tính từ bản ghi lead |
-| SQL / HV Chot / Leads / MQL (auto LS) | (bỏ) - trở thành chỉ số tính |
-| CPL / CPMQL / CAC / Conv | (bỏ) - trở thành chỉ số tính |
-| Owner | `campaigns.owner_id` |
-| Budget/ngày | `campaigns.daily_budget` |
-| Tháng / Tuần | (bỏ) - suy từ `metric_date` |
+| `campaign_code`* | phải có trong sheet `CAMPAIGN` hoặc trong hệ thống |
+| `action_code`* | `A01` |
+| `parent_action_code` | tạo task con |
+| `workstream` | nhóm |
+| `title`* | |
+| `description` | |
+| `type` | mặc định `campaign_action` |
+| `assignee_email`* | |
+| `collaborator_emails` | |
+| `start_date`, `due_date`* | |
+| `due_time`, `time_slot` | |
+| `priority` | |
+| `channel` | |
+| `sbu_codes` | `VTS;PVT` hoặc `ALL` |
+| `depends_on` | `A01;A02` (mã action) |
+| `is_milestone` | `x` hoặc trống |
+| `reference_url` | |
+| `checklist` | các mục cách nhau `;` |
+| `recurring_rule_code` | nếu muốn gắn với quy tắc lặp có sẵn |
 
-### A.3. `Kế hoạch T9`
+### B2. Template T2 - Người dùng và SBU
+`USERS`: `email`*, `full_name`*, `role`*, `team`, `sbu_code` (cho trung tâm), `can_assign`, `active`.
+`SBUS`: `code`*, `name`*, `kind`*, `region`*, `ho_owner_email`, `active`.
 
-| Cột sheet | Trường hệ thống |
-|---|---|
-| Nhóm | `tasks.group_code` |
-| Đầu việc | `tasks.title` + `description` |
-| Mục tiêu / KPI | `tasks.goal_kpi` |
-| Vai trò chính | `tasks.assignee_id` + `co_assignees` |
-| Timeline | `tasks.due_date` |
-| Trạng thái | `tasks.status` (Chưa làm → TODO, Đang làm → IN_PROGRESS, Hoàn thành → DONE) |
-| Link | `tasks.link_url` |
+### B3. Template T3 - Task lẻ hàng loạt
+`task_key`*, `title`*, `description`, `type`, `assignee_email`*, `collaborator_emails`, `start_date`, `due_date`*, `time_slot`, `priority`, `campaign_code`, `brand_code`, `sbu_codes`, `channel`, `reference_url`, `checklist`.
 
----
+### B4. Template T4 - Quy tắc lặp
+`rule_code`*, `name`*, `title_template`* (có biến `{{month}}`...), `description_template`, `type`, `priority`, `freq`*, `interval`, `by_weekday` (`2;4`), `by_month_day` (số hoặc `-1`), `day_rule`, `holiday_policy`, `due_offset_days`, `start_offset_days`, `due_time`, `starts_on`*, `ends_on`, `assignment_mode`*, `assignee_email`, `scope_mode`, `scope_sbu_codes` (`ALL` hoặc danh sách), `fan_out_mode`, `checklist` (với `{{sbu_name}}` nếu `per_sbu`), `campaign_code`.
 
-## PHỤ LỤC B - Danh sách kiểm tra khi bắt đầu code với Claude Code
+### B5. Template T6 - Content calendar
+`content_key`*, `brand_code`*, `campaign_code`, `sbu_code`, `publish_date`*, `publish_time`, `channel`*, `content_pillar`, `topic`*, `target_audience`, `key_message`, `format`, `resource_source`, `owner_email`*, `cta`, `target_metric`, `support_needed`, `status`, `post_url`.
 
-Trước phiên đầu tiên:
+### B6. Template T7 - Media production plan
+Sheet `SHOOTS`: `shoot_code`*, `shoot_date`*, `location`, `sbu_code`, `brand_code`, `purpose`, `crew`, `equipment`, `script_url`, `status`, `notes`. Sheet `DELIVERABLES`: `shoot_code`*, `deliverable_type`*, `quantity`, `channel`, `brand_code`, `campaign_code`, `editor_email`, `due_date`.
 
-- [ ] Chốt QĐ09 (hạ tầng), QĐ10 (phạm vi), QĐ12 (định vị) - ba quyết định này ảnh hưởng đến toàn bộ dự án
-- [ ] Chốt QĐ04, QĐ05 - ảnh hưởng schema
-- [ ] Tạo repo, commit spec này tại `/docs/SPEC.md`
-- [ ] Tạo `CLAUDE.md` ở gốc repo với nội dung: trỏ tới SPEC.md, nêu 5 nguyên tắc bất di bất dịch (một nguồn công thức duy nhất, không tính chỉ số ở client, mọi giờ theo `Asia/Ho_Chi_Minh`, soft delete, audit đầy đủ)
-- [ ] Xuất dữ liệu sheet thành CSV sạch, đặt tại `/data/seed/`
-- [ ] Hoàn thành bảng ánh xạ campaign thủ công (19.2 bước 1)
-
-Thứ tự làm việc đề nghị với Claude Code:
-1. Schema và migration trước, có seed dữ liệu giả để test
-2. Viết `metrics.ts` và **unit test cho nó trước khi làm giao diện**. Đây là phần dễ sai nhất và cũng là phần quan trọng nhất
-3. Data Grid
-4. Các màn hình theo thứ tự Phase
+### B7. Template T5, T8, T9
+Cột theo đúng trường của `requests`, `brand_foundation_entries` và `sbu_catalog_items` ở mục 4.2. Agent tạo template từ định nghĩa bảng, giữ cùng quy ước.
 
 ---
 
-*Hết tài liệu. Mọi thay đổi nghiệp vụ phải cập nhật tại đây trước khi sửa code.*
+## PHỤ LỤC C - QUY TẮC LẶP SEED (NHỊP ĐIỀU PHỐI BRAND CAMPAIGN HÀNG THÁNG)
+
+Giám đốc Khối R&D đã ban hành cơ chế điều phối Brand Campaign hàng tháng, lặp lại mỗi tháng với 6 mốc cố định. Tất cả task bên dưới dành cho **tháng kế tiếp** (campaign chạy ở tháng M+1 được chuẩn bị trong tháng M).
+
+| Mã | Mốc | Ngày danh nghĩa trong tháng M | Việc | Người phụ trách | Chế độ |
+|---|---|---|---|---|---|
+| `CAD-01` | Mốc 01 | [CẦN XÁC NHẬN] | Họp thống nhất Brand Theme tháng M+1 với Ban Điều Hành (Marketing chủ trì) | Trưởng phòng | single |
+| `CAD-02` | Mốc 02 | Ngày 10 | Gửi email Brand Campaign bản nháp tháng M+1 cho các GĐKV | Trưởng phòng | single |
+| `CAD-03` | Mốc 03 | Ngày 15 | Theo dõi: GĐKV hoàn thiện Brief chương trình bán hàng, gửi Marketing và BOD | Trưởng phòng (theo dõi), GĐKV (thực hiện) | `task_per_sbu` theo 3 khu vực, mỗi GĐKV nhận việc qua email xác nhận |
+| `CAD-04` | Mốc 04 | Ngày 20 | Ban hành Brand Kit chính thức cho các trung tâm | Trưởng phòng | single, có checklist (Key Visual, Brand Theme Card, template) |
+| `CAD-05` | Mốc 05 | Ngày 25 | Theo dõi: trung tâm gửi Content Plan về Marketing | Nhân sự HO theo SBU | `checklist_per_owner` (Khiết 5 SBU, Đạt 7 SBU), mỗi SBU một mục "đã nhận" |
+| `CAD-06a` | Sau mốc 05 | Ngày 25 + 3 ngày làm việc, không quá ngày 28 | Thẩm định Content Plan của từng trung tâm, phản hồi phê duyệt | Nhân sự HO theo SBU | `checklist_per_owner` |
+| `CAD-06b` | Mốc 06 | Ngày 29 (nếu tháng ngắn thì ngày cuối tháng) | Phê duyệt và khởi động triển khai Content Plan đã duyệt | Trưởng phòng | single |
+| `CAD-07` | (lặp) | Ngày làm việc cuối tháng | Báo cáo Marketing tháng | Trưởng phòng | single |
+| `CAD-08` | (lặp) | Ngày làm việc đầu tháng | Rà soát Google Maps các trung tâm | Nhân sự HO theo SBU | `checklist_per_owner` |
+| `CAD-09` | (lặp) | Ngày 28 | Kiểm tra hiện trạng POSM các trung tâm | Nhân sự HO theo SBU | `checklist_per_owner` |
+
+Lưu ý: phê duyệt chính thức vẫn qua email theo cơ chế đã ban hành; Zalo chỉ để nhắc tiến độ. MKT OS ghi nhận và nhắc, **không thay thế** văn bản phê duyệt.
+
+---
+
+*Hết tài liệu. Khi có câu hỏi chưa rõ, agent ghi lại thành danh sách "Câu hỏi mở" gửi chủ sản phẩm, không tự suy đoán các mục có thẻ [CẦN XÁC NHẬN].*

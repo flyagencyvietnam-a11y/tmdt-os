@@ -3,7 +3,7 @@
   "regions": ["syd1"],
   "crons": [
     { "path": "/api/cron", "schedule": "0 1 * * *" },
-    { "path": "/api/cron?job=weekly", "schedule": "0 1 * * 1" },
-    { "path": "/api/cron?job=month", "schedule": "0 1 1 * *" }
+    { "path": "/api/cron?job=afternoon", "schedule": "30 9 * * *" },
+    { "path": "/api/cron?job=weekly", "schedule": "0 1 * * 1" }
   ]
 }

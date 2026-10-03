@@ -1,1 +1,0 @@
-ALTER TABLE "kpi_assignments" ADD COLUMN "allocated_budget" bigint;

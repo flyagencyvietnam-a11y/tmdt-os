@@ -1,14 +1,7 @@
+import type { DB } from "@/lib/db";
 import { auditLogs } from "@/lib/db/schema";
-import type { AnyDb } from "@/lib/services/metrics";
 
-type AuditAction =
-  | "CREATE"
-  | "UPDATE"
-  | "DELETE"
-  | "LOGIN"
-  | "EXPORT"
-  | "LOCK"
-  | "UNLOCK";
+type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "LOGIN" | "EXPORT" | "IMPORT";
 
 export interface AuditInput {
   actorId?: string | null;
@@ -17,7 +10,6 @@ export interface AuditInput {
   action: AuditAction;
   /** {field: {from, to}} */
   changes?: Record<string, { from: unknown; to: unknown }> | Record<string, unknown>;
-  ip?: string | null;
 }
 
 /**
@@ -30,14 +22,13 @@ export interface AuditInput {
  *
  * Nhận `db` tường minh để dùng được cả trong test (PGlite riêng).
  */
-export async function writeAudit(db: AnyDb, input: AuditInput): Promise<void> {
+export async function writeAudit(db: DB, input: AuditInput): Promise<void> {
   await db.insert(auditLogs).values({
     actorId: input.actorId ?? null,
     entity: input.entity,
     entityId: input.entityId ?? null,
     action: input.action,
     changes: input.changes ?? null,
-    ip: input.ip ?? null,
   });
 }
 

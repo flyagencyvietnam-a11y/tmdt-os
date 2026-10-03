@@ -1,14 +1,16 @@
 /**
- * Lịch chạy tự động — SPEC Mục 17.2. node-cron trong tiến trình, giờ Việt Nam.
+ * Lịch chạy tự động (self-host) — SPEC Mục 11.2. node-cron trong tiến trình, giờ VN.
  * Bật bằng ENABLE_CRON="true". Khởi động từ src/instrumentation.ts (Node runtime).
+ * Trên Vercel dùng `vercel.json` crons gọi `/api/cron` thay cho file này.
  */
 import cron from "node-cron";
 import { db } from "@/lib/db";
 import {
-  runAlertScan,
-  runColdDataSweep,
-  runMonthLockReminder,
-  runOverdueDigest,
+  runDailyDigest,
+  runDueTodayReminder,
+  runDueTodayUnfinished,
+  runEscalateToManagers,
+  runOverdueMorning,
   runSpawnRecurring,
   runWeeklySummary,
 } from "@/lib/services/jobs";
@@ -33,13 +35,13 @@ export function startCron() {
     }
   };
 
-  cron.schedule("0 8 * * *", wrap("overdue-digest", () => runOverdueDigest(db)), { timezone: TZ });
-  cron.schedule("0 8 * * *", wrap("alert-scan-8h", () => runAlertScan(db)), { timezone: TZ });
-  cron.schedule("0 8 * * *", wrap("spawn-recurring", () => runSpawnRecurring(db)), { timezone: TZ });
-  cron.schedule("30 10 * * *", wrap("alert-scan-10h30", () => runAlertScan(db)), { timezone: TZ });
-  cron.schedule("30 0 * * *", wrap("cold-data-sweep", () => runColdDataSweep(db)), { timezone: TZ });
+  cron.schedule("30 0 * * *", wrap("spawn-recurring", () => runSpawnRecurring(db)), { timezone: TZ });
+  cron.schedule("0 8 * * *", wrap("overdue-morning", () => runOverdueMorning(db)), { timezone: TZ });
+  cron.schedule("0 8 * * *", wrap("due-today-reminder", () => runDueTodayReminder(db)), { timezone: TZ });
+  cron.schedule("0 8 * * *", wrap("daily-digest", () => runDailyDigest(db)), { timezone: TZ });
+  cron.schedule("30 16 * * *", wrap("due-today-unfinished", () => runDueTodayUnfinished(db)), { timezone: TZ });
+  cron.schedule("0 8 * * *", wrap("escalate-managers", () => runEscalateToManagers(db)), { timezone: TZ });
   cron.schedule("0 8 * * 1", wrap("weekly-summary", () => runWeeklySummary(db)), { timezone: TZ });
-  cron.schedule("0 8 1 * *", wrap("month-lock-reminder", () => runMonthLockReminder(db)), { timezone: TZ });
 
-  console.log("[cron] đã lên lịch 6 tác vụ (giờ Việt Nam).");
+  console.log("[cron] đã lên lịch 7 tác vụ (giờ Việt Nam).");
 }

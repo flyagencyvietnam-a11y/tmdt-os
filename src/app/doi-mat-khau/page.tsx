@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { ChangePasswordForm } from "./form";
 
-export const metadata = { title: "Đổi mật khẩu — VMG TMĐT OS" };
+export const metadata = { title: "Đổi mật khẩu — VMG MKT OS" };
 
 export default async function Page() {
   const user = await getCurrentUser();

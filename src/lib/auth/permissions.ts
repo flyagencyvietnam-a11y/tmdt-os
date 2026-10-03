@@ -1,34 +1,24 @@
 /**
- * Ma trận phân quyền — SPEC Mục 3.2, có điều chỉnh theo quyết định dự án:
- *  - QĐ04: EC được Create/Read/Update MỌI lead (không giới hạn `own`), không Delete.
- *  - QĐ03 / 3.3(c): MARKETING KHÔNG được sửa stage/outcome của lead (xung đột lợi ích
- *    với chính chỉ số CPMQL mà họ bị đánh giá).
- *  - 3.3(b): VIEWER không xem thông tin liên hệ khách hàng.
- *
- * "scope" = 'all' (mọi bản ghi) | 'own' (chỉ bản ghi của mình). Thiếu key = không có quyền.
+ * Ma trận phân quyền — SPEC Mục 3.2. Thực thi ở tầng service (không chỉ ẩn UI).
+ * "scope" = 'all' (mọi bản ghi) | 'own' (chỉ bản ghi của mình) | 'sbu' (chỉ SBU của mình).
+ * Thiếu key = không có quyền.
  */
 
-export type Role = "ADMIN" | "MANAGER" | "MARKETING" | "EC" | "VIEWER";
+export type Role = "admin" | "manager" | "member" | "center_contributor" | "viewer";
 export type Action = "create" | "read" | "update" | "delete";
-export type Scope = "all" | "own";
+export type Scope = "all" | "own" | "sbu";
 
 export type Resource =
-  | "lead" // danh sách lead + tạo/sửa
-  | "lead.contactInfo" // xem SĐT / email
-  | "lead.revenue" // tạo/sửa enrollment (doanh thu)
-  | "lead.revenueTotal" // chỉ xem con số tổng doanh thu
-  | "lead.reassign" // phân công lại
-  | "lead.statusChange" // đổi stage / outcome
-  | "leadInteraction" // nhật ký chăm sóc
+  | "task" // CRUD task nói chung
+  | "task.assignOthers" // giao task cho người khác
   | "campaign"
-  | "campaignDailyMetric"
-  | "taskPersonal"
-  | "taskAssignOthers"
-  | "kpiManage" // thiết lập / giao chỉ tiêu
-  | "kpiResults" // xem kết quả
-  | "saleEnablement"
-  | "auditLog"
-  | "periodLock" // khóa / mở sổ kỳ
+  | "foundation"
+  | "brandKit" // chỉ xem Brand Kit + chủ đề tháng (center_contributor)
+  | "request"
+  | "recurringRule"
+  | "sbu"
+  | "workloadReport"
+  | "importData"
   | "userManagement";
 
 type RoleMatrix = Partial<Record<Resource, Partial<Record<Action, Scope>>>>;
@@ -41,107 +31,86 @@ const ALL: Record<Action, Scope> = {
 };
 
 export const PERMISSIONS: Record<Role, RoleMatrix> = {
-  ADMIN: {
-    lead: ALL,
-    "lead.contactInfo": { read: "all" },
-    "lead.revenue": ALL,
-    "lead.revenueTotal": { read: "all" },
-    "lead.reassign": { update: "all" },
-    "lead.statusChange": { update: "all" },
-    leadInteraction: { create: "all", read: "all" },
+  admin: {
+    task: ALL,
+    "task.assignOthers": { update: "all" },
     campaign: ALL,
-    campaignDailyMetric: ALL,
-    taskPersonal: ALL,
-    taskAssignOthers: ALL,
-    kpiManage: ALL,
-    kpiResults: { read: "all" },
-    saleEnablement: ALL,
-    auditLog: { read: "all" },
-    periodLock: { update: "all" },
+    foundation: ALL,
+    brandKit: { read: "all" },
+    request: ALL,
+    recurringRule: ALL,
+    sbu: ALL,
+    workloadReport: { read: "all" },
+    importData: { create: "all", read: "all" },
     userManagement: ALL,
   },
 
-  MANAGER: {
-    lead: ALL,
-    "lead.contactInfo": { read: "all" },
-    "lead.revenue": ALL,
-    "lead.revenueTotal": { read: "all" },
-    "lead.reassign": { update: "all" },
-    "lead.statusChange": { update: "all" },
-    leadInteraction: { create: "all", read: "all" },
+  manager: {
+    task: ALL,
+    "task.assignOthers": { update: "all" },
     campaign: ALL,
-    campaignDailyMetric: ALL,
-    taskPersonal: ALL,
-    taskAssignOthers: ALL,
-    kpiManage: { create: "all", read: "all", update: "all" }, // không delete
-    kpiResults: { read: "all" },
-    saleEnablement: ALL,
-    auditLog: { read: "all" },
-    // periodLock: không (chỉ ADMIN khóa/mở sổ — SPEC 3.2)
+    foundation: ALL,
+    brandKit: { read: "all" },
+    request: ALL,
+    recurringRule: ALL,
+    sbu: ALL,
+    workloadReport: { read: "all" },
+    importData: { create: "all", read: "all" },
+    // không userManagement, không xóa dữ liệu gốc (Mục 3.1)
   },
 
-  MARKETING: {
-    lead: { read: "all" }, // xem, KHÔNG sửa
-    // KHÔNG lead.contactInfo (SPEC 3.2: MARKETING không xem SĐT/email)
-    "lead.revenueTotal": { read: "all" },
-    // KHÔNG lead.statusChange (QĐ03)
-    leadInteraction: { read: "all" },
-    campaign: { create: "all", read: "all", update: "all" },
-    campaignDailyMetric: { create: "all", read: "all", update: "all" },
-    taskPersonal: { create: "own", read: "own", update: "own" },
-    kpiResults: { read: "own" },
-    saleEnablement: { create: "all", read: "all", update: "all" },
-  },
-
-  EC: {
-    // QĐ04: mọi lead, không chỉ own. Không delete.
-    lead: { create: "all", read: "all", update: "all" },
-    "lead.contactInfo": { read: "all" },
-    "lead.revenue": { create: "all", read: "all", update: "all" },
-    "lead.revenueTotal": { read: "all" },
-    "lead.statusChange": { update: "all" },
-    leadInteraction: { create: "own", read: "all" },
+  member: {
+    // Thấy toàn bộ plan; sửa/giao task của mình. Giao người khác cần can_assign (kiểm tra riêng).
+    task: { create: "own", read: "all", update: "own" },
     campaign: { read: "all" },
-    campaignDailyMetric: { read: "all" },
-    taskPersonal: { create: "own", read: "own", update: "own" },
-    kpiResults: { read: "own" },
-    saleEnablement: { read: "all" },
+    foundation: { read: "all" },
+    brandKit: { read: "all" },
+    request: { create: "all", read: "all" },
+    recurringRule: { create: "own", read: "all" },
+    sbu: { read: "all" },
+    workloadReport: { read: "own" },
   },
 
-  VIEWER: {
-    // Chỉ dashboard & báo cáo tổng hợp. Không lead, không contact info.
-    "lead.revenueTotal": { read: "all" },
-    kpiResults: { read: "all" }, // chỉ tổng — tầng UI lọc thêm
+  center_contributor: {
+    // Chỉ task/SBU thuộc trung tâm của chính mình (lọc theo users.sbu_id ở service).
+    task: { read: "sbu", update: "sbu" },
+    brandKit: { read: "all" },
+    request: { create: "all", read: "sbu" },
+    sbu: { read: "sbu" },
+  },
+
+  viewer: {
     campaign: { read: "all" },
-    saleEnablement: { read: "all" },
+    sbu: { read: "all" },
+    workloadReport: { read: "all" },
   },
 };
 
-/** Trả về scope quyền ('all' | 'own') hoặc false nếu không có quyền. */
-export function permission(
-  role: Role,
-  resource: Resource,
-  action: Action,
-): Scope | false {
+/** Trả về scope quyền hoặc false nếu không có quyền. */
+export function permission(role: Role, resource: Resource, action: Action): Scope | false {
   return PERMISSIONS[role]?.[resource]?.[action] ?? false;
 }
 
 /**
- * Kiểm tra quyền cụ thể trên một bản ghi. `ownerIds` = danh sách user id gắn với
- * bản ghi (ví dụ assigned_to, created_by). `userId` = người đang thao tác.
+ * Kiểm tra quyền cụ thể trên một bản ghi.
+ * `ownerIds` = user id gắn với bản ghi (assignee, creator...).
+ * `sbuMatch` = bản ghi có thuộc SBU của người thao tác không (cho scope 'sbu').
  */
 export function can(
   role: Role,
   resource: Resource,
   action: Action,
-  ctx?: { userId?: string; ownerIds?: (string | null | undefined)[] },
+  ctx?: { userId?: string; ownerIds?: (string | null | undefined)[]; sbuMatch?: boolean },
 ): boolean {
   const scope = permission(role, resource, action);
   if (!scope) return false;
   if (scope === "all") return true;
-  // scope === 'own'
-  if (!ctx?.userId || !ctx.ownerIds) return false;
-  return ctx.ownerIds.some((id) => id === ctx.userId);
+  if (scope === "own") {
+    if (!ctx?.userId || !ctx.ownerIds) return false;
+    return ctx.ownerIds.some((id) => id === ctx.userId);
+  }
+  // scope === 'sbu'
+  return ctx?.sbuMatch === true;
 }
 
 /** Có bất kỳ quyền đọc nào trên resource không (để hiện/ẩn menu). */
@@ -150,9 +119,9 @@ export function canSee(role: Role, resource: Resource): boolean {
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
-  ADMIN: "Trưởng phòng Marketing, TMĐT & CRM",
-  MANAGER: "Phó phòng / người được ủy quyền",
-  MARKETING: "Marketing Executive",
-  EC: "E-Commerce Executive",
-  VIEWER: "Ban Giám đốc / Khối R&D",
+  admin: "Trưởng phòng Marketing",
+  manager: "Phó phòng / trưởng nhóm",
+  member: "Nhân sự Marketing HO",
+  center_contributor: "Đầu mối Marketing trung tâm",
+  viewer: "Ban Giám đốc / Khối",
 };

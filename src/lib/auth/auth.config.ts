@@ -13,12 +13,20 @@ export const authConfig = {
   callbacks: {
     jwt({ token, user, trigger, session }) {
       if (user) {
-        token.id = (user as { id: string }).id;
-        token.role = (user as { role: Role }).role;
-        token.fullName = (user as { fullName: string }).fullName;
-        token.mustChangePassword = (
-          user as { mustChangePassword: boolean }
-        ).mustChangePassword;
+        const u = user as {
+          id: string;
+          role: Role;
+          fullName: string;
+          mustChangePassword: boolean;
+          canAssign: boolean;
+          sbuId: string | null;
+        };
+        token.id = u.id;
+        token.role = u.role;
+        token.fullName = u.fullName;
+        token.mustChangePassword = u.mustChangePassword;
+        token.canAssign = u.canAssign;
+        token.sbuId = u.sbuId;
       }
       // Sau khi đổi mật khẩu thành công (server action gọi update()).
       if (trigger === "update" && session && "mustChangePassword" in session) {
@@ -32,6 +40,8 @@ export const authConfig = {
         session.user.role = token.role as Role;
         session.user.fullName = token.fullName as string;
         session.user.mustChangePassword = token.mustChangePassword as boolean;
+        session.user.canAssign = token.canAssign as boolean;
+        session.user.sbuId = (token.sbuId as string | null) ?? null;
       }
       return session;
     },
@@ -42,6 +52,7 @@ export const authConfig = {
         pathname === "/login" ||
         pathname.startsWith("/api/auth") ||
         pathname === "/api/cron" || // tự bảo vệ bằng CRON_SECRET (Vercel Cron gọi, không có session)
+        pathname.startsWith("/xac-nhan") || // magic link không đăng nhập — SPEC Mục 3.3/11.4
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico";
       if (isPublic) return true;

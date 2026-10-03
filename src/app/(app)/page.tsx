@@ -1,610 +1,108 @@
-import { Suspense } from "react";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight } from "lucide-react";
-import { asc } from "drizzle-orm";
-import { Badge } from "@/components/ui/badge";
+import * as React from "react";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { products as productsTable } from "@/lib/db/schema";
-import {
-  breakdownByCampaign,
-  breakdownByProduct,
-  breakdownByUser,
-  comparePeriod,
-  getActionCounts,
-  weeklyTrend,
-} from "@/lib/services/dashboard";
-import { evaluateCampaignAlerts, type MetricsFilter } from "@/lib/services/metrics";
-import {
-  fmtCompact,
-  fmtInt,
-  fmtPct,
-  fmtRatioX,
-  fmtVnd,
-} from "@/lib/format";
-import { getBaseMetrics } from "@/lib/services/metrics";
-import { getKpiProgressForPeriod } from "@/lib/services/kpi";
-import {
-  SCORE_BANDS,
-  SCORE_BAND_COLOR,
-  SCORE_BAND_LABEL,
-} from "@/lib/services/lead-score";
-import type { TempBands } from "@/lib/services/lead-temp";
-import { quarterBounds, resolveRange, todayVnDayStr } from "@/lib/time";
-import { Tag, type TagColor } from "@/components/data-grid/tag";
-import { DashboardFilters } from "./dashboard-filters";
-import { TeamProgressTable } from "./team-progress-table";
-import {
-  getBreakdownsCached,
-  getHealthBundleCached,
-  getKpiFollowCached,
-  getLeadTempCached,
-} from "./dashboard-cache";
-import { RunJobsButton } from "./run-jobs-button";
-import { TrendChart } from "./trend-chart";
-import { ReportExport } from "./report-export";
-import { ViewerDashboard } from "./viewer-dashboard";
-
-async function loadViewerData() {
-  const today = todayVnDayStr();
-  const [qs, qe] = quarterBounds(today);
-  const qLabel = `${qs.slice(0, 4)}-Q${
-    Math.floor((Number(qs.slice(5, 7)) - 1) / 3) + 1
-  }`;
-  const qFilter = { from: qs, to: qe };
-  try {
-    const [b, bp, tr, kpis, bu, temp] = await Promise.all([
-      getBaseMetrics(db, qFilter),
-      breakdownByProduct(db, qFilter),
-      weeklyTrend(db, { weeks: 12, filter: qFilter }),
-      getKpiProgressForPeriod(db, { periodStart: qs, periodEnd: qe }),
-      breakdownByUser(db, qFilter),
-      getLeadTempCached(),
-    ]);
-    return {
-      quarterLabel: qLabel,
-      from: qs,
-      to: qe,
-      revenueGross: b.revenueGross,
-      hvm: b.hvm,
-      roas: b.spend > 0 ? b.revenueGross / b.spend : null,
-      revenueTarget: kpis.find((k) => k.code === "REVENUE_GROSS")?.target ?? null,
-      hvmTarget: kpis.find((k) => k.code === "HVM")?.target ?? null,
-      byProduct: bp.rows.map((r) => ({
-        code: r.label.split(" — ")[0],
-        roas: r.metrics.roas,
-        revenue: r.metrics.revenueGross,
-      })),
-      trend: tr,
-      teamProgress: bu,
-      leadTempTotal: temp.total,
-      teamTempByUser: Object.fromEntries(
-        temp.byUser.map((u) => [u.userId, u.bands]),
-      ),
-    };
-  } catch {
-    return null;
-  }
-}
+import { taskCollaborators, taskWatchers, tasks } from "@/lib/db/schema";
+import { addDaysStr, todayVnDayStr } from "@/lib/time";
+import { QuickAddTask } from "./task/quick-add-task";
+import { TaskRow } from "./task/task-row";
 
 export const dynamic = "force-dynamic";
 
-type Breakdowns = {
-  byProduct: Awaited<ReturnType<typeof breakdownByProduct>>;
-  byCampaign: Awaited<ReturnType<typeof breakdownByCampaign>>;
-  byUser: Awaited<ReturnType<typeof breakdownByUser>>;
-  trend: Awaited<ReturnType<typeof weeklyTrend>>;
-};
+const OPEN_STATUSES = ["todo", "in_progress", "in_review", "blocked"] as const;
 
-/** Gộp từ tab "Báo cáo" cũ: dựng các sheet để xuất XLSX. */
-function buildReportSheets(d: Breakdowns) {
-  return [
-    {
-      name: "Theo sản phẩm",
-      columns: [
-        { header: "Sản phẩm", key: "sp" },
-        { header: "Spend", key: "spend" },
-        { header: "Lead", key: "leads" },
-        { header: "MQL", key: "mql" },
-        { header: "SQL", key: "sql" },
-        { header: "HV", key: "won" },
-        { header: "Doanh thu", key: "rev" },
-        { header: "CPMQL", key: "cpmql" },
-        { header: "CAC", key: "cac" },
-        { header: "ROAS", key: "roas" },
-        { header: "% ngân sách", key: "actualPct" },
-      ],
-      rows: d.byProduct.rows.map((r) => ({
-        sp: r.label,
-        spend: r.metrics.spend,
-        leads: r.metrics.leads,
-        mql: r.metrics.mql,
-        sql: r.metrics.sql,
-        won: r.metrics.won,
-        rev: r.metrics.revenueGross,
-        cpmql: r.metrics.cpmql ?? "",
-        cac: r.metrics.cac ?? "",
-        roas: r.metrics.roas ?? "",
-        actualPct: r.budgetShareActualPct?.toFixed(1) ?? "",
-      })),
-    },
-    {
-      name: "Theo campaign",
-      columns: [
-        { header: "Campaign", key: "c" },
-        { header: "Spend", key: "spend" },
-        { header: "MQL", key: "mql" },
-        { header: "SQL", key: "sql" },
-        { header: "HV", key: "won" },
-        { header: "CPMQL", key: "cpmql" },
-        { header: "CAC", key: "cac" },
-        { header: "ROAS", key: "roas" },
-      ],
-      rows: d.byCampaign.map((r) => ({
-        c: r.label,
-        spend: r.metrics.spend,
-        mql: r.metrics.mql,
-        sql: r.metrics.sql,
-        won: r.metrics.won,
-        cpmql: r.metrics.cpmql ?? "",
-        cac: r.metrics.cac ?? "",
-        roas: r.metrics.roas ?? "",
-      })),
-    },
-    {
-      name: "Tiến độ đội",
-      columns: [
-        { header: "Nhân sự", key: "u" },
-        { header: "Lead giao", key: "assigned" },
-        { header: "MQL", key: "mql" },
-        { header: "SQL", key: "sql" },
-        { header: "HV", key: "won" },
-        { header: "HVM", key: "hvm" },
-        { header: "Doanh thu", key: "rev" },
-        { header: "CR MQL→Chốt", key: "cr" },
-        { header: "Phiên CS", key: "care" },
-        { header: "Task xong", key: "tdone" },
-        { header: "Task tổng", key: "ttotal" },
-        { header: "% task", key: "tpct" },
-        { header: "Task trễ", key: "tover" },
-        { header: "Tỷ lệ trễ hẹn", key: "overdue" },
-        { header: "Tốc độ phản hồi", key: "resp" },
-      ],
-      rows: d.byUser.map((r) => ({
-        u: r.label,
-        assigned: r.leadsAssigned,
-        mql: r.metrics.mql,
-        sql: r.metrics.sql,
-        won: r.metrics.won,
-        hvm: r.metrics.hvm,
-        rev: r.metrics.revenueGross,
-        cr: r.crMqlWon == null ? "" : (r.crMqlWon * 100).toFixed(1) + "%",
-        care: r.careSessions,
-        tdone: r.taskDone,
-        ttotal: r.taskTotal,
-        tpct:
-          r.taskTotal > 0
-            ? ((r.taskDone / r.taskTotal) * 100).toFixed(0) + "%"
-            : "",
-        tover: r.taskOverdue,
-        overdue:
-          r.overdueRate == null ? "" : (r.overdueRate * 100).toFixed(1) + "%",
-        resp:
-          r.firstResponseRate == null
-            ? ""
-            : (r.firstResponseRate * 100).toFixed(1) + "%",
-      })),
-    },
-    {
-      name: "Xu hướng tuần",
-      columns: [
-        { header: "Tuần bắt đầu", key: "w" },
-        { header: "Spend", key: "spend" },
-        { header: "MQL", key: "mql" },
-        { header: "HV Chốt", key: "won" },
-        { header: "CPMQL", key: "cpmql" },
-      ],
-      rows: d.trend.map((p) => ({
-        w: p.weekStart,
-        spend: p.spend,
-        mql: p.mql,
-        won: p.won,
-        cpmql: p.cpmql ?? "",
-      })),
-    },
-  ];
-}
-
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
+export default async function DashboardPage() {
   const user = await requireUser();
-  const sp = await searchParams;
-  const isViewer = user.role === "VIEWER";
+  const today = todayVnDayStr();
+  const tomorrow = addDaysStr(today, 1);
+  const weekEnd = addDaysStr(today, 7);
 
-  // VIEWER (BOD): màn hình rút gọn, không dữ liệu cá nhân — SPEC Mục 12.6.
-  if (isViewer) {
-    const viewerData = await loadViewerData();
-    if (!viewerData)
-      return (
-        <p className="text-sm text-muted-foreground">
-          Chưa lấy được dữ liệu. Kiểm tra kết nối cơ sở dữ liệu.
-        </p>
-      );
-    return <ViewerDashboard {...viewerData} />;
-  }
+  const mine = await db
+    .select()
+    .from(tasks)
+    .where(and(isNull(tasks.deletedAt), eq(tasks.assigneeId, user.id), inArray(tasks.status, [...OPEN_STATUSES])))
+    .orderBy(asc(tasks.dueDate), asc(tasks.priority));
 
-  const { from, to, label } = resolveRange(sp.range ?? "this_month");
-  const cmpMode = (sp.cmp ?? "prev") as "prev" | "yoy" | "none";
-  const productIds = (sp.products ?? "").split(",").filter(Boolean);
-  const channels = (sp.channels ?? "").split(",").filter(Boolean) as MetricsFilter["channels"];
+  const overdue = mine.filter((t) => t.dueDate && t.dueDate < today);
+  const dueToday = mine.filter((t) => t.dueDate === today);
+  const dueTomorrow = mine.filter((t) => t.dueDate === tomorrow);
+  const thisWeek = mine.filter((t) => t.dueDate && t.dueDate > tomorrow && t.dueDate <= weekEnd);
+  const noDueDate = mine.filter((t) => !t.dueDate);
+  const blocked = mine.filter((t) => t.status === "blocked");
 
-  const filter: MetricsFilter = {
-    from,
-    to,
-    productIds: productIds.length ? productIds : undefined,
-    channels: channels && channels.length ? channels : undefined,
-  };
+  const collabRows = await db
+    .select({ task: tasks })
+    .from(taskCollaborators)
+    .innerJoin(tasks, eq(tasks.id, taskCollaborators.taskId))
+    .where(and(eq(taskCollaborators.userId, user.id), isNull(tasks.deletedAt), inArray(tasks.status, [...OPEN_STATUSES])));
 
-  const allProducts = await db
-    .select({ id: productsTable.id, code: productsTable.code })
-    .from(productsTable)
-    .orderBy(asc(productsTable.sortOrder));
-
-  const cmp = comparePeriod(from, to, cmpMode);
-  // Khóa Suspense theo bộ lọc: đổi kỳ -> khối cũ hiện skeleton lại ngay, không "đứng hình".
-  const bkey = `${from}|${to}|${cmpMode}|${productIds.join(",")}|${(channels ?? []).join(",")}`;
-  const canExport = user.role === "ADMIN" || user.role === "MANAGER";
+  const watchRows = await db
+    .select({ task: tasks })
+    .from(taskWatchers)
+    .innerJoin(tasks, eq(tasks.id, taskWatchers.taskId))
+    .where(and(eq(taskWatchers.userId, user.id), isNull(tasks.deletedAt)));
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            {label}: {from} → {to}
-            {cmp ? ` · so với ${cmp.from} → ${cmp.to}` : ""}
-          </p>
-        </div>
-        {canExport && <RunJobsButton />}
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">Việc của tôi</h1>
+        <p className="text-sm text-muted-foreground">Xin chào {user.fullName} — đây là mọi việc bạn đang phụ trách.</p>
       </div>
 
-      <DashboardFilters
-        products={allProducts}
-        channels={["FB", "GOOGLE", "TIKTOK", "KHAC"]}
-      />
+      <QuickAddTask currentUserId={user.id} />
 
-      {/* Shell + bộ lọc hiển thị tức thì; các khối dưới chảy vào khi tính xong. */}
-      <Suspense key={`h-${bkey}`} fallback={<SkeletonBlock label="Đang tính sức khỏe kỳ…" rows={2} />}>
-        <ActionHealthSection filter={filter} cmpMode={cmpMode} />
-      </Suspense>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
+        <Kpi label="Trễ hạn" value={overdue.length} tone="crit" />
+        <Kpi label="Hôm nay" value={dueToday.length} />
+        <Kpi label="Ngày mai" value={dueTomorrow.length} />
+        <Kpi label="Tuần này" value={thisWeek.length} />
+        <Kpi label="Chưa có hạn" value={noDueDate.length} />
+        <Kpi label="Đang bị chặn" value={blocked.length} tone={blocked.length ? "warn" : undefined} />
+      </div>
 
-      <Suspense fallback={<SkeletonBlock label="Đang chấm nhiệt độ pipeline…" rows={1} />}>
-        <TempPipelineSection />
-      </Suspense>
-
-      <Suspense key={`k-${bkey}`} fallback={<SkeletonBlock label="Đang tính tiến độ KPI…" rows={2} />}>
-        <KpiFollowSection from={from} to={to} label={label} />
-      </Suspense>
-
-      <Suspense
-        key={`b-${bkey}`}
-        fallback={<SkeletonBlock label="Đang bóc tách theo sản phẩm / campaign / nhân sự…" rows={5} />}
-      >
-        <BreakdownsSection
-          filter={filter}
-          from={from}
-          to={to}
-          label={label}
-          isViewer={isViewer}
-          canExport={canExport}
-        />
-      </Suspense>
-    </div>
-  );
-}
-
-function SkeletonBlock({ label, rows }: { label: string; rows: number }) {
-  return (
-    <div className="space-y-2 rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <div className="space-y-1.5">
-        {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="h-6 animate-pulse rounded bg-muted/60" />
+      <Section title="Cần làm hôm nay" empty="Không có việc nào trễ hạn hoặc đến hạn hôm nay.">
+        {[...overdue, ...dueToday].map((t) => (
+          <TaskRow key={t.id} task={t} today={today} />
         ))}
-      </div>
-    </div>
-  );
-}
+      </Section>
 
-function DbError({ msg }: { msg: string }) {
-  return (
-    <div className="rounded-lg border border-warn/40 bg-warn/10 p-4 text-sm">
-      <p className="font-medium">Chưa lấy được dữ liệu.</p>
-      <p className="text-xs text-muted-foreground">{msg}</p>
-    </div>
-  );
-}
-
-// ---------- TẦNG 1 + 2 — CẦN HÀNH ĐỘNG & SỨC KHỎE (stream riêng) ----------
-async function ActionHealthSection({
-  filter,
-  cmpMode,
-}: {
-  filter: MetricsFilter;
-  cmpMode: "prev" | "yoy" | "none";
-}) {
-  let health, actions, alerts;
-  try {
-    ({ health, actions, alerts } = await getHealthBundleCached(
-      filter.from,
-      filter.to,
-      (filter.productIds ?? []).join(","),
-      (filter.channels ?? []).join(","),
-      cmpMode,
-    ));
-  } catch (e) {
-    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
-  }
-
-  return (
-    <div className="space-y-5">
-      <ActionTier alerts={alerts} counts={actions} />
-
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Sức khỏe</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          <Tile name="Spend" t={health.tiles.spend} fmt={fmtCompact} />
-          <Tile name="Lead" t={health.tiles.leads} fmt={fmtInt} />
-          <Tile name="MQL" t={health.tiles.mql} fmt={fmtInt} />
-          <Tile name="SQL" t={health.tiles.sql} fmt={fmtInt} />
-          <Tile name="HV Chốt" t={health.tiles.won} fmt={fmtInt} />
-          <Tile name="Doanh thu" t={health.tiles.revenueGross} fmt={fmtCompact} />
-          <Tile name="CPMQL" t={health.tiles.cpmql} fmt={fmtVnd} lowerBetter />
-          <Tile name="CAC" t={health.tiles.cac} fmt={fmtVnd} lowerBetter />
-          <Tile name="ROAS" t={health.tiles.roas} fmt={fmtRatioX} />
-        </div>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <Funnel title="Phễu kỳ này" m={health.current} />
-          {health.compare && <Funnel title="Phễu kỳ so sánh" m={health.compare} muted />}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-// ---------- NHIỆT ĐỘ PIPELINE — lead OPEN theo Nóng/Ấm/Nguội/Lạnh (Gói U) ----------
-async function TempPipelineSection() {
-  let temp;
-  try {
-    temp = await getLeadTempCached();
-  } catch (e) {
-    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
-  }
-  const t = temp.total;
-  if (t.total === 0) return null;
-
-  return (
-    <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-muted-foreground">
-          Nhiệt độ pipeline · {fmtInt(t.total)} lead đang theo
-        </h2>
-        {temp.hotNoSchedule > 0 && (
-          <Link
-            href="/lead"
-            className="text-xs font-medium text-crit hover:underline"
-          >
-            🔥 {temp.hotNoSchedule} lead Nóng chưa đặt Ngày LH lại →
-          </Link>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {SCORE_BANDS.map((b) => (
-          <Link
-            key={b}
-            href="/lead"
-            className="rounded-lg border p-3 hover:bg-muted/40"
-          >
-            <Tag color={SCORE_BAND_COLOR[b] as TagColor}>
-              {SCORE_BAND_LABEL[b]}
-            </Tag>
-            <div className="mt-1 text-lg font-semibold tabular-nums">
-              {fmtInt(t[b])}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t.total > 0 ? `${Math.round((t[b] / t.total) * 100)}%` : "–"}
-            </div>
-          </Link>
+      <Section title="Việc sắp tới (7 ngày)" empty="Không có việc nào trong 7 ngày tới.">
+        {[...dueTomorrow, ...thisWeek].map((t) => (
+          <TaskRow key={t.id} task={t} today={today} />
         ))}
+      </Section>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Section title="Tôi đang phối hợp" empty="Chưa phối hợp task nào.">
+          {collabRows.map((r) => (
+            <TaskRow key={r.task.id} task={r.task} today={today} compact />
+          ))}
+        </Section>
+        <Section title="Tôi đang theo dõi" empty="Chưa theo dõi task nào.">
+          {watchRows.map((r) => (
+            <TaskRow key={r.task.id} task={r.task} today={today} compact />
+          ))}
+        </Section>
       </div>
 
-      <TempBar bands={t} className="mt-2" />
-    </section>
-  );
-}
-
-/** Thanh tỉ lệ ngang xếp chồng theo nhiệt độ. */
-function TempBar({
-  bands,
-  className,
-}: {
-  bands: { hot: number; warm: number; cool: number; cold: number; total: number };
-  className?: string;
-}) {
-  if (bands.total === 0) return null;
-  const seg: Record<string, string> = {
-    hot: "bg-rose-400",
-    warm: "bg-amber-400",
-    cool: "bg-slate-400",
-    cold: "bg-gray-400",
-  };
-  return (
-    <div className={"flex h-2.5 overflow-hidden rounded-full " + (className ?? "")}>
-      {SCORE_BANDS.map((b) => {
-        const w = (bands[b] / bands.total) * 100;
-        if (w === 0) return null;
-        return (
-          <div
-            key={b}
-            className={seg[b]}
-            style={{ width: `${w}%` }}
-            title={`${SCORE_BAND_LABEL[b]}: ${bands[b]}`}
-          />
-        );
-      })}
+      <div className="text-sm">
+        <Link href="/task" className="text-brand hover:underline">
+          Xem toàn bộ task (List / Kanban / Lịch) →
+        </Link>
+      </div>
     </div>
   );
 }
 
-// ---------- THEO KPI — chỉ tiêu + ngân sách của kỳ đang chọn (Gói J) ----------
-async function KpiFollowSection({
-  from,
-  to,
-  label,
-}: {
-  from: string;
-  to: string;
-  label: string;
-}) {
-  let kpis, budget;
-  try {
-    ({ kpis, budget } = await getKpiFollowCached(from, to));
-  } catch (e) {
-    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
-  }
-
-  const hasKpi = kpis.length > 0;
-  const hasBudget = budget.allocated != null;
-  if (!hasKpi && !hasBudget) {
-    return (
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Theo KPI</h2>
-        <p className="rounded-lg border p-4 text-sm text-muted-foreground">
-          Chưa có chỉ tiêu / ngân sách cho kỳ này. Giao ở{" "}
-          <Link href="/kpi" className="text-brand hover:underline">
-            trang KPI
-          </Link>{" "}
-          — chọn đúng <b>Tháng</b> hoặc <b>Quý</b> khớp kỳ đang xem ({label}).
-        </p>
-      </section>
-    );
-  }
-
-  const pacePct = budget.timeProgressPct;
-
+function Kpi({ label, value, tone }: { label: string; value: number; tone?: "crit" | "warn" }) {
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-muted-foreground">
-        Theo KPI · {label}
-      </h2>
-
-      {hasBudget && (
-        <div className="grid grid-cols-2 gap-2 rounded-lg border p-3 sm:grid-cols-5">
-          <MiniStat label="Ngân sách giao" value={fmtVnd(budget.allocated)} />
-          <MiniStat label="Đã giải ngân" value={fmtVnd(budget.spend)} />
-          <MiniStat
-            label="Còn lại"
-            value={fmtVnd(budget.remaining)}
-            tone={budget.remaining != null && budget.remaining < 0 ? "crit" : undefined}
-          />
-          <MiniStat
-            label="% giải ngân"
-            value={fmtPct(budget.disbursedPct)}
-            tone={
-              budget.disbursedPct != null && budget.disbursedPct > pacePct + 0.1
-                ? "crit"
-                : undefined
-            }
-          />
-          <MiniStat label="Nhịp kỳ" value={fmtPct(pacePct)} />
-        </div>
-      )}
-
-      {hasKpi && (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Chỉ tiêu</th>
-                <th className="px-3 py-2">Phạm vi</th>
-                <th className="px-3 py-2 text-right">Mục tiêu</th>
-                <th className="px-3 py-2 text-right">Thực tế</th>
-                <th className="px-3 py-2 text-right">% hoàn thành</th>
-                <th className="px-3 py-2 text-right">Trọng số</th>
-                <th className="px-3 py-2">Nhịp</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kpis.map((k) => (
-                <tr key={k.id} className="border-b">
-                  <td className="px-3 py-1.5 font-medium">{k.code}</td>
-                  <td className="px-3 py-1.5 text-muted-foreground">
-                    {k.userName ?? k.scopeType}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">
-                    {fmtInt(k.target)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">
-                    {k.actual == null ? "–" : fmtInt(k.actual)}
-                  </td>
-                  <td
-                    className={
-                      "px-3 py-1.5 text-right tabular-nums " +
-                      (k.completionPct == null
-                        ? ""
-                        : k.completionPct >= 1
-                          ? "text-ok font-medium"
-                          : k.atRisk
-                            ? "text-crit font-medium"
-                            : "")
-                    }
-                  >
-                    {fmtPct(k.completionPct)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">
-                    {k.weightPct}%
-                  </td>
-                  <td className="px-3 py-1.5">
-                    {k.atRisk ? (
-                      <Badge variant="outline" className="text-crit">
-                        trễ nhịp
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        {fmtPct(k.timeProgressPct)} kỳ
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "crit";
-}) {
-  return (
-    <div className="rounded-md border p-2">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+    <div className="rounded-lg border p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div
         className={
-          "text-sm font-semibold tabular-nums " + (tone === "crit" ? "text-crit" : "")
+          "text-2xl font-semibold tabular-nums " +
+          (tone === "crit" ? "text-crit" : tone === "warn" ? "text-warn" : "")
         }
       >
         {value}
@@ -613,401 +111,14 @@ function MiniStat({
   );
 }
 
-// ---------- TẦNG 3 — BÓC TÁCH (stream riêng — phần nặng nhất) ----------
-async function BreakdownsSection({
-  filter,
-  from,
-  to,
-  label,
-  isViewer,
-  canExport,
-}: {
-  filter: MetricsFilter;
-  from: string;
-  to: string;
-  label: string;
-  isViewer: boolean;
-  canExport: boolean;
-}) {
-  let byProduct, byCampaign, byUser, trend;
-  let tempByUser: Record<string, TempBands> = {};
-  let tempByProduct: Record<string, TempBands> = {};
-  try {
-    const [bd, temp] = await Promise.all([
-      getBreakdownsCached(
-        from,
-        to,
-        (filter.productIds ?? []).join(","),
-        (filter.channels ?? []).join(","),
-        !isViewer,
-      ),
-      getLeadTempCached(),
-    ]);
-    ({ byProduct, byCampaign, byUser, trend } = bd);
-    tempByUser = Object.fromEntries(temp.byUser.map((u) => [u.userId, u.bands]));
-    tempByProduct = Object.fromEntries(
-      temp.byProduct.map((p) => [p.productId, p.bands]),
-    );
-  } catch (e) {
-    return <DbError msg={e instanceof Error ? e.message : String(e)} />;
-  }
-
+function Section({ title, empty, children }: { title: string; empty: string; children: React.ReactNode }) {
+  const hasChildren = React.Children.count(children) > 0;
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-muted-foreground">
-          Bóc tách · {label} ({from} → {to})
-        </h2>
-        {canExport && (
-          <ReportExport
-            filename={`bao-cao-${from}_${to}`}
-            sheets={buildReportSheets({ byProduct, byCampaign, byUser, trend })}
-          />
-        )}
-      </div>
-
-      <ProductTable data={byProduct} tempByProduct={tempByProduct} />
-
-      {!isViewer && byUser.length > 0 && (
-        <TeamProgressTable rows={byUser} tempByUser={tempByUser} />
-      )}
-
-      <div className="rounded-lg border p-4">
-        <h3 className="mb-2 text-sm font-semibold">
-          Xu hướng 12 tuần — Spend / MQL / HV Chốt / CPMQL
-        </h3>
-        <TrendChart data={trend} />
-      </div>
-
-      <CampaignTable rows={byCampaign} />
-    </section>
-  );
-}
-
-// ------------------------------------------------------------------ Tầng 1
-
-function ActionTier({
-  alerts,
-  counts,
-}: {
-  alerts: Awaited<ReturnType<typeof evaluateCampaignAlerts>>;
-  counts: Awaited<ReturnType<typeof getActionCounts>>;
-}) {
-  const kill = alerts.filter((a) => a.rule === "R1" || a.rule === "R2");
-  const warn = alerts.filter((a) => a.rule === "R3" || a.rule === "R4");
-  const cards: { title: string; body: string; href: string; tone: "crit" | "warn" }[] =
-    [];
-  if (kill.length)
-    cards.push({
-      title: `${kill.length} campaign đề xuất KILL`,
-      body: kill
-        .slice(0, 3)
-        .map((a) => `${a.displayName} (${a.rule})`)
-        .join(" · "),
-      href: "/campaign",
-      tone: "crit",
-    });
-  if (counts.overdueLeads > 0)
-    cards.push({
-      title: `${counts.overdueLeads} lead quá hạn chăm sóc`,
-      body: "Sắp xếp lead trễ lâu nhất lên đầu, xử lý ngay.",
-      href: "/cong-viec",
-      tone: "crit",
-    });
-  if (counts.newLeadsStale > 0)
-    cards.push({
-      title: `${counts.newLeadsStale} lead mới chưa xử lý quá 24h`,
-      body: "Vi phạm cam kết phản hồi trong 15 phút (V12).",
-      href: "/lead",
-      tone: "warn",
-    });
-  if (counts.leadsMissingNextDate > 0)
-    cards.push({
-      title: `${counts.leadsMissingNextDate} lead thiếu Ngày LH lại`,
-      body: "Lead đang theo, đã có tương tác nhưng chưa đặt lịch (V01).",
-      href: "/lead",
-      tone: "warn",
-    });
-  if (warn.length)
-    cards.push({
-      title: `${warn.length} campaign cần tối ưu / thiếu dữ liệu`,
-      body: warn
-        .slice(0, 3)
-        .map((a) => `${a.displayName} (${a.rule})`)
-        .join(" · "),
-      href: "/campaign",
-      tone: "warn",
-    });
-
-  if (cards.length === 0) return null;
-
-  return (
-    <section>
-      <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-        Cần hành động
-      </h2>
-      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-        {cards.map((c, i) => (
-          <Link
-            key={i}
-            href={c.href}
-            className={
-              c.tone === "crit"
-                ? "rounded-lg border border-crit/40 bg-crit/5 p-3 hover:bg-crit/10"
-                : "rounded-lg border border-warn/40 bg-warn/5 p-3 hover:bg-warn/10"
-            }
-          >
-            <div className="flex items-center gap-1.5 text-sm font-medium">
-              <AlertTriangle
-                className={c.tone === "crit" ? "h-4 w-4 text-crit" : "h-4 w-4 text-warn"}
-              />
-              {c.title}
-            </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">{c.body}</p>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ------------------------------------------------------------------ Tầng 2
-
-function Tile({
-  name,
-  t,
-  fmt,
-  lowerBetter,
-}: {
-  name: string;
-  t: { value: number; deltaPct: number | null };
-  fmt: (v: number | null) => string;
-  lowerBetter?: boolean;
-}) {
-  const d = t.deltaPct;
-  const up = d != null && d > 0;
-  const good = d == null ? null : lowerBetter ? !up : up;
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="text-xs text-muted-foreground">{name}</div>
-      <div className="mt-1 text-lg font-semibold tabular-nums">{fmt(t.value)}</div>
-      {d != null && (
-        <div
-          className={
-            good == null
-              ? "flex items-center gap-0.5 text-xs text-muted-foreground"
-              : good
-                ? "flex items-center gap-0.5 text-xs text-ok"
-                : "flex items-center gap-0.5 text-xs text-crit"
-          }
-        >
-          {up ? (
-            <ArrowUpRight className="h-3 w-3" />
-          ) : (
-            <ArrowDownRight className="h-3 w-3" />
-          )}
-          {Math.abs(d) > 5 ? ">500%" : fmtPct(Math.abs(d))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Funnel({
-  title,
-  m,
-  muted,
-}: {
-  title: string;
-  m: { leads: number; mql: number; sql: number; won: number };
-  muted?: boolean;
-}) {
-  const steps = [
-    { k: "Lead", v: m.leads },
-    { k: "MQL", v: m.mql, of: m.leads },
-    { k: "SQL", v: m.sql, of: m.mql },
-    { k: "HV Chốt", v: m.won, of: m.sql },
-  ];
-  return (
-    <div className={`rounded-lg border p-3 ${muted ? "opacity-70" : ""}`}>
-      <div className="mb-2 text-xs font-medium text-muted-foreground">{title}</div>
-      <div className="space-y-1">
-        {steps.map((s) => {
-          const cr = s.of ? (s.of > 0 ? s.v / s.of : null) : null;
-          const w = m.leads > 0 ? Math.max(4, (s.v / m.leads) * 100) : 4;
-          return (
-            <div key={s.k} className="flex items-center gap-2 text-sm">
-              <div className="w-16 shrink-0 text-muted-foreground">{s.k}</div>
-              <div
-                className="h-5 rounded bg-brand/70"
-                style={{ width: `${w}%` }}
-              />
-              <div className="tabular-nums">{fmtInt(s.v)}</div>
-              {cr != null && (
-                <div className="text-xs text-muted-foreground">({fmtPct(cr)})</div>
-              )}
-            </div>
-          );
-        })}
+    <div className="space-y-2">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <div className="divide-y rounded-lg border">
+        {hasChildren ? children : <p className="px-3 py-4 text-sm text-muted-foreground">{empty}</p>}
       </div>
     </div>
   );
 }
-
-// ------------------------------------------------------------------ Tầng 3
-
-function ProductTable({
-  data,
-  tempByProduct,
-}: {
-  data: Awaited<ReturnType<typeof breakdownByProduct>>;
-  tempByProduct?: Record<string, TempBands>;
-}) {
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-left text-sm">
-        <caption className="px-3 py-2 text-left text-sm font-semibold">
-          Theo sản phẩm
-        </caption>
-        <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2">SP</th>
-            <th className="px-3 py-2 text-right">Spend</th>
-            <th className="px-3 py-2 text-right">Lead</th>
-            <th className="px-3 py-2 text-right">MQL</th>
-            <th className="px-3 py-2 text-right">SQL</th>
-            <th className="px-3 py-2 text-right">HV</th>
-            <th className="px-3 py-2 text-right">Doanh thu</th>
-            <th className="px-3 py-2 text-right">CPMQL</th>
-            <th className="px-3 py-2 text-right">ROAS</th>
-            <th className="px-3 py-2 text-right">Nhiệt độ (đang theo)</th>
-            <th className="px-3 py-2 text-right">% ngân sách</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((r) => {
-            return (
-              <tr key={r.key} className="border-b">
-                <td className="px-3 py-1.5 font-medium">{r.label}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtVnd(r.metrics.spend)}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtInt(r.metrics.leads)}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtInt(r.metrics.mql)}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtInt(r.metrics.sql)}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtInt(r.metrics.won)}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtVnd(r.metrics.revenueGross)}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtVnd(r.metrics.cpmql)}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {fmtRatioX(r.metrics.roas)}
-                </td>
-                <td className="px-3 py-1.5">
-                  {tempByProduct?.[r.key] && tempByProduct[r.key].total > 0 ? (
-                    <div className="flex items-center justify-end gap-1.5">
-                      <span className="text-xs text-rose-600">
-                        🔥{tempByProduct[r.key].hot}
-                      </span>
-                      <span className="w-16">
-                        <TempBar bands={tempByProduct[r.key]} />
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">–</span>
-                  )}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
-                  {r.budgetShareActualPct == null
-                    ? "–"
-                    : `${r.budgetShareActualPct.toFixed(0)}%`}
-                </td>
-              </tr>
-            );
-          })}
-          {data.rows.length === 0 && (
-            <tr>
-              <td colSpan={11} className="px-3 py-6 text-center text-muted-foreground">
-                Không có dữ liệu trong kỳ.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CampaignTable({
-  rows,
-}: {
-  rows: Awaited<ReturnType<typeof breakdownByCampaign>>;
-}) {
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-left text-sm">
-        <caption className="px-3 py-2 text-left text-sm font-semibold">
-          Theo campaign (top 20 theo spend)
-        </caption>
-        <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2">Campaign</th>
-            <th className="px-3 py-2 text-right">Spend</th>
-            <th className="px-3 py-2 text-right">MQL</th>
-            <th className="px-3 py-2 text-right">SQL</th>
-            <th className="px-3 py-2 text-right">HV</th>
-            <th className="px-3 py-2 text-right">CPMQL</th>
-            <th className="px-3 py-2 text-right">CAC</th>
-            <th className="px-3 py-2 text-right">ROAS</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.key} className="border-b">
-              <td className="px-3 py-1.5">{r.label}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtVnd(r.metrics.spend)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.metrics.mql)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.metrics.sql)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtInt(r.metrics.won)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtVnd(r.metrics.cpmql)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtVnd(r.metrics.cac)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {fmtRatioX(r.metrics.roas)}
-              </td>
-            </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
-                Không có campaign nào có dữ liệu trong kỳ.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-

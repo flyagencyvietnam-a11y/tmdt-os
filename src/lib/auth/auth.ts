@@ -31,7 +31,7 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
           .from(users)
           .where(eq(users.email, email.toLowerCase().trim()))
           .limit(1);
-        if (!user || !user.isActive) return null;
+        if (!user || !user.active) return null;
 
         // Khóa tạm sau nhiều lần sai — SPEC Mục 18.3
         if (user.lockedUntil && user.lockedUntil > new Date()) return null;
@@ -64,6 +64,8 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
           fullName: user.fullName,
           role: user.role,
           mustChangePassword: user.mustChangePassword,
+          canAssign: user.canAssign,
+          sbuId: user.sbuId,
         };
       },
     }),

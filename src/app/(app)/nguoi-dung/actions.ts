@@ -9,14 +9,14 @@ import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 
-const roleSchema = z.enum(["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"]);
+const roleSchema = z.enum(["admin", "manager", "member", "center_contributor", "viewer"]);
 
 const createSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
-  jobTitle: z.string().min(2),
   role: roleSchema,
-  aliasNames: z.string().optional(),
+  sbuId: z.string().uuid().optional().or(z.literal("")),
+  canAssign: z.enum(["on"]).optional(),
 });
 
 function randomTempPassword() {
@@ -24,13 +24,13 @@ function randomTempPassword() {
 }
 
 export async function createUser(fd: FormData) {
-  const admin = await requireRole("ADMIN");
+  const admin = await requireRole("admin");
   const parsed = createSchema.safeParse({
     email: fd.get("email"),
     fullName: fd.get("fullName"),
-    jobTitle: fd.get("jobTitle"),
     role: fd.get("role"),
-    aliasNames: fd.get("aliasNames"),
+    sbuId: fd.get("sbuId") ?? "",
+    canAssign: fd.get("canAssign") ?? undefined,
   });
   if (!parsed.success) return { error: "Dữ liệu không hợp lệ." };
   const d = parsed.data;
@@ -48,13 +48,11 @@ export async function createUser(fd: FormData) {
     .values({
       email: d.email.toLowerCase().trim(),
       fullName: d.fullName.trim(),
-      jobTitle: d.jobTitle.trim(),
       role: d.role,
+      sbuId: d.sbuId || null,
+      canAssign: d.canAssign === "on",
       passwordHash: await bcrypt.hash(tempPassword, 12),
       mustChangePassword: true,
-      aliasNames: d.aliasNames
-        ? d.aliasNames.split(",").map((s) => s.trim()).filter(Boolean)
-        : null,
     })
     .returning({ id: users.id });
 
@@ -72,17 +70,19 @@ export async function createUser(fd: FormData) {
 const updateSchema = z.object({
   id: z.string().uuid(),
   fullName: z.string().min(2),
-  jobTitle: z.string().min(2),
   role: roleSchema,
+  sbuId: z.string().uuid().optional().or(z.literal("")),
+  canAssign: z.enum(["on"]).optional(),
 });
 
 export async function updateUser(fd: FormData) {
-  const admin = await requireRole("ADMIN");
+  const admin = await requireRole("admin");
   const parsed = updateSchema.safeParse({
     id: fd.get("id"),
     fullName: fd.get("fullName"),
-    jobTitle: fd.get("jobTitle"),
     role: fd.get("role"),
+    sbuId: fd.get("sbuId") ?? "",
+    canAssign: fd.get("canAssign") ?? undefined,
   });
   if (!parsed.success) return { error: "Dữ liệu không hợp lệ." };
   const d = parsed.data;
@@ -92,7 +92,12 @@ export async function updateUser(fd: FormData) {
 
   await db
     .update(users)
-    .set({ fullName: d.fullName.trim(), jobTitle: d.jobTitle.trim(), role: d.role })
+    .set({
+      fullName: d.fullName.trim(),
+      role: d.role,
+      sbuId: d.sbuId || null,
+      canAssign: d.canAssign === "on",
+    })
     .where(eq(users.id, d.id));
 
   await writeAudit(db, {
@@ -109,23 +114,23 @@ export async function updateUser(fd: FormData) {
   return { ok: true };
 }
 
-export async function setUserActive(id: string, isActive: boolean) {
-  const admin = await requireRole("ADMIN");
+export async function setUserActive(id: string, active: boolean) {
+  const admin = await requireRole("admin");
   if (id === admin.id) return { error: "Không thể tự khóa tài khoản của mình." };
-  await db.update(users).set({ isActive }).where(eq(users.id, id));
+  await db.update(users).set({ active }).where(eq(users.id, id));
   await writeAudit(db, {
     actorId: admin.id,
     entity: "users",
     entityId: id,
     action: "UPDATE",
-    changes: { isActive: { from: !isActive, to: isActive } },
+    changes: { active: { from: !active, to: active } },
   });
   revalidatePath("/nguoi-dung");
   return { ok: true };
 }
 
 export async function resetUserPassword(id: string) {
-  const admin = await requireRole("ADMIN");
+  const admin = await requireRole("admin");
   const tempPassword = randomTempPassword();
   await db
     .update(users)

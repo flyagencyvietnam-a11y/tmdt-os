@@ -1,15 +1,13 @@
 "use client";
 
 import {
-  Activity,
+  Building2,
   ClipboardList,
+  Inbox,
   LayoutDashboard,
-  Lock,
   Megaphone,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  Target,
+  Settings,
+  Upload,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,21 +20,18 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   roles: Role[];
-  phase?: string;
 }
 
+/** SPEC Mục 8.1 — điều hướng chính, hiển thị theo quyền. */
 const ITEMS: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"] },
-  { href: "/lead", label: "Lead", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"], phase: "P1" },
-  { href: "/campaign", label: "Campaign", icon: Megaphone, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"], phase: "P1" },
-  { href: "/ads", label: "Theo dõi Ads", icon: Activity, roles: ["ADMIN", "MANAGER", "MARKETING"] },
-  { href: "/cong-viec", label: "Công việc", icon: ClipboardList, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },
-  { href: "/kpi", label: "KPI", icon: Target, roles: ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"] },
-  { href: "/sale-kit", label: "Sale Enablement", icon: Sparkles, roles: ["ADMIN", "MANAGER", "MARKETING", "EC"] },
-  { href: "/cau-hinh", label: "Cấu hình sản phẩm", icon: SlidersHorizontal, roles: ["ADMIN", "MANAGER"] },
-  { href: "/khoa-so", label: "Khóa sổ kỳ", icon: Lock, roles: ["ADMIN"] },
-  { href: "/nguoi-dung", label: "Người dùng", icon: Users, roles: ["ADMIN"] },
-  { href: "/audit", label: "Nhật ký kiểm toán", icon: ShieldCheck, roles: ["ADMIN", "MANAGER"] },
+  { href: "/", label: "Việc của tôi", icon: LayoutDashboard, roles: ["admin", "manager", "member", "center_contributor", "viewer"] },
+  { href: "/task", label: "Tất cả task", icon: ClipboardList, roles: ["admin", "manager", "member"] },
+  { href: "/campaign", label: "Campaign", icon: Megaphone, roles: ["admin", "manager", "member", "viewer"] },
+  { href: "/request", label: "Request", icon: Inbox, roles: ["admin", "manager", "member", "center_contributor"] },
+  { href: "/sbu", label: "SBU", icon: Building2, roles: ["admin", "manager", "member", "viewer", "center_contributor"] },
+  { href: "/import", label: "Nhập liệu", icon: Upload, roles: ["admin", "manager"] },
+  { href: "/nguoi-dung", label: "Người dùng", icon: Users, roles: ["admin"] },
+  { href: "/cai-dat", label: "Cài đặt", icon: Settings, roles: ["admin"] },
 ];
 
 export function SidebarNav({ role }: { role: Role }) {
@@ -46,10 +41,7 @@ export function SidebarNav({ role }: { role: Role }) {
   return (
     <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
       {items.map((item) => {
-        const active =
-          item.href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(item.href);
+        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         const Icon = item.icon;
         return (
           <Link
@@ -64,11 +56,6 @@ export function SidebarNav({ role }: { role: Role }) {
           >
             <Icon className="h-4 w-4 shrink-0" />
             <span className="flex-1 truncate">{item.label}</span>
-            {item.phase && (
-              <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                {item.phase}
-              </span>
-            )}
           </Link>
         );
       })}

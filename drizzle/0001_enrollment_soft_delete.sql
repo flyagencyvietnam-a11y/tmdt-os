@@ -1,1 +1,0 @@
-ALTER TABLE "enrollments" ADD COLUMN "deleted_at" timestamp with time zone;

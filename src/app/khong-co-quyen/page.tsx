@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "Không có quyền — VMG TMĐT OS" };
+export const metadata = { title: "Không có quyền — VMG MKT OS" };
 
 export default function Page() {
   return (

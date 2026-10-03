@@ -1,46 +1,30 @@
 import { sql } from "drizzle-orm";
-import type { AnyDb } from "./metrics";
-import { campaigns, leads } from "@/lib/db/schema";
-import { vnDayStr } from "@/lib/time";
+import type { DB } from "@/lib/db";
+import { mediaShoots, requests, tasks } from "@/lib/db/schema";
 
-/**
- * Mã lead: L-YYMM-NNNN (SPEC Mục 7.5). NNNN chạy theo tháng, đủ 4 chữ số.
- * Dùng advisory-lock nhẹ bằng cách đếm bản ghi trong tháng + retry khi trùng.
- */
-export async function nextLeadCode(db: AnyDb, receivedAt: Date): Promise<string> {
-  const ym = vnDayStr(receivedAt).slice(2, 7).replace("-", ""); // "YYMM"
-  const prefix = `L-${ym}-`;
+/** Mã task: T-000123 (Mục 4.2). */
+export async function nextTaskCode(db: DB): Promise<string> {
   const [row] = await db
-    .select({ c: sql<number>`count(*)` })
-    .from(leads)
-    .where(sql`${leads.code} like ${prefix + "%"}`);
-  const n = Number(row?.c ?? 0) + 1;
-  return `${prefix}${String(n).padStart(4, "0")}`;
+    .select({ maxN: sql<number>`coalesce(max(substring(${tasks.code} from '[0-9]+')::int), 0)` })
+    .from(tasks);
+  const n = Number(row?.maxN ?? 0) + 1;
+  return `T-${String(n).padStart(6, "0")}`;
 }
 
-/**
- * Mã campaign nội bộ: {PRODUCT}-{CHANNEL}-{OBJECTIVE}-{YYMM}-{SEQ} (SPEC Mục 7.3.1).
- * Không cho sửa tay.
- */
-export async function nextCampaignCode(
-  db: AnyDb,
-  opts: {
-    productCode: string;
-    channel: string;
-    objective: string | null;
-    startedOn: string; // YYYY-MM-DD
-  },
-): Promise<string> {
-  const obj = (opts.objective ?? "KHAC")
-    .replace("MESSAGE", "MSG")
-    .replace("LEADFORM", "LEADFORM")
-    .replace("TRAFFIC", "TRAFFIC");
-  const ym = opts.startedOn.slice(2, 7).replace("-", "");
-  const prefix = `${opts.productCode}-${opts.channel}-${obj}-${ym}-`;
+/** Mã request: REQ-0001 (Mục 4.2). */
+export async function nextRequestCode(db: DB): Promise<string> {
   const [row] = await db
-    .select({ c: sql<number>`count(*)` })
-    .from(campaigns)
-    .where(sql`${campaigns.internalCode} like ${prefix + "%"}`);
-  const n = Number(row?.c ?? 0) + 1;
-  return `${prefix}${String(n).padStart(2, "0")}`;
+    .select({ maxN: sql<number>`coalesce(max(substring(${requests.code} from '[0-9]+')::int), 0)` })
+    .from(requests);
+  const n = Number(row?.maxN ?? 0) + 1;
+  return `REQ-${String(n).padStart(4, "0")}`;
+}
+
+/** Mã đợt quay: tiền tố SHOOT-0001 (Mục 7.3, mã tự chọn — đây là gợi ý mặc định). */
+export async function nextShootCode(db: DB): Promise<string> {
+  const [row] = await db
+    .select({ maxN: sql<number>`coalesce(max(substring(${mediaShoots.code} from '[0-9]+')::int), 0)` })
+    .from(mediaShoots);
+  const n = Number(row?.maxN ?? 0) + 1;
+  return `SHOOT-${String(n).padStart(4, "0")}`;
 }

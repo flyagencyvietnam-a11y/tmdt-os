@@ -5,64 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1787911755789,
-      "tag": "0000_init",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1787972477677,
-      "tag": "0001_enrollment_soft_delete",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1787975461699,
-      "tag": "0002_sale_kit",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1787977078127,
-      "tag": "0003_metric_source",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1788423577411,
-      "tag": "0004_fresh_kabuki",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1788426703248,
-      "tag": "0005_lonely_tana_nile",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1788494984476,
-      "tag": "0006_new_marvel_apes",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1788497862379,
-      "tag": "0007_striped_gideon",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1788505386533,
-      "tag": "0008_melodic_nightcrawler",
+      "when": 1790929303116,
+      "tag": "0000_milky_vin_gonzales",
       "breakpoints": true
     }
   ]

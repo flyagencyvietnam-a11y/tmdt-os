@@ -1,7 +1,6 @@
 "use client";
 
 import { Bell } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -19,14 +18,15 @@ import {
 
 export interface NotifItem {
   id: string;
-  type: string;
-  severity: string;
+  kind: string;
   title: string;
   body: string | null;
-  linkUrl: string | null;
+  taskId: string | null;
   readAt: string | null;
   createdAt: string;
 }
+
+const URGENT_KINDS = new Set(["overdue", "escalation", "blocked"]);
 
 export function NotificationBell({
   items,
@@ -88,7 +88,7 @@ export function NotificationBell({
               onClick={() =>
                 start(async () => {
                   if (!n.readAt) await markNotificationReadAction(n.id);
-                  if (n.linkUrl) router.push(n.linkUrl);
+                  if (n.taskId) router.push(`/task/${n.taskId}`);
                   else router.refresh();
                 })
               }
@@ -97,11 +97,7 @@ export function NotificationBell({
                 <span
                   className={cn(
                     "h-1.5 w-1.5 shrink-0 rounded-full",
-                    n.severity === "CRITICAL"
-                      ? "bg-crit"
-                      : n.severity === "WARNING"
-                        ? "bg-warn"
-                        : "bg-muted-foreground",
+                    URGENT_KINDS.has(n.kind) ? "bg-crit" : "bg-muted-foreground",
                   )}
                 />
                 <span className="flex-1 text-sm font-medium">{n.title}</span>
@@ -116,11 +112,6 @@ export function NotificationBell({
               </p>
             </button>
           ))}
-        </div>
-        <div className="border-t px-3 py-2 text-center">
-          <Link href="/thong-bao" className="text-xs text-brand hover:underline">
-            Xem tất cả
-          </Link>
         </div>
       </PopoverContent>
     </Popover>

@@ -1,191 +1,256 @@
 import { pgEnum } from "drizzle-orm/pg-core";
 
 /**
- * Toàn bộ enum của hệ thống. Thứ tự khai báo của các stage enum có ý nghĩa:
- * Postgres so sánh enum theo thứ tự khai báo, nên `max_stage >= 'MQL'` chạy đúng ở SQL.
- * Xem SPEC Mục 4.3.
+ * Toàn bộ enum hệ thống MKT OS. Xem SPEC `docs/SPEC.md` Mục 3–7.
  */
 
 export const roleEnum = pgEnum("role", [
-  "ADMIN",
-  "MANAGER",
-  "MARKETING",
-  "EC",
-  "VIEWER",
+  "admin",
+  "manager",
+  "member",
+  "center_contributor",
+  "viewer",
 ]);
 
-/** Kênh của campaign trả phí — SPEC Mục 7.3 */
-export const campaignChannelEnum = pgEnum("campaign_channel", [
-  "FB",
-  "GOOGLE",
-  "TIKTOK",
-  "KHAC",
+export const teamEnum = pgEnum("team", ["ho_marketing", "center", "bod", "other"]);
+
+export const sbuKindEnum = pgEnum("sbu_kind", ["center", "online_center", "group"]);
+export const sbuRegionEnum = pgEnum("sbu_region", [
+  "KV1",
+  "KV2",
+  "KV3",
+  "KV2_KV3",
+  "ONLINE",
+  "RND",
 ]);
 
-export const campaignObjectiveEnum = pgEnum("campaign_objective", [
-  "MESSAGE",
-  "LEADFORM",
-  "TRAFFIC",
-  "KHAC",
+export const brandKindEnum = pgEnum("brand_kind", ["product", "group"]);
+
+export const foundationStatusEnum = pgEnum("foundation_status", [
+  "confirmed",
+  "needs_confirmation",
+  "proposed",
 ]);
 
-export const campaignStatusEnum = pgEnum("campaign_status", ["ON", "OFF", "PAUSED"]);
-
-/** Nguồn của lead — SPEC Mục 4.6. ORGANIC/REFERRAL/HOTLINE không được gán campaign trả phí. */
-export const leadSourceEnum = pgEnum("lead_source", [
-  "FB",
-  "GOOGLE",
-  "TIKTOK",
-  "ZALO",
-  "HOTLINE",
-  "ORGANIC",
-  "REFERRAL",
-  "KHAC",
+export const campaignTypeEnum = pgEnum("campaign_type", [
+  "brand_theme",
+  "product_gtm",
+  "business_program",
+  "rebrand",
+  "data_program",
+  "internal_program",
+  "other",
 ]);
 
-/** Giai đoạn phễu — thứ tự tăng dần, dùng cho max_stage. SPEC Mục 4.3 / 4.4 */
-export const leadStageEnum = pgEnum("lead_stage", [
-  "NEW",
-  "NO_CONTACT",
-  "CONSULTING",
-  "MQL",
-  "SQL",
-  "WON",
+export const campaignStatusEnum = pgEnum("campaign_status", [
+  "planned",
+  "preparing",
+  "running",
+  "paused",
+  "done",
+  "cancelled",
+  "needs_confirmation",
 ]);
 
-/** Kết quả — không có thứ tự. SPEC Mục 4.3 / 4.4 */
-export const leadOutcomeEnum = pgEnum("lead_outcome", [
-  "OPEN",
-  "WON",
-  "LOST",
-  "DISQUALIFIED",
-]);
-
-export const disqualifyReasonEnum = pgEnum("disqualify_reason", [
-  "SPAM",
-  "WRONG_TARGET",
-  "COMPETITOR",
-  "DUPLICATE",
-  "KHAC",
-]);
-
-/** SPEC Mục 7.6 */
-export const interactionChannelEnum = pgEnum("interaction_channel", [
-  "CALL",
-  "ZALO",
-  "MESSENGER",
-  "EMAIL",
-  "SMS",
-  "MEET",
-]);
-
-export const interactionDirectionEnum = pgEnum("interaction_direction", [
-  "OUTBOUND",
-  "INBOUND",
-]);
-
-export const interactionResultEnum = pgEnum("interaction_result", [
-  "RESPONDED",
-  "NO_RESPONSE",
-  "REFUSED",
-  "RESCHEDULED",
-]);
-
-/** SPEC Mục 7.9 */
 export const taskTypeEnum = pgEnum("task_type", [
-  "PROJECT",
-  "RECURRING",
-  "SYSTEM",
-  /** Việc chăm sóc 1 lead — 1 task = 1 phiên chăm sóc (gộp màn hình "Hôm nay"). */
-  "LEAD_CARE",
+  "campaign_action",
+  "content",
+  "media",
+  "request",
+  "monitoring",
+  "ads",
+  "report",
+  "meeting",
+  "general",
 ]);
 
 export const taskStatusEnum = pgEnum("task_status", [
-  "TODO",
-  "IN_PROGRESS",
-  "DONE",
-  "BLOCKED",
-  "CANCELLED",
+  "todo",
+  "in_progress",
+  "in_review",
+  "blocked",
+  "done",
+  "cancelled",
 ]);
 
 export const taskPriorityEnum = pgEnum("task_priority", [
-  "LOW",
-  "NORMAL",
-  "HIGH",
-  "URGENT",
+  "urgent",
+  "high",
+  "medium",
+  "low",
 ]);
 
-/** SPEC Mục 7.10 */
-export const kpiUnitEnum = pgEnum("kpi_unit", ["COUNT", "VND", "PERCENT", "RATIO"]);
-export const kpiDirectionEnum = pgEnum("kpi_direction", [
-  "HIGHER_BETTER",
-  "LOWER_BETTER",
-]);
-export const kpiSourceEnum = pgEnum("kpi_source", ["AUTO", "MANUAL"]);
-export const kpiPeriodTypeEnum = pgEnum("kpi_period_type", ["MONTH", "QUARTER", "YEAR"]);
-export const kpiScopeTypeEnum = pgEnum("kpi_scope_type", ["USER", "TEAM", "PRODUCT"]);
-
-/** SPEC Mục 7.11 */
-export const savedViewEntityEnum = pgEnum("saved_view_entity", [
-  "LEADS",
-  "CAMPAIGNS",
-  "TASKS",
-  "DAILY_METRICS",
-  "ENROLLMENTS",
-]);
-export const savedViewVisibilityEnum = pgEnum("saved_view_visibility", [
-  "PRIVATE",
-  "SHARED",
+export const taskSourceEnum = pgEnum("task_source", [
+  "manual",
+  "import",
+  "recurring",
+  "content_item",
+  "media_shoot",
+  "request",
+  "campaign_template",
 ]);
 
-/** SPEC Mục 7.12 */
+export const timeSlotEnum = pgEnum("time_slot", ["morning", "afternoon", "all_day"]);
+
+export const dependencyTypeEnum = pgEnum("dependency_type", ["finish_to_start"]);
+
+export const recurringFreqEnum = pgEnum("recurring_freq", [
+  "daily",
+  "weekly",
+  "monthly",
+  "yearly",
+]);
+
+export const dayRuleEnum = pgEnum("day_rule", [
+  "calendar_day",
+  "last_working_day",
+  "first_working_day",
+]);
+
+export const holidayPolicyEnum = pgEnum("holiday_policy", [
+  "none",
+  "shift_earlier",
+  "shift_later",
+]);
+
+export const assignmentModeEnum = pgEnum("assignment_mode", [
+  "fixed_user",
+  "sbu_ho_owner",
+  "round_robin",
+  "unassigned",
+]);
+
+export const scopeModeEnum = pgEnum("scope_mode", ["single", "per_sbu"]);
+
+export const fanOutModeEnum = pgEnum("fan_out_mode", [
+  "checklist_per_owner",
+  "task_per_sbu",
+]);
+
+export const completionBehaviorEnum = pgEnum("completion_behavior", [
+  "fixed_schedule",
+  "after_completion",
+]);
+
+export const requestSourceChannelEnum = pgEnum("request_source_channel", [
+  "misa",
+  "email",
+  "zalo",
+  "direct",
+  "meeting",
+  "other",
+]);
+
+export const requestTypeEnum = pgEnum("request_type", [
+  "design",
+  "ads",
+  "content",
+  "media",
+  "posm",
+  "event",
+  "consulting",
+  "other",
+]);
+
+export const requestInScopeEnum = pgEnum("request_in_scope", ["yes", "no", "needs_review"]);
+
+export const requestStatusEnum = pgEnum("request_status", [
+  "new",
+  "accepted",
+  "in_progress",
+  "in_review",
+  "done",
+  "rejected",
+  "postponed",
+]);
+
+export const contentStatusEnum = pgEnum("content_status", [
+  "brief",
+  "drafting",
+  "designing",
+  "in_review",
+  "approved",
+  "published",
+  "cancelled",
+]);
+
+export const shootStatusEnum = pgEnum("shoot_status", [
+  "planned",
+  "prepared",
+  "shot",
+  "editing",
+  "done",
+  "cancelled",
+]);
+
+export const sbuCatalogGroupEnum = pgEnum("sbu_catalog_group", [
+  "online_inbound",
+  "online_outbound",
+  "offline_inbound",
+  "offline_outbound",
+  "cross",
+]);
+
+export const sbuItemStatusEnum = pgEnum("sbu_item_status_value", [
+  "not_started",
+  "in_progress",
+  "done",
+  "blocked",
+  "not_applicable",
+]);
+
+export const sbuItemStatusSourceEnum = pgEnum("sbu_item_status_source", [
+  "derived_from_task",
+  "manual",
+]);
+
+export const notificationKindEnum = pgEnum("notification_kind", [
+  "assigned",
+  "due_soon",
+  "due_today",
+  "overdue",
+  "escalation",
+  "mention",
+  "comment",
+  "status_change",
+  "due_change",
+  "assignee_change",
+  "blocked",
+  "dependency_cleared",
+  "request_new",
+  "request_due_soon",
+  "import_done",
+  "digest_daily",
+  "digest_weekly",
+]);
+
+export const notificationChannelEnum = pgEnum("notification_channel", [
+  "in_app",
+  "email",
+  "push",
+]);
+
 export const auditActionEnum = pgEnum("audit_action", [
   "CREATE",
   "UPDATE",
   "DELETE",
   "LOGIN",
   "EXPORT",
-  "LOCK",
-  "UNLOCK",
+  "IMPORT",
 ]);
 
-/** SPEC Mục 7.14 */
-export const notificationTypeEnum = pgEnum("notification_type", [
-  "OVERDUE_LEADS",
-  "CAMPAIGN_ALERT",
-  "TASK_DUE",
-  "KPI_RISK",
-  "DATA_GAP",
-  "ASSIGNMENT",
-]);
-export const notificationSeverityEnum = pgEnum("notification_severity", [
-  "INFO",
-  "WARNING",
-  "CRITICAL",
+export const importTemplateEnum = pgEnum("import_template", ["T1", "T2", "T3", "T4"]);
+
+export const importRowResultEnum = pgEnum("import_row_result", [
+  "created",
+  "updated",
+  "skipped",
+  "error",
+  "conflict",
 ]);
 
-/** Loại chi phí khác — phục vụ REVENUE_AFTER_MKT (SPEC Mục 14.2, QĐ07) */
-export const otherCostTypeEnum = pgEnum("other_cost_type", [
-  "KOL_KOC",
-  "TOOL",
-  "OTHER",
+export const savedViewEntityEnum = pgEnum("saved_view_entity", ["tasks"]);
+export const savedViewVisibilityEnum = pgEnum("saved_view_visibility", [
+  "private",
+  "shared",
 ]);
-
-/** Nguồn số liệu ads: nhập tay hay tự kéo từ API (QĐ08 — sẵn sàng cho Phase 4). */
-export const metricSourceEnum = pgEnum("metric_source", ["MANUAL", "API"]);
-
-/** Trạng thái bàn giao học viên sang DotB EMS — gộp vào lead (bỏ tab Bàn giao). */
-export const emsStatusEnum = pgEnum("ems_status", ["CHUA", "DA_NHAP"]);
-
-/** Thứ hạng giai đoạn để so sánh trong TypeScript (khớp thứ tự enum Postgres). */
-export const STAGE_RANK: Record<
-  (typeof leadStageEnum.enumValues)[number],
-  number
-> = {
-  NEW: 0,
-  NO_CONTACT: 1,
-  CONSULTING: 2,
-  MQL: 3,
-  SQL: 4,
-  WON: 5,
-};

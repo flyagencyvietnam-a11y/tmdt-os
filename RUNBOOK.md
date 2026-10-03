@@ -1,11 +1,13 @@
-# RUNBOOK — VMG TMĐT OS
+# RUNBOOK — VMG MKT OS
 
-Quy trình vận hành & khôi phục sự cố. SPEC Mục 5.3 yêu cầu file này tồn tại và được
-kiểm chứng (khôi phục backup thành công) trước golive.
+Quy trình vận hành & khôi phục sự cố (self-host). SPEC Mục 13.3 yêu cầu sao
+lưu hằng ngày + khôi phục đã kiểm thử trước golive.
 
 ## 1. Kiến trúc triển khai
 
-- 1 VPS tại Việt Nam (SPEC 5.3): tối thiểu 2 vCPU / 4GB RAM / 60GB SSD.
+- 1 VPS tại Việt Nam (SPEC 13.2 — tuỳ chọn self-host): tối thiểu 2 vCPU / 4GB
+  RAM / 60GB SSD. (Bản demo/dev hiện đang chạy trên Vercel + Supabase, xem
+  `DEPLOY.md`.)
 - `docker compose` gồm 3 service:
   - `app` — Next.js (image build từ `Dockerfile`), cron trong tiến trình (ENABLE_CRON=true).
   - `db` — PostgreSQL 16, volume `db-data`, thư mục `./backup` mount vào.
@@ -19,11 +21,12 @@ kiểm chứng (khôi phục backup thành công) trước golive.
 cp .env.example .env      # điền POSTGRES_PASSWORD, AUTH_SECRET (npx auth secret), APP_DOMAIN
 docker compose up -d --build
 # app tự chạy `npm run db:migrate` khi khởi động
-docker compose exec app npm run db:seed   # seed danh mục + tài khoản
+docker compose exec app npm run db:seed   # seed SBU/brand/holidays/recurring rules
 ```
 
-Đăng nhập lần đầu: `truongphong@vmg.local` / `ChangeMe#2026` (buộc đổi). Xóa tài khoản
-demo `admin/admin` trong `scripts/seed.ts` trước khi golive.
+Đăng nhập lần đầu: email admin đặt qua `SEED_ADMIN_EMAIL` (mặc định
+`admin@vmg.local` — **placeholder, đổi trước golive thật**, xem `scripts/seed.ts`)
+/ mật khẩu `ChangeMe#2026` (buộc đổi ở lần đăng nhập đầu).
 
 ## 2. Cập nhật phiên bản
 
@@ -37,55 +40,48 @@ docker compose logs -f app | grep -E "migration|cron"
 
 - Cron của **host** (không phải trong container):
   ```
-  0 2 * * *  cd /srv/vmg-tmdt-os && docker compose exec -T db sh /backup/backup.sh
+  0 2 * * *  cd /srv/vmg-mkt-os && docker compose exec -T db sh /backup/backup.sh
   ```
 - Giữ 30 bản. **Đồng bộ `./backup` ra nơi lưu trữ thứ hai khác nhà cung cấp** (rclone/rsync).
 - **Kiểm thử khôi phục (bắt buộc trước golive):**
   ```bash
   # trên máy khác hoặc DB tạm:
-  createdb vmg_restore_test
-  pg_restore --clean --if-exists -d "postgres://.../vmg_restore_test" backup/vmg_YYYYMMDD_HHMMSS.dump
-  DATABASE_URL="postgres://.../vmg_restore_test" npm run db:migrate   # schema khớp code hiện tại
-  # đối chiếu: số lead, tổng doanh thu, tổng spend so với bản gốc
+  createdb vmg_mkt_restore_test
+  pg_restore --clean --if-exists -d "postgres://.../vmg_mkt_restore_test" backup/vmg_YYYYMMDD_HHMMSS.dump
+  DATABASE_URL="postgres://.../vmg_mkt_restore_test" npm run db:migrate   # schema khớp code hiện tại
+  # đối chiếu: số task mở, số recurring rule active, số SBU so với bản gốc
   ```
 - Backup chưa từng được khôi phục thử thì không tính là backup.
 
-## 4. Di chuyển dữ liệu từ Google Sheet (một lần, trước golive)
+## 4. Nạp dữ liệu thật còn thiếu (trước golive)
 
-```bash
-# đặt VMG_Ads_Lead_Tracker.xlsx vào data/seed/
-npm run xlsx:migrate                 # DRY RUN: sinh data/seed/migration-report.md
-#   -> điền data/seed/campaign-map.json (gộp bản trùng), chốt giả định "Không chốt"
-npm run xlsx:migrate -- --commit     # ghi vào DB (sau db:migrate + db:seed)
-```
+Spec chưa cung cấp file `VMG_Marketing_Strategy_Operations_2026.xlsx` nên
+chưa seed được: 28 campaign gốc (17 Brand Campaign + 11 campaign khác), 46
+hạng mục `sbu_catalog_items` đầy đủ (hiện chỉ seed 3 hạng mục nêu rõ trong
+spec). Khi có file:
 
-Duyệt `migration-report.md` (SPEC 19.3) trước golive. Chạy song song sheet 2 tuần,
-số khớp 2 tuần liên tiếp mới ngừng sheet.
+1. Nạp campaign qua template **T1** (`/import` — hiện chưa có UI T1, tạo thủ
+   công ở `/campaign` hoặc viết script seed bổ sung tham khảo
+   `scripts/seed.ts`).
+2. Nạp danh mục SBU đầy đủ qua template **T9** (chưa có UI — insert trực tiếp
+   vào bảng `sbu_catalog_items` theo cấu trúc trong `docs/SPEC.md` Phụ lục B7).
+3. Đổi email placeholder `*@vmg.local` của admin/Khiết/Đạt/Trân thành email
+   thật qua `/nguoi-dung` trước khi mời người dùng thật đăng nhập.
 
 ## 5. Sự cố thường gặp
 
 | Triệu chứng | Kiểm tra |
 |---|---|
-| Đăng nhập báo sai mật khẩu liên tục | `users.locked_until` (khóa 15′ sau 5 lần sai). ADMIN dùng "Đặt lại MK" ở `/nguoi-dung`. |
+| Đăng nhập báo sai mật khẩu liên tục | `users.locked_until` (khóa 15′ sau 5 lần sai). Admin dùng "Đặt lại MK" ở `/nguoi-dung`. |
 | Ghi dữ liệu lỗi FK `*_created_by_users_id_fk` | Session mang user id không còn tồn tại (thường sau khi reset DB dev). Đăng xuất / đăng nhập lại. |
 | Dashboard trống / lỗi DB | `DATABASE_URL` đúng chưa; `db:migrate` đã chạy; `docker compose ps` xem `db` healthy. |
-| Số liệu campaign lệch | Mọi chỉ số chỉ tính ở `src/lib/services/metrics.ts`. Chạy `npm test`. |
-| Cron 8h/00:30 không chạy | `ENABLE_CRON=true`; `docker compose logs app | grep cron`. Chỉ chạy 1 instance app. |
-| Email cảnh báo không gửi | Chưa cấu hình SMTP_* → chỉ ghi log (không lỗi). Điền SMTP_HOST/USER/PASS. |
-| Xuất XLSX lỗi | Kiểm tra route `/api/export`; audit `EXPORT` vẫn được ghi. |
+| Recurring không sinh task | Rule có `active=true`? `paused_until` đã qua chưa? Gọi `GET /api/cron` thủ công, xem log `spawn-recurring`. |
+| Fan-out sinh sai số task | SBU có `ho_owner_id` chưa (null → nhóm vào "unassigned")? Xem `src/lib/services/recurring.ts`. |
+| Email thông báo không gửi | Chưa cấu hình `SMTP_*` → chỉ ghi log (không lỗi). Điền `SMTP_HOST`/`USER`/`PASS`. |
+| Import T3 báo lỗi email | `assignee_email` phải khớp đúng user đã có trong hệ thống (không tự tạo user khi import). |
 
-## 6. Khóa sổ kỳ
-
-- Chỉ ADMIN (`/khoa-so`). Sau khi khóa, số liệu ads / doanh thu / lead WON trong kỳ
-  thành chỉ đọc với mọi vai trò khác. Mở khóa bắt buộc lý do + ghi audit LOCK/UNLOCK.
-
-## 7. Bàn giao học viên sang DotB EMS
-
-- `/ban-giao` (ADMIN/MANAGER): danh sách lead WON + doanh thu chưa gắn `ems_student_id`,
-  xuất CSV theo định dạng bàn giao, nhập lại mã học viên EMS.
-
-## 8. Rủi ro "một người vận hành"
+## 6. Rủi ro "một người vận hành"
 
 - Toàn bộ hạ tầng là file trong repo — bất kỳ ai đọc được cũng dựng lại được.
-- SPEC.md được cập nhật liên tục, là nguồn sự thật nghiệp vụ.
-- Người dự phòng kỹ thuật: `[CẦN XÁC NHẬN — QĐ09]`.
+- `docs/SPEC.md` là nguồn sự thật nghiệp vụ, cập nhật trước khi đổi code.
+- Người dự phòng kỹ thuật: `[CẦN XÁC NHẬN]`.

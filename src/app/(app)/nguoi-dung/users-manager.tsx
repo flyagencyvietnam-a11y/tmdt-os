@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -15,31 +16,35 @@ import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { ROLE_LABELS, type Role } from "@/lib/auth/permissions";
 import { fmtDateTime } from "@/lib/format";
-import {
-  createUser,
-  resetUserPassword,
-  setUserActive,
-  updateUser,
-} from "./actions";
+import { createUser, resetUserPassword, setUserActive, updateUser } from "./actions";
 
 interface UserRow {
   id: string;
   email: string;
   fullName: string;
-  jobTitle: string;
   role: Role;
-  isActive: boolean;
+  sbuId: string | null;
+  canAssign: boolean;
+  active: boolean;
   mustChangePassword: boolean;
   lastLoginAt: Date | null;
 }
 
-const ROLES: Role[] = ["ADMIN", "MANAGER", "MARKETING", "EC", "VIEWER"];
+interface SbuOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+const ROLES: Role[] = ["admin", "manager", "member", "center_contributor", "viewer"];
 
 export function UsersManager({
   rows,
+  sbus,
   currentUserId,
 }: {
   rows: UserRow[];
+  sbus: SbuOption[];
   currentUserId: string;
 }) {
   const [editing, setEditing] = React.useState<UserRow | null>(null);
@@ -47,9 +52,7 @@ export function UsersManager({
   const [pending, startTransition] = React.useTransition();
 
   function runFormAction(
-    action: (
-      fd: FormData,
-    ) => Promise<{ error?: string; tempPassword?: string; ok?: boolean } | void>,
+    action: (fd: FormData) => Promise<{ error?: string; tempPassword?: string; ok?: boolean } | void>,
   ) {
     return (fd: FormData) => {
       startTransition(async () => {
@@ -59,9 +62,7 @@ export function UsersManager({
           return;
         }
         if (res?.tempPassword) {
-          toast.success(`Đã lưu. Mật khẩu tạm: ${res.tempPassword}`, {
-            duration: 15000,
-          });
+          toast.success(`Đã lưu. Mật khẩu tạm: ${res.tempPassword}`, { duration: 15000 });
         } else {
           toast.success("Đã lưu.");
         }
@@ -85,8 +86,8 @@ export function UsersManager({
             <tr>
               <th className="px-3 py-2">Họ tên</th>
               <th className="px-3 py-2">Email</th>
-              <th className="px-3 py-2">Chức danh</th>
               <th className="px-3 py-2">Vai trò</th>
+              <th className="px-3 py-2">SBU</th>
               <th className="px-3 py-2">Trạng thái</th>
               <th className="px-3 py-2">Đăng nhập gần nhất</th>
               <th className="px-3 py-2 text-right">Thao tác</th>
@@ -97,12 +98,19 @@ export function UsersManager({
               <tr key={u.id} className="border-b">
                 <td className="px-3 py-2 font-medium">{u.fullName}</td>
                 <td className="px-3 py-2">{u.email}</td>
-                <td className="px-3 py-2 text-muted-foreground">{u.jobTitle}</td>
                 <td className="px-3 py-2">
-                  <Badge variant="secondary">{u.role}</Badge>
+                  <Badge variant="secondary">{ROLE_LABELS[u.role]}</Badge>
+                  {u.canAssign && (
+                    <Badge variant="outline" className="ml-1">
+                      được giao việc
+                    </Badge>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {sbus.find((s) => s.id === u.sbuId)?.code ?? "—"}
                 </td>
                 <td className="px-3 py-2">
-                  {u.isActive ? (
+                  {u.active ? (
                     <span className="text-ok">Hoạt động</span>
                   ) : (
                     <span className="text-muted-foreground">Đã tắt</span>
@@ -113,16 +121,10 @@ export function UsersManager({
                     </Badge>
                   )}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {fmtDateTime(u.lastLoginAt)}
-                </td>
+                <td className="px-3 py-2 text-muted-foreground">{fmtDateTime(u.lastLoginAt?.toISOString())}</td>
                 <td className="px-3 py-2">
                   <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditing(u)}
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(u)}>
                       Sửa
                     </Button>
                     <Button
@@ -132,9 +134,7 @@ export function UsersManager({
                       onClick={() =>
                         resetUserPassword(u.id).then((r) =>
                           r?.tempPassword
-                            ? toast.success(`Mật khẩu tạm: ${r.tempPassword}`, {
-                                duration: 15000,
-                              })
+                            ? toast.success(`Mật khẩu tạm: ${r.tempPassword}`, { duration: 15000 })
                             : toast.error("Không đặt lại được mật khẩu."),
                         )
                       }
@@ -147,14 +147,12 @@ export function UsersManager({
                         size="sm"
                         disabled={pending}
                         onClick={() =>
-                          setUserActive(u.id, !u.isActive).then((r) =>
-                            r.error
-                              ? toast.error(r.error)
-                              : toast.success("Đã cập nhật."),
+                          setUserActive(u.id, !u.active).then((r) =>
+                            r.error ? toast.error(r.error) : toast.success("Đã cập nhật."),
                           )
                         }
                       >
-                        {u.isActive ? "Tắt" : "Bật"}
+                        {u.active ? "Tắt" : "Bật"}
                       </Button>
                     )}
                   </div>
@@ -165,7 +163,6 @@ export function UsersManager({
         </table>
       </div>
 
-      {/* Tạo mới */}
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent>
           <DialogHeader>
@@ -174,13 +171,9 @@ export function UsersManager({
           <form className="space-y-3" action={runFormAction(createUser)}>
             <Field name="email" label="Email" type="email" required />
             <Field name="fullName" label="Họ tên" required />
-            <Field name="jobTitle" label="Chức danh" required />
             <RoleField />
-            <Field
-              name="aliasNames"
-              label="Tên cũ trên sheet (phân tách bằng dấu phẩy)"
-              placeholder="Kien, Kiên"
-            />
+            <SbuField sbus={sbus} />
+            <CanAssignField />
             <Button type="submit" className="w-full" disabled={pending}>
               Tạo (sinh mật khẩu tạm)
             </Button>
@@ -188,7 +181,6 @@ export function UsersManager({
         </DialogContent>
       </Dialog>
 
-      {/* Sửa */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
@@ -199,13 +191,9 @@ export function UsersManager({
               <input type="hidden" name="id" value={editing.id} />
               <div className="text-sm text-muted-foreground">{editing.email}</div>
               <Field name="fullName" label="Họ tên" defaultValue={editing.fullName} required />
-              <Field
-                name="jobTitle"
-                label="Chức danh"
-                defaultValue={editing.jobTitle}
-                required
-              />
               <RoleField defaultValue={editing.role} />
+              <SbuField sbus={sbus} defaultValue={editing.sbuId ?? ""} />
+              <CanAssignField defaultChecked={editing.canAssign} />
               <Button type="submit" className="w-full" disabled={pending}>
                 Lưu
               </Button>
@@ -231,7 +219,7 @@ function Field({
 }
 
 function RoleField({ defaultValue }: { defaultValue?: Role }) {
-  const [value, setValue] = React.useState<Role>(defaultValue ?? "EC");
+  const [value, setValue] = React.useState<Role>(defaultValue ?? "member");
   return (
     <div className="space-y-1">
       <Label>Vai trò</Label>
@@ -239,8 +227,37 @@ function RoleField({ defaultValue }: { defaultValue?: Role }) {
       <SimpleSelect
         value={value}
         onValueChange={(v) => v && setValue(v as Role)}
-        options={ROLES.map((r) => ({ value: r, label: `${r} — ${ROLE_LABELS[r]}` }))}
+        options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
       />
     </div>
+  );
+}
+
+function SbuField({ sbus, defaultValue }: { sbus: SbuOption[]; defaultValue?: string }) {
+  const [value, setValue] = React.useState(defaultValue ?? "");
+  return (
+    <div className="space-y-1">
+      <Label>SBU (chỉ dùng cho center_contributor)</Label>
+      <input type="hidden" name="sbuId" value={value} />
+      <SimpleSelect
+        value={value}
+        onValueChange={(v) => setValue(v ?? "")}
+        options={[{ value: "", label: "— Không thuộc trung tâm nào —" }, ...sbus.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` }))]}
+      />
+    </div>
+  );
+}
+
+function CanAssignField({ defaultChecked }: { defaultChecked?: boolean }) {
+  const [checked, setChecked] = React.useState(defaultChecked ?? false);
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(v) => setChecked(v === true)}
+      />
+      <input type="hidden" name="canAssign" value={checked ? "on" : ""} />
+      Được giao task cho người khác (`can_assign`)
+    </label>
   );
 }

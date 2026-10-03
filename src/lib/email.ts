@@ -37,7 +37,7 @@ export async function sendMail(opts: {
   }
   try {
     await getTransporter().sendMail({
-      from: process.env.SMTP_FROM ?? "VMG TMĐT OS <no-reply@vmg.local>",
+      from: process.env.SMTP_FROM ?? "VMG MKT OS <no-reply@vmg.local>",
       to: Array.isArray(opts.to) ? opts.to.join(",") : opts.to,
       subject: opts.subject,
       text: opts.text,

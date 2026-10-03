@@ -31,7 +31,7 @@ export default async function AppLayout({
           <span className="rounded bg-brand px-1.5 py-0.5 text-xs font-bold text-brand-foreground">
             VMG
           </span>
-          <span className="text-sm font-semibold">TMĐT OS</span>
+          <span className="text-sm font-semibold">MKT OS</span>
         </div>
         <SidebarNav role={user.role} />
         <div className="border-t p-3">
@@ -44,17 +44,16 @@ export default async function AppLayout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-between border-b px-4">
-          <div className="text-sm text-muted-foreground md:hidden">VMG TMĐT OS</div>
+          <div className="text-sm text-muted-foreground md:hidden">VMG MKT OS</div>
           <div className="ml-auto flex items-center gap-2">
             <NotificationBell
               unread={unread}
               items={notifItems.map((n) => ({
                 id: n.id,
-                type: n.type,
-                severity: n.severity,
+                kind: n.kind,
                 title: n.title,
                 body: n.body,
-                linkUrl: n.linkUrl,
+                taskId: n.taskId,
                 readAt: n.readAt ? n.readAt.toISOString() : null,
                 createdAt: n.createdAt.toISOString(),
               }))}

@@ -8,6 +8,8 @@ export interface AppUser {
   fullName: string;
   role: Role;
   mustChangePassword: boolean;
+  canAssign: boolean;
+  sbuId: string | null;
 }
 
 export async function getCurrentUser(): Promise<AppUser | null> {
@@ -19,6 +21,8 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     fullName: session.user.fullName,
     role: session.user.role,
     mustChangePassword: session.user.mustChangePassword,
+    canAssign: session.user.canAssign,
+    sbuId: session.user.sbuId,
   };
 }
 

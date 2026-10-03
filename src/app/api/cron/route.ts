@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import {
-  runAllMorningJobs,
-  runMonthLockReminder,
+  runDailyDigest,
+  runDueTodayReminder,
+  runDueTodayUnfinished,
+  runEscalateToManagers,
+  runOverdueMorning,
+  runSpawnRecurring,
   runWeeklySummary,
 } from "@/lib/services/jobs";
 
 /**
- * Điểm chạy tác vụ định kỳ trên Vercel (Vercel Cron gọi endpoint này).
+ * Điểm chạy tác vụ định kỳ trên Vercel (Vercel Cron gọi endpoint này — `vercel.json`).
  * Bảo vệ bằng CRON_SECRET — Vercel gửi `Authorization: Bearer $CRON_SECRET`.
  * Self-host thì dùng node-cron trong tiến trình (src/lib/cron.ts), không cần route này.
  *
- *   GET /api/cron            -> digest quá hạn + rà R1-R5 + Cold Data + task định kỳ
- *   GET /api/cron?job=weekly -> tổng kết tuần
- *   GET /api/cron?job=month  -> nhắc khóa sổ
+ *   GET /api/cron?job=nightly  -> sinh task lặp + trễ hạn sáng + tóm tắt hằng ngày
+ *   GET /api/cron?job=afternoon -> hôm nay chưa xong (16:30)
+ *   GET /api/cron?job=weekly   -> tổng kết tuần (thứ Hai)
  */
 export const dynamic = "force-dynamic";
 
@@ -27,13 +31,20 @@ export async function GET(req: Request) {
 
   const job = new URL(req.url).searchParams.get("job");
   try {
+    if (job === "afternoon") {
+      return NextResponse.json(await runDueTodayUnfinished(db));
+    }
     if (job === "weekly") {
       return NextResponse.json(await runWeeklySummary(db));
     }
-    if (job === "month") {
-      return NextResponse.json(await runMonthLockReminder(db));
-    }
-    return NextResponse.json(await runAllMorningJobs(db));
+    const [recurring, overdue, dueToday, escalate, digest] = await Promise.all([
+      runSpawnRecurring(db),
+      runOverdueMorning(db),
+      runDueTodayReminder(db),
+      runEscalateToManagers(db),
+      runDailyDigest(db),
+    ]);
+    return NextResponse.json({ recurring, overdue, dueToday, escalate, digest });
   } catch (e) {
     console.error("[cron] lỗi", e);
     return NextResponse.json(

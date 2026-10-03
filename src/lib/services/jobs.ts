@@ -1,282 +1,207 @@
 /**
- * Tác vụ định kỳ — SPEC Mục 17.2. Mỗi hàm chạy độc lập, idempotent trong ngày
- * (dùng dedupeKey). Gọi từ cron (src/lib/cron.ts) hoặc nút "chạy ngay" của ADMIN.
+ * Tác vụ định kỳ — SPEC Mục 11.2 (ma trận sự kiện) + Mục 6.3 (sinh task lặp).
+ * Mỗi hàm idempotent trong ngày (dedupeKey). Gọi từ cron hoặc nút "chạy ngay" của admin.
  */
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { writeAudit } from "@/lib/audit";
-import { campaigns, leadStageHistory, leads, users } from "@/lib/db/schema";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import type { DB } from "@/lib/db";
+import { tasks, users } from "@/lib/db/schema";
+import { diffDaysStr, todayVnDayStr } from "@/lib/time";
+import { generateAllRecurringTasks } from "./recurring";
+import { emailsFor, getManagerIds, notify, notifyMany } from "./notifications";
 import { sendMail } from "@/lib/email";
-import { addDaysStr, todayVnDayStr } from "@/lib/time";
-import { COLD_LOST_REASON, COLD_SILENCE_THRESHOLD } from "./escalate";
-import { evaluateCampaignAlerts } from "./metrics";
-import type { AnyDb } from "./metrics";
-import { getManagerIds, notify, notifyMany } from "./notifications";
-import { spawnLeadCareTasks } from "./lead-care-tasks";
-import {
-  completeAdsEntryTasksIfDone,
-  spawnAdsEntryTasks,
-} from "./ads-entry-tasks";
-import { spawnRecurringTasks } from "./tasks";
+import { overdueSqlFragment } from "./tasks";
 
 export interface JobResult {
   job: string;
   createdNotifications: number;
   affected: number;
   emailsSent?: number;
-  detail?: string;
 }
 
-async function emailsFor(db: AnyDb, userIds: string[]): Promise<string[]> {
-  if (!userIds.length) return [];
-  const rows = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(and(inArray(users.id, userIds), eq(users.isActive, true)));
-  return rows.map((r) => r.email);
+/** 00:30 — sinh task định kỳ còn thiếu (Mục 6.3). */
+export async function runSpawnRecurring(db: DB, now = new Date()): Promise<JobResult> {
+  const r = await generateAllRecurringTasks(db, now);
+  return { job: "spawn-recurring", createdNotifications: 0, affected: r.created };
 }
 
-/** 08:00 — tổng hợp lead quá hạn theo từng EC (SPEC 17.2). */
-export async function runOverdueDigest(
-  db: AnyDb,
-  now = new Date(),
-): Promise<JobResult> {
+/** 08:00 — task sắp đến hạn hôm nay (nhắc trong app) (Mục 11.2). */
+export async function runDueTodayReminder(db: DB, now = new Date()): Promise<JobResult> {
   const today = todayVnDayStr(now);
   const rows = await db
-    .select({
-      assignedTo: leads.assignedTo,
-      code: leads.code,
-      fullName: leads.fullName,
-      nextContactDate: leads.nextContactDate,
-      silenceCount: leads.silenceCount,
-    })
-    .from(leads)
+    .select({ id: tasks.id, title: tasks.title, assigneeId: tasks.assigneeId })
+    .from(tasks)
     .where(
-      and(
-        isNull(leads.deletedAt),
-        isNull(leads.duplicateOf),
-        eq(leads.outcome, "OPEN"),
-        lt(leads.nextContactDate, today),
-      ),
+      and(isNull(tasks.deletedAt), eq(tasks.dueDate, today), inArray(tasks.status, ["todo", "in_progress", "in_review", "blocked"])),
     );
-
-  const byUser = new Map<string, typeof rows>();
-  for (const r of rows) {
-    if (!r.assignedTo) continue;
-    if (!byUser.has(r.assignedTo)) byUser.set(r.assignedTo, []);
-    byUser.get(r.assignedTo)!.push(r);
-  }
-
   let created = 0;
-  const managers = await getManagerIds(db);
-  for (const [uid, list] of byUser) {
-    const worst = list.reduce((a, b) =>
-      (a.nextContactDate ?? "9") < (b.nextContactDate ?? "9") ? a : b,
-    );
-    const days = worst.nextContactDate
-      ? Math.round(
-          (Date.parse(`${today}T00:00:00Z`) -
-            Date.parse(`${worst.nextContactDate}T00:00:00Z`)) /
-            86_400_000,
-        )
-      : 0;
-    const body = `Trễ nhất ${days} ngày (${worst.fullName} — đã im lặng ${worst.silenceCount} lần). Mở hàng đợi.`;
+  for (const t of rows) {
+    if (!t.assigneeId) continue;
     if (
       await notify(db, {
-        userId: uid,
-        type: "OVERDUE_LEADS",
-        severity: days > 3 ? "WARNING" : "INFO",
-        title: `Bạn có ${list.length} khách trễ hẹn chăm sóc`,
-        body,
-        linkUrl: "/cong-viec",
-        dedupeKey: `overdue:${today}`,
+        userId: t.assigneeId,
+        kind: "due_today",
+        taskId: t.id,
+        title: `Hôm nay đến hạn: ${t.title}`,
+        dedupeKey: `task:${t.id}:due_today:${today}`,
       })
     )
       created++;
   }
-  created += await notifyMany(db, managers, {
-    type: "OVERDUE_LEADS",
-    severity: "INFO",
-    title: `Toàn đội: ${rows.length} lead trễ hẹn chăm sóc`,
-    linkUrl: "/lead",
-    dedupeKey: `overdue-team:${today}`,
-  });
-
-  return { job: "overdue-digest", createdNotifications: created, affected: rows.length };
+  return { job: "due-today-reminder", createdNotifications: created, affected: rows.length };
 }
 
-/** 08:00 & 10:30 — rà quy tắc R1–R5 (SPEC 17.2 / 9.4). */
-export async function runAlertScan(db: AnyDb, now = new Date()): Promise<JobResult> {
+/** 16:30 — task đến hạn hôm nay nhưng chưa xong (Mục 11.2). */
+export async function runDueTodayUnfinished(db: DB, now = new Date()): Promise<JobResult> {
   const today = todayVnDayStr(now);
-  const alerts = await evaluateCampaignAlerts(db, now);
-  const owners = await db
-    .select({ id: campaigns.id, ownerId: campaigns.ownerId })
-    .from(campaigns);
-  const ownerMap = new Map(owners.map((o) => [o.id, o.ownerId]));
-  const managers = await getManagerIds(db);
-
-  let created = 0;
-  const critTargets = new Set<string>();
-  const critLines: string[] = [];
-  for (const a of alerts) {
-    const targets = new Set<string>(managers);
-    const owner = ownerMap.get(a.campaignId);
-    if (owner) targets.add(owner);
-    const sev = a.severity;
-    created += await notifyMany(db, [...targets], {
-      type: a.rule === "R4" ? "DATA_GAP" : "CAMPAIGN_ALERT",
-      severity: sev,
-      title: `[${a.rule}] ${a.label} — ${a.displayName}`,
-      body: a.detail,
-      linkUrl: "/campaign",
-      dedupeKey: `campaign:${a.campaignId}:${a.rule}:${today}`,
-    });
-    if (sev === "CRITICAL") {
-      for (const t of targets) critTargets.add(t);
-      critLines.push(`[${a.rule}] ${a.displayName} — ${a.detail}`);
-    }
-  }
-
-  // Email cho mức CRITICAL (SPEC 17.1)
-  let emailsSent = 0;
-  if (critLines.length) {
-    const to = await emailsFor(db, [...critTargets]);
-    if (to.length) {
-      const r = await sendMail({
-        to,
-        subject: `[VMG TMĐT OS] ${critLines.length} cảnh báo campaign CRITICAL`,
-        text: `${critLines.join("\n")}\n\nMở: ${process.env.APP_URL ?? ""}/campaign`,
-      });
-      emailsSent = r.sent ? to.length : 0;
-    }
-  }
-
-  return {
-    job: "alert-scan",
-    createdNotifications: created,
-    affected: alerts.length,
-    emailsSent,
-    detail: alerts.map((a) => `${a.rule}:${a.displayName}`).join(", "),
-  };
-}
-
-/** 00:30 — chuyển Cold Data cho lead im lặng >= ngưỡng (SPEC 8.2 / 17.2). Ghi log, không thông báo. */
-export async function runColdDataSweep(db: AnyDb): Promise<JobResult> {
-  const stale = await db
-    .select({ id: leads.id, stage: leads.stage, outcome: leads.outcome })
-    .from(leads)
+  const rows = await db
+    .select({ id: tasks.id, title: tasks.title, assigneeId: tasks.assigneeId })
+    .from(tasks)
     .where(
-      and(
-        isNull(leads.deletedAt),
-        eq(leads.isCold, false),
-        eq(leads.outcome, "OPEN"),
-        sql`${leads.silenceCount} >= ${COLD_SILENCE_THRESHOLD}`,
-      ),
+      and(isNull(tasks.deletedAt), eq(tasks.dueDate, today), inArray(tasks.status, ["todo", "in_progress", "in_review", "blocked"])),
     );
-
-  for (const l of stale) {
-    await db
-      .update(leads)
-      .set({
-        isCold: true,
-        outcome: "LOST",
-        lostReason: COLD_LOST_REASON,
-        nextContactDate: null,
-      })
-      .where(eq(leads.id, l.id));
-    await db.insert(leadStageHistory).values({
-      leadId: l.id,
-      fromStage: l.stage,
-      toStage: l.stage,
-      fromOutcome: l.outcome,
-      toOutcome: "LOST",
-      changedBy: null,
-      reason: `Cron 00:30 — Cold Data (im lặng >= ${COLD_SILENCE_THRESHOLD} phiên)`,
-    });
-    await writeAudit(db, {
-      actorId: null,
-      entity: "leads",
-      entityId: l.id,
-      action: "UPDATE",
-      changes: { outcome: { from: l.outcome, to: "LOST" }, is_cold: { from: false, to: true } },
-    });
+  const byUser = new Map<string, { id: string; title: string }[]>();
+  for (const t of rows) {
+    if (!t.assigneeId) continue;
+    if (!byUser.has(t.assigneeId)) byUser.set(t.assigneeId, []);
+    byUser.get(t.assigneeId)!.push(t);
   }
-  return { job: "cold-data-sweep", createdNotifications: 0, affected: stale.length };
+  let created = 0;
+  let emailsSent = 0;
+  for (const [uid, list] of byUser) {
+    const ok = await notify(db, {
+      userId: uid,
+      kind: "due_today",
+      title: `${list.length} task đến hạn hôm nay chưa xong`,
+      body: list.map((t) => `- ${t.title}`).join("\n"),
+      dedupeKey: `due-unfinished:${uid}:${today}`,
+    });
+    if (ok) created++;
+    const [to] = await emailsFor(db, [uid]);
+    if (to) {
+      await sendMail({
+        to,
+        subject: `[MKT OS] ${list.length} task đến hạn hôm nay chưa xong`,
+        text: list.map((t) => `- ${t.title}`).join("\n"),
+      });
+      emailsSent++;
+    }
+  }
+  return { job: "due-today-unfinished", createdNotifications: created, affected: rows.length, emailsSent };
 }
 
-/** Thứ Hai 08:00 — tổng kết tuần cho Trưởng phòng (SPEC 17.2). */
-export async function runWeeklySummary(db: AnyDb, now = new Date()): Promise<JobResult> {
-  const managers = await getManagerIds(db);
-  const to = todayVnDayStr(now);
-  const from = addDaysStr(to, -6);
-  const { getBaseMetrics } = await import("./metrics");
-  const b = await getBaseMetrics(db, { from, to });
-  const n = await notifyMany(db, managers, {
-    type: "KPI_RISK",
-    severity: "INFO",
-    title: `Tổng kết tuần (${from} → ${to})`,
-    body: `Spend ${Math.round(b.spend).toLocaleString("vi-VN")}đ · Lead ${b.leads} · MQL ${b.mql} · HV ${b.won} · DT ${Math.round(b.revenueGross).toLocaleString("vi-VN")}đ`,
-    linkUrl: "/",
-    dedupeKey: `weekly:${to}`,
-  });
-  return { job: "weekly-summary", createdNotifications: n, affected: 0 };
-}
-
-/** Ngày 1 hằng tháng 08:00 — nhắc chốt số & khóa sổ tháng trước (SPEC 17.2). */
-export async function runMonthLockReminder(
-  db: AnyDb,
-  now = new Date(),
-): Promise<JobResult> {
-  const adminRows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.isActive, true), sql`${users.role} = 'ADMIN'`));
+/** Sáng hôm sau 08:00 — task trễ hạn (Mục 11.2) + tổng hợp hằng ngày. */
+export async function runOverdueMorning(db: DB, now = new Date()): Promise<JobResult> {
   const today = todayVnDayStr(now);
-  const n = await notifyMany(
-    db,
-    adminRows.map((r) => r.id),
-    {
-      type: "KPI_RISK",
-      severity: "INFO",
-      title: "Đến hạn chốt số & khóa sổ tháng trước",
-      body: "Rà soát số liệu, sau đó khóa sổ để cố định con số tính thưởng.",
-      linkUrl: "/khoa-so",
-      dedupeKey: `monthlock:${today.slice(0, 7)}`,
-    },
-  );
-  return { job: "month-lock-reminder", createdNotifications: n, affected: 0 };
+  const rows = await db
+    .select({ id: tasks.id, title: tasks.title, assigneeId: tasks.assigneeId, dueDate: tasks.dueDate })
+    .from(tasks)
+    .where(and(isNull(tasks.deletedAt), overdueSqlFragment(today)));
+
+  const byUser = new Map<string, typeof rows>();
+  for (const t of rows) {
+    if (!t.assigneeId) continue;
+    if (!byUser.has(t.assigneeId)) byUser.set(t.assigneeId, []);
+    byUser.get(t.assigneeId)!.push(t);
+  }
+  let created = 0;
+  let emailsSent = 0;
+  for (const [uid, list] of byUser) {
+    if (
+      await notify(db, {
+        userId: uid,
+        kind: "overdue",
+        title: `Bạn có ${list.length} task trễ hạn`,
+        body: list.map((t) => `- ${t.title} (hạn ${t.dueDate})`).join("\n"),
+        dedupeKey: `overdue:${uid}:${today}`,
+      })
+    )
+      created++;
+    const [to] = await emailsFor(db, [uid]);
+    if (to) {
+      await sendMail({
+        to,
+        subject: `[MKT OS] ${list.length} task trễ hạn`,
+        text: list.map((t) => `- ${t.title} (hạn ${t.dueDate})`).join("\n"),
+      });
+      emailsSent++;
+    }
+  }
+  return { job: "overdue-morning", createdNotifications: created, affected: rows.length, emailsSent };
 }
 
-/** 08:00 — sinh task con từ việc định kỳ (SPEC 17.2 / 13.2). */
-export async function runSpawnRecurring(db: AnyDb, now = new Date()): Promise<JobResult> {
-  const r = await spawnRecurringTasks(db, now);
-  return { job: "spawn-recurring", createdNotifications: 0, affected: r.created };
+/** Trễ >= 2 ngày làm việc — nhắc quản lý, lặp lại mỗi tuần (Mục 11.2, xấp xỉ bằng lịch ngày). */
+export async function runEscalateToManagers(db: DB, now = new Date()): Promise<JobResult> {
+  const today = todayVnDayStr(now);
+  const rows = await db
+    .select({ id: tasks.id, title: tasks.title, assigneeId: tasks.assigneeId, dueDate: tasks.dueDate })
+    .from(tasks)
+    .where(and(isNull(tasks.deletedAt), overdueSqlFragment(today)));
+  const stale = rows.filter((t) => t.dueDate && diffDaysStr(t.dueDate, today) >= 2);
+  if (!stale.length) return { job: "escalate-managers", createdNotifications: 0, affected: 0 };
+
+  const managers = await getManagerIds(db);
+  const week = today.slice(0, 4) + "-W" + Math.ceil(Number(today.slice(8, 10)) / 7);
+  const created = await notifyMany(db, managers, {
+    kind: "escalation",
+    title: `${stale.length} task trễ hạn >= 2 ngày làm việc`,
+    body: stale.map((t) => `- ${t.title} (hạn ${t.dueDate})`).join("\n"),
+    dedupeKey: `escalation:${week}`,
+  });
+  return { job: "escalate-managers", createdNotifications: created, affected: stale.length };
 }
 
-export async function runSpawnLeadCare(db: AnyDb, now = new Date()): Promise<JobResult> {
-  const r = await spawnLeadCareTasks(db, now);
-  return { job: "spawn-lead-care", createdNotifications: 0, affected: r.created };
+/** 08:00 mỗi ngày làm việc — tóm tắt hằng ngày qua email (Mục 11.2). */
+export async function runDailyDigest(db: DB, now = new Date()): Promise<JobResult> {
+  const today = todayVnDayStr(now);
+  const tomorrow = todayVnDayStr(new Date(now.getTime() + 86400000));
+  const activeUsers = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.active, true));
+  let emailsSent = 0;
+  for (const u of activeUsers) {
+    const rows = await db
+      .select({ title: tasks.title, dueDate: tasks.dueDate, status: tasks.status })
+      .from(tasks)
+      .where(and(isNull(tasks.deletedAt), eq(tasks.assigneeId, u.id), inArray(tasks.status, ["todo", "in_progress", "in_review", "blocked"])));
+    const overdue = rows.filter((t) => t.dueDate && t.dueDate < today);
+    const dueToday = rows.filter((t) => t.dueDate === today);
+    const dueTomorrow = rows.filter((t) => t.dueDate === tomorrow);
+    if (!overdue.length && !dueToday.length && !dueTomorrow.length) continue;
+    const text = [
+      overdue.length ? `Trễ hạn (${overdue.length}):\n${overdue.map((t) => `- ${t.title}`).join("\n")}` : "",
+      dueToday.length ? `Hôm nay (${dueToday.length}):\n${dueToday.map((t) => `- ${t.title}`).join("\n")}` : "",
+      dueTomorrow.length ? `Ngày mai (${dueTomorrow.length}):\n${dueTomorrow.map((t) => `- ${t.title}`).join("\n")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const r = await sendMail({ to: u.email, subject: `[MKT OS] Tóm tắt công việc ${today}`, text });
+    if (r.sent) emailsSent++;
+  }
+  return { job: "daily-digest", createdNotifications: 0, affected: activeUsers.length, emailsSent };
 }
 
-/** 08:00 — mỗi Marketing Executive 1 task "nhập số liệu ads hôm nay" (SPEC 12.3). */
-export async function runSpawnAdsEntry(db: AnyDb, now = new Date()): Promise<JobResult> {
-  const s = await spawnAdsEntryTasks(db, now);
-  const c = await completeAdsEntryTasksIfDone(db, now);
+/** Sáng thứ Hai — tóm tắt hằng tuần cho quản lý (Mục 11.2). */
+export async function runWeeklySummary(db: DB, now = new Date()): Promise<JobResult> {
+  const today = todayVnDayStr(now);
+  const managers = await getManagerIds(db);
+  const [openTask] = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(isNull(tasks.deletedAt), inArray(tasks.status, ["todo", "in_progress", "in_review", "blocked"])))
+    .limit(1);
+  const created = await notifyMany(db, managers, {
+    kind: "digest_weekly",
+    title: `Tổng kết tuần (${today})`,
+    body: openTask ? "Xem Dashboard quản lý để biết chi tiết tải công việc." : "Không có task mở.",
+    dedupeKey: `weekly:${today}`,
+  });
+  return { job: "weekly-summary", createdNotifications: created, affected: managers.length };
+}
+
+export async function runAllNightlyJobs(db: DB, now = new Date()) {
   return {
-    job: "spawn-ads-entry",
-    createdNotifications: 0,
-    affected: s.created,
-    detail: c.completed ? `${c.completed} task tự đóng (đã nhập đủ)` : undefined,
-  };
-}
-
-/** Chạy toàn bộ tác vụ buổi sáng (dùng cho nút "chạy ngay" của ADMIN). */
-export async function runAllMorningJobs(db: AnyDb, now = new Date()) {
-  return {
-    overdue: await runOverdueDigest(db, now),
-    alerts: await runAlertScan(db, now),
-    cold: await runColdDataSweep(db),
     recurring: await runSpawnRecurring(db, now),
-    leadCare: await runSpawnLeadCare(db, now),
-    adsEntry: await runSpawnAdsEntry(db, now),
+    overdueMorning: await runOverdueMorning(db, now),
+    dueTodayReminder: await runDueTodayReminder(db, now),
+    escalate: await runEscalateToManagers(db, now),
+    dailyDigest: await runDailyDigest(db, now),
   };
 }

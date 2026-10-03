@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Đăng nhập — VMG TMĐT OS" };
+export const metadata = { title: "Đăng nhập — VMG MKT OS" };
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
@@ -16,9 +16,9 @@ export default async function LoginPage() {
           <div className="text-xs font-semibold uppercase tracking-wide text-brand">
             VMG
           </div>
-          <h1 className="text-lg font-semibold">TMĐT OS — Đăng nhập</h1>
+          <h1 className="text-lg font-semibold">MKT OS — Đăng nhập</h1>
           <p className="text-sm text-muted-foreground">
-            Hệ thống quản trị vận hành Thương mại điện tử.
+            Hệ thống quản lý task &amp; kế hoạch Phòng Marketing VMG.
           </p>
         </div>
         <LoginForm />

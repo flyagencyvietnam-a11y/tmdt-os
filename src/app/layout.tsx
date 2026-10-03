@@ -11,8 +11,8 @@ const sans = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "VMG TMĐT OS",
-  description: "Hệ thống quản trị & thực thi vận hành Thương mại điện tử — VMG",
+  title: "VMG MKT OS",
+  description: "Hệ thống quản lý task & kế hoạch — Phòng Marketing VMG",
 };
 
 export default function RootLayout({

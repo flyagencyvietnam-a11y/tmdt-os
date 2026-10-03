@@ -1,133 +1,67 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { can } from "@/lib/auth/permissions";
-import { requireUser } from "@/lib/auth/session";
+import { z } from "zod";
+import { getCurrentUser } from "@/lib/auth/session";
+import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
-import {
-  createCampaign,
-  setCampaignStatus,
-  updateCampaign,
-  type CreateCampaignInput,
-  type UpdateCampaignPatch,
-} from "@/lib/services/campaigns";
-import {
-  copyMetricFromPreviousDay,
-  upsertDailyMetric,
-} from "@/lib/services/daily-metrics";
-import { isServiceError } from "@/lib/services/errors";
+import { campaigns } from "@/lib/db/schema";
 
-type Result = { ok: true; data?: unknown } | { ok: false; error: string };
+const schema = z.object({
+  code: z.string().min(1),
+  name: z.string().min(1),
+  type: z.enum(["brand_theme", "product_gtm", "business_program", "rebrand", "data_program", "internal_program", "other"]),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  tagline: z.string().optional(),
+  objective: z.string().optional(),
+  heroActivity: z.string().optional(),
+  cta: z.string().optional(),
+  channels: z.string().optional(),
+  notes: z.string().optional(),
+});
 
-function fail(e: unknown): { ok: false; error: string } {
-  if (isServiceError(e)) return { ok: false, error: e.message };
-  console.error(e);
-  return { ok: false, error: "Có lỗi xảy ra." };
+async function requireManagerLike() {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
+  return user;
 }
 
-export async function createCampaignAction(
-  input: CreateCampaignInput,
-): Promise<Result> {
-  const user = await requireUser();
-  if (!can(user.role, "campaign", "create"))
-    return { ok: false, error: "Không có quyền tạo campaign." };
+export async function createCampaignAction(input: z.infer<typeof schema>) {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false as const, error: "Chỉ admin/manager được tạo campaign." };
   try {
-    const data = await createCampaign(db, input, { id: user.id, role: user.role });
+    const d = schema.parse(input);
+    const [row] = await db
+      .insert(campaigns)
+      .values({ ...d, createdBy: user.id })
+      .returning();
+    await writeAudit(db, { actorId: user.id, entity: "campaigns", entityId: row.id, action: "CREATE" });
     revalidatePath("/campaign");
-    return { ok: true, data };
+    return { ok: true as const, id: row.id };
   } catch (e) {
-    return fail(e);
+    return { ok: false as const, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }
 }
 
-export async function updateCampaignAction(
-  id: string,
-  patch: UpdateCampaignPatch,
-): Promise<Result> {
-  const user = await requireUser();
-  if (!can(user.role, "campaign", "update"))
-    return { ok: false, error: "Không có quyền sửa campaign." };
-  try {
-    await updateCampaign(db, id, patch, { id: user.id, role: user.role });
-    revalidatePath("/campaign");
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
+const updateSchema = schema.partial().extend({ id: z.string().uuid(), status: z.string().optional() });
 
-export async function setCampaignStatusAction(
-  id: string,
-  status: "ON" | "OFF" | "PAUSED",
-  reason?: string,
-): Promise<Result> {
-  const user = await requireUser();
-  if (!can(user.role, "campaign", "update"))
-    return { ok: false, error: "Không có quyền." };
+export async function updateCampaignAction(input: z.infer<typeof updateSchema>) {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false as const, error: "Chỉ admin/manager được sửa campaign." };
   try {
-    await setCampaignStatus(db, id, status, { id: user.id, role: user.role }, reason);
+    const d = updateSchema.parse(input);
+    const { id, ...patch } = d;
+    await db
+      .update(campaigns)
+      .set({ ...patch, status: patch.status as never, updatedBy: user.id })
+      .where(eq(campaigns.id, id));
+    await writeAudit(db, { actorId: user.id, entity: "campaigns", entityId: id, action: "UPDATE", changes: patch });
     revalidatePath("/campaign");
-    return { ok: true };
+    revalidatePath(`/campaign/${id}`);
+    return { ok: true as const };
   } catch (e) {
-    return fail(e);
-  }
-}
-
-/** Nhập / sửa spend + messages một ngày cho 1 campaign (gộp từ tab "Nhập số liệu ads"). */
-export async function upsertDailyMetricAction(input: {
-  campaignId: string;
-  metricDate: string;
-  spend: number;
-  messages: number;
-}): Promise<Result> {
-  const user = await requireUser();
-  if (!can(user.role, "campaignDailyMetric", "create"))
-    return { ok: false, error: "Không có quyền nhập số liệu." };
-  try {
-    const res = await upsertDailyMetric(db, input, { id: user.id, role: user.role });
-    revalidatePath("/campaign");
-    await afterAdsEntry();
-    return { ok: true, data: res };
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-export async function copyYesterdayAction(
-  campaignIds: string[],
-  targetDate: string,
-): Promise<Result> {
-  const user = await requireUser();
-  if (!can(user.role, "campaignDailyMetric", "create"))
-    return { ok: false, error: "Không có quyền." };
-  try {
-    let copied = 0;
-    for (const id of campaignIds) {
-      if (
-        await copyMetricFromPreviousDay(db, id, targetDate, {
-          id: user.id,
-          role: user.role,
-        })
-      )
-        copied++;
-    }
-    revalidatePath("/campaign");
-    await afterAdsEntry();
-    return { ok: true, data: { copied } };
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-/** Sau khi lưu số liệu ads: nếu hôm nay đã đủ, tự đóng task "nhập số liệu ads". */
-async function afterAdsEntry() {
-  try {
-    const { completeAdsEntryTasksIfDone } = await import(
-      "@/lib/services/ads-entry-tasks"
-    );
-    const r = await completeAdsEntryTasksIfDone(db);
-    if (r.completed > 0) revalidatePath("/cong-viec");
-  } catch {
-    // không chặn luồng nhập số liệu nếu bước phụ này lỗi
+    return { ok: false as const, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }
 }

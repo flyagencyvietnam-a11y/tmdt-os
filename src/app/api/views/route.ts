@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { savedViews } from "@/lib/db/schema";
 
-const ENTITIES = ["LEADS", "CAMPAIGNS", "TASKS", "DAILY_METRICS", "ENROLLMENTS"] as const;
+const ENTITIES = ["tasks"] as const;
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -18,16 +18,16 @@ export async function GET(req: Request) {
     .where(
       and(
         entity ? eq(savedViews.entity, entity as (typeof ENTITIES)[number]) : undefined,
-        or(eq(savedViews.ownerId, user.id), eq(savedViews.visibility, "SHARED")),
+        or(eq(savedViews.ownerId, user.id), eq(savedViews.visibility, "shared")),
       ),
     );
   return NextResponse.json({ views: rows });
 }
 
 const createSchema = z.object({
-  entity: z.enum(ENTITIES),
+  entity: z.enum(ENTITIES).default("tasks"),
   name: z.string().min(1).max(120),
-  visibility: z.enum(["PRIVATE", "SHARED"]).default("PRIVATE"),
+  visibility: z.enum(["private", "shared"]).default("private"),
   config: z.record(z.string(), z.unknown()),
   isDefault: z.boolean().default(false),
 });
