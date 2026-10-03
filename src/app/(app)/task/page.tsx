@@ -4,6 +4,7 @@ import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { campaigns, taskSbus, tasks, users } from "@/lib/db/schema";
+import { calendarToken } from "@/lib/services/ics";
 import { TaskBoard } from "./task-board";
 
 export const metadata = { title: "Tất cả task — VMG MKT OS" };
@@ -61,6 +62,7 @@ export default async function TaskListPage() {
         campaigns={allCampaigns}
         currentUserId={user.id}
         canAssignOthers={user.canAssign || user.role === "admin" || user.role === "manager"}
+        icsUrl={`/api/export/ics?user=${user.id}&token=${calendarToken(user.id)}`}
       />
     </div>
   );

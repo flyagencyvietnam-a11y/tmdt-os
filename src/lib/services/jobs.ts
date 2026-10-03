@@ -10,6 +10,9 @@ import { generateAllRecurringTasks } from "./recurring";
 import { emailsFor, getManagerIds, notify, notifyMany } from "./notifications";
 import { sendMail } from "@/lib/email";
 import { overdueSqlFragment } from "./tasks";
+import { runMonitoringAlerts } from "./monitoring";
+import { generatePeriodicReport } from "./reports";
+import { lastWorkingDayOfMonth, loadDeptWorkDays, loadHolidaySet } from "./workdays";
 
 export interface JobResult {
   job: string;
@@ -196,6 +199,31 @@ export async function runWeeklySummary(db: DB, now = new Date()): Promise<JobRes
   return { job: "weekly-summary", createdNotifications: created, affected: managers.length };
 }
 
+/** Hàng ngày — cảnh báo Monitoring quá hạn/sắp đến hạn tự sinh task (Mục 9.5). */
+export async function runMonitoringAlertsJob(db: DB): Promise<JobResult> {
+  const r = await runMonitoringAlerts(db);
+  return { job: "monitoring-alerts", createdNotifications: 0, affected: r.created };
+}
+
+/** Sáng thứ Hai — xuất báo cáo tuần định kỳ (SPEC Mục 14.4 "Báo cáo xuất định kỳ"). */
+export async function runWeeklyReportExport(db: DB, now = new Date()): Promise<JobResult> {
+  const today = todayVnDayStr(now);
+  const row = await generatePeriodicReport(db, "weekly_summary", today);
+  return { job: "weekly-report-export", createdNotifications: 1, affected: 1, emailsSent: 0, ...{ reportId: row.id } } as JobResult & { reportId: string };
+}
+
+/** Ngày làm việc cuối tháng — xuất báo cáo tháng định kỳ. */
+export async function runMonthlyReportExportIfLastWorkday(db: DB, now = new Date()): Promise<JobResult | null> {
+  const today = todayVnDayStr(now);
+  const workDays = await loadDeptWorkDays(db);
+  const holidaySet = await loadHolidaySet(db);
+  const lastWd = lastWorkingDayOfMonth(today, workDays, holidaySet);
+  if (today !== lastWd) return null;
+  const period = today.slice(0, 7);
+  const row = await generatePeriodicReport(db, "monthly_summary", period);
+  return { job: "monthly-report-export", createdNotifications: 1, affected: 1, ...{ reportId: row.id } } as JobResult & { reportId: string };
+}
+
 export async function runAllNightlyJobs(db: DB, now = new Date()) {
   return {
     recurring: await runSpawnRecurring(db, now),
@@ -203,5 +231,7 @@ export async function runAllNightlyJobs(db: DB, now = new Date()) {
     dueTodayReminder: await runDueTodayReminder(db, now),
     escalate: await runEscalateToManagers(db, now),
     dailyDigest: await runDailyDigest(db, now),
+    monitoring: await runMonitoringAlertsJob(db),
+    monthlyReport: await runMonthlyReportExportIfLastWorkday(db, now),
   };
 }

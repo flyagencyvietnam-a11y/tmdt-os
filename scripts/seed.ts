@@ -146,6 +146,12 @@ async function seedAppSettings(adminId: string) {
     { key: "work_days", value: [1, 2, 3, 4, 5], description: "Tuần làm việc của phòng — Mục 16.2 Q3 (mặc định T2-T6)", updatedBy: adminId },
     { key: "quiet_hours", value: { start: "19:00", end: "07:30" }, description: "Giờ yên lặng — không gửi email ngoài khung này (Mục 11.3)", updatedBy: adminId },
     { key: "escalation_threshold_days", value: 2, description: "Số ngày làm việc trễ hạn trước khi nhắc quản lý (Mục 11.2)", updatedBy: adminId },
+    {
+      key: "workload_overload_threshold",
+      value: { hours: 40, tasks: 8 },
+      description: "Ngưỡng quá tải cho trang Workload — Mục 13.4/8.3 (giờ/tuần hoặc số task/tuần nếu task không có estimate_hours)",
+      updatedBy: adminId,
+    },
   ];
   for (const r of rows) {
     await db.insert(schema.appSettings).values(r).onConflictDoNothing({ target: schema.appSettings.key });

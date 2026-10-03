@@ -5,8 +5,11 @@ import {
   runDueTodayReminder,
   runDueTodayUnfinished,
   runEscalateToManagers,
+  runMonitoringAlertsJob,
+  runMonthlyReportExportIfLastWorkday,
   runOverdueMorning,
   runSpawnRecurring,
+  runWeeklyReportExport,
   runWeeklySummary,
 } from "@/lib/services/jobs";
 
@@ -35,16 +38,19 @@ export async function GET(req: Request) {
       return NextResponse.json(await runDueTodayUnfinished(db));
     }
     if (job === "weekly") {
-      return NextResponse.json(await runWeeklySummary(db));
+      const [summary, reportExport] = await Promise.all([runWeeklySummary(db), runWeeklyReportExport(db)]);
+      return NextResponse.json({ summary, reportExport });
     }
-    const [recurring, overdue, dueToday, escalate, digest] = await Promise.all([
+    const [recurring, overdue, dueToday, escalate, digest, monitoring, monthlyReport] = await Promise.all([
       runSpawnRecurring(db),
       runOverdueMorning(db),
       runDueTodayReminder(db),
       runEscalateToManagers(db),
       runDailyDigest(db),
+      runMonitoringAlertsJob(db),
+      runMonthlyReportExportIfLastWorkday(db),
     ]);
-    return NextResponse.json({ recurring, overdue, dueToday, escalate, digest });
+    return NextResponse.json({ recurring, overdue, dueToday, escalate, digest, monitoring, monthlyReport });
   } catch (e) {
     console.error("[cron] lỗi", e);
     return NextResponse.json(

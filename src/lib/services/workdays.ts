@@ -67,6 +67,31 @@ export function firstWorkingDayOfMonth(
   return nearestWorkday(first, workDays, holidaySet, 1);
 }
 
+/**
+ * Cộng/trừ N ngày LÀM VIỆC từ `dayStr` (N âm = lùi). Dùng cho hạn task con tự
+ * sinh từ content calendar / media plan (Mục 7.2/7.3: "publish_date - 3 ngày
+ * làm việc"...). N=0 trả về chính ngày làm việc gần nhất (không lùi/tiến nếu
+ * đã là ngày làm việc).
+ */
+export function addWorkdays(
+  dayStr: string,
+  n: number,
+  workDays: number[],
+  holidaySet: Set<string>,
+): string {
+  if (n === 0) return dayStr;
+  const dir: 1 | -1 = n > 0 ? 1 : -1;
+  let d = dayStr;
+  let remaining = Math.abs(n);
+  let guard = 0;
+  while (remaining > 0 && guard < 3660) {
+    d = addDaysStr(d, dir);
+    if (isWorkday(d, workDays, holidaySet)) remaining--;
+    guard++;
+  }
+  return d;
+}
+
 /** Nạp set ngày lễ (YYYY-MM-DD) trong khoảng rộng — gọi 1 lần mỗi lượt chạy cron. */
 export async function loadHolidaySet(db: DB): Promise<Set<string>> {
   const rows = await db.select({ d: holidays.holidayDate }).from(holidays);

@@ -10,8 +10,11 @@ import {
   runDueTodayReminder,
   runDueTodayUnfinished,
   runEscalateToManagers,
+  runMonitoringAlertsJob,
+  runMonthlyReportExportIfLastWorkday,
   runOverdueMorning,
   runSpawnRecurring,
+  runWeeklyReportExport,
   runWeeklySummary,
 } from "@/lib/services/jobs";
 
@@ -42,6 +45,9 @@ export function startCron() {
   cron.schedule("30 16 * * *", wrap("due-today-unfinished", () => runDueTodayUnfinished(db)), { timezone: TZ });
   cron.schedule("0 8 * * *", wrap("escalate-managers", () => runEscalateToManagers(db)), { timezone: TZ });
   cron.schedule("0 8 * * 1", wrap("weekly-summary", () => runWeeklySummary(db)), { timezone: TZ });
+  cron.schedule("0 8 * * 1", wrap("weekly-report-export", () => runWeeklyReportExport(db)), { timezone: TZ });
+  cron.schedule("45 0 * * *", wrap("monitoring-alerts", () => runMonitoringAlertsJob(db)), { timezone: TZ });
+  cron.schedule("50 0 * * *", wrap("monthly-report-export", () => runMonthlyReportExportIfLastWorkday(db)), { timezone: TZ });
 
-  console.log("[cron] đã lên lịch 7 tác vụ (giờ Việt Nam).");
+  console.log("[cron] đã lên lịch 10 tác vụ (giờ Việt Nam).");
 }

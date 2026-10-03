@@ -15,6 +15,20 @@
       "when": 1790993854885,
       "tag": "0001_striped_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790995014838,
+      "tag": "0002_blushing_killraven",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790995670051,
+      "tag": "0003_sad_gateway",
+      "breakpoints": true
     }
   ]
 }

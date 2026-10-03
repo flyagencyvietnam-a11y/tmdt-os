@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { campaigns, tasks } from "@/lib/db/schema";
 import { CampaignActionPlan } from "./action-plan";
+import { DuplicateCampaignDialog } from "./duplicate-campaign-dialog";
+import { canSee } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,13 +28,18 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="text-xs text-muted-foreground">{campaign.code}</div>
-        <h1 className="text-xl font-semibold">{campaign.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {campaign.startDate} – {campaign.endDate} · Tiến độ {done}/{total} task xong
-          {overdueCount > 0 && <span className="text-crit"> · {overdueCount} trễ hạn</span>}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs text-muted-foreground">{campaign.code}</div>
+          <h1 className="text-xl font-semibold">{campaign.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            {campaign.startDate} – {campaign.endDate} · Tiến độ {done}/{total} task xong
+            {overdueCount > 0 && <span className="text-crit"> · {overdueCount} trễ hạn</span>}
+          </p>
+        </div>
+        {canSee(user.role, "campaign") && (user.role === "admin" || user.role === "manager") && (
+          <DuplicateCampaignDialog campaignId={campaign.id} sourceCode={campaign.code} />
+        )}
       </div>
 
       {(campaign.objective || campaign.heroActivity || campaign.cta || campaign.channels) && (

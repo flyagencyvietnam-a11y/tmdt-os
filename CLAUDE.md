@@ -60,20 +60,43 @@ là một app hoàn toàn mới về nghiệp vụ.
   khẩu do admin tạo). Google OAuth domain-restricted để dành khi công ty xác
   nhận có Workspace. Magic-link xác nhận task cho `center_contributor` (Mục
   3.3/11.4) độc lập với đăng nhập, đã làm (`/xac-nhan/[token]`).
-- Phạm vi đã build: Phase 0 đầy đủ + Phase 1 MVP đầy đủ, cộng một phần Phase 2
-  (task engine, recurring đầy đủ + fan-out + seed Phụ lục C, thông báo app/email
-  + cron, dashboard, List/Kanban/**Lịch**, campaign master, request, SBU +
-  **ma trận hạng mục × SBU** (`/sbu/matrix`, tự cập nhật từ task thật — Mục
-  6.6), import **T1/T2/T3/T4** đủ 4 bước + undo). Mọi view dạng bảng (Task/
-  Campaign/Request/SBU) dùng chung `src/components/data-grid/` — filter/sort/
-  group-by/saved-view kiểu Airtable, **bắt buộc dùng component này cho mọi
-  gridview mới**, không tự viết `<table>` thô.
-  **Chưa làm**: Gantt, Workload, Content calendar tự sinh task, Media
-  production plan, Foundation UI, xuất ICS/lịch tuần BOD, nhân bản campaign,
-  web push, Zalo, AI assist — xem SPEC Mục 14.3/14.4 (Phase 2 còn lại/Phase 3).
+- Phạm vi đã build: Phase 0 + Phase 1 MVP đầy đủ, **cộng toàn bộ Phase 2 và
+  phần Phase 3 không cần tích hợp bên ngoài** (task engine, recurring đầy đủ +
+  fan-out + seed Phụ lục C, thông báo app/email + web push + cron, dashboard,
+  List/Kanban/**Lịch**/**Gantt**/**Workload**, campaign master + **nhân bản
+  campaign**, request, SBU + **ma trận hạng mục × SBU** (`/sbu/matrix`, tự cập
+  nhật từ task thật — Mục 6.6), **Content calendar** (`/content`, tự sinh task
+  cha+con theo `content_workflow_templates`, mặc định Soạn/Thiết kế(Trân)/Duyệt
+  (Trưởng phòng)/Đăng), **Media production plan** (`/quay-chup`, tự sinh task
+  chuẩn bị+quay+hậu kỳ, tạo lịch quay định kỳ), **Foundation** (`/nen-tang`,
+  lưới brand×cấu phần + lịch sử + "tạo task từ ô"), **Monitoring** (`/giam-sat`,
+  cảnh báo quá hạn/sắp hạn tự sinh task), **Ads hàng tháng theo SBU** (`/ads`),
+  **Dashboard quản lý** (`/bao-cao`: trễ hạn theo người, tiến độ campaign, %SBU,
+  tỷ lệ đúng hạn, việc lặp đúng hạn + xuất báo cáo định kỳ lưu `report_exports`),
+  **Trợ lý AI** (`/tro-ly-ai`, gọi Anthropic API nếu có `ANTHROPIC_API_KEY`,
+  LUÔN có bước người duyệt trước khi tạo task), **xuất ICS** (lịch cá nhân,
+  link đăng ký Google Calendar dùng token HMAC — `lib/services/ics.ts`), **xuất
+  lịch tuần BOD** (`/api/export/bod-schedule`), import **T1–T9** đủ 4 bước +
+  undo (T1/T3/T5/T6 có undo hoặc upsert theo khoá; T2/T4/T7/T8/T9 upsert không
+  undo cả đợt)). Mọi view dạng bảng (Task/Campaign/Request/SBU/Content/
+  Monitoring) dùng chung `src/components/data-grid/` — filter/sort/group-by/
+  saved-view kiểu Airtable, **bắt buộc dùng component này cho mọi gridview
+  mới**, không tự viết `<table>` thô (trừ vài bảng tổng hợp đơn giản ở
+  `/bao-cao`, `/ads`, `/cai-dat` không cần filter/sort).
+  **Chưa làm** (chủ động bỏ qua vì cần tích hợp/key ngoài chưa có, xem SPEC Mục
+  14.4): đồng bộ Google Calendar hai chiều, nhắc qua Zalo, tải tệp đính kèm lên
+  kho lưu trữ ngoài. Ads hàng tháng mới có CRUD cơ bản, chưa có import riêng.
+- **Bẫy đã gặp 1 lần, đừng lặp lại**: `next.config.ts` từng có khối
+  `redirects()` sót lại từ TMĐT OS cũ trỏ `/bao-cao → /` — route `/bao-cao`
+  (Dashboard quản lý) mới tạo bị nuốt silently (307 về "/", KHÔNG log ở Next
+  dev server, KHÔNG qua `requireRole`/middleware) cho tới khi dò bằng `curl -i`
+  so sánh với 1 route hoạt động đúng. Khối `redirects()` đã bị xoá hẳn. Nếu
+  thêm route mới mà bị "nuốt" y hệt (không log, về "/"), nghi ngờ đầu tiên là
+  `next.config.ts`/`vercel.json`, không phải code route.
 - Stack: Next.js 16 (App Router) + React 19 + Tailwind v4 + shadcn/ui (Base UI)
   + Drizzle + postgres-js + Auth.js v5 (Credentials) + `rrule` + `@dnd-kit` +
-  `react-big-calendar` (chưa dùng, cài sẵn cho Lịch ở lượt sau) + `exceljs`.
+  `react-big-calendar` + `recharts` (Dashboard) + `web-push` (VAPID tự sinh,
+  lưu `app_settings`) + `exceljs`.
 - DB dev: `DATABASE_URL` trỏ Supabase (Sydney). Test: PGlite in-memory.
 
 ## Cấu trúc thư mục
@@ -90,13 +113,27 @@ src/lib/services/tasks.ts           *** task engine — nguồn logic trạng th
 src/lib/services/recurring.ts       *** recurring engine — đọc kỹ trước khi sửa ***
 src/lib/services/workdays.ts        ngày làm việc / ngày lễ (dùng cho recurring)
 src/lib/services/jobs.ts            tác vụ cron (digest, escalate, spawn-recurring)
-src/lib/services/import/            pipeline nhập liệu T1-T4 (parse → validate → dry-run → confirm)
+src/lib/services/import/            pipeline nhập liệu T1-T9 (parse → validate → dry-run → confirm)
+src/lib/services/content.ts         content_item → task cha+con (content_workflow_templates)
+src/lib/services/media.ts           media_shoot/deliverable → task chuẩn bị+quay+hậu kỳ
+src/lib/services/foundation.ts      lưới Foundation + lịch sử phiên bản
+src/lib/services/monitoring.ts      cảnh báo quá hạn/sắp hạn Monitoring → tự sinh task
+src/lib/services/reports.ts         *** computeManagementMetrics — nguồn số liệu /bao-cao
+                                     DÙNG CHUNG với báo cáo xuất định kỳ, đừng tính lại ở nơi khác ***
+src/lib/services/ai-assist.ts       gọi Anthropic API (cần ANTHROPIC_API_KEY) — KHÔNG tự ghi task
+src/lib/services/ics.ts             xuất .ics + token HMAC cho link đăng ký Google Calendar
+src/lib/services/push.ts            Web push — VAPID tự sinh lưu app_settings, không cần cấu hình tay
 src/components/data-grid/           *** grid dùng chung (filter/sort/group-by kiểu Airtable) —
                                      mọi view bảng mới PHẢI dùng component này, không viết <table> thô
-src/app/(app)/task/                 Dashboard + List (DataGrid)/Kanban/Lịch + task detail
+src/app/(app)/task/                 Dashboard + List (DataGrid)/Kanban/Lịch (+ link ICS) + task detail
+src/app/(app)/gantt/                Gantt SVG tự dựng, nhóm theo campaign, mũi tên phụ thuộc
+src/app/(app)/workload/             ma trận người × tuần (ngưỡng quá tải ở app_settings)
 src/app/(app)/sbu/matrix/           ma trận hạng mục × SBU × kỳ (SPEC Mục 9.3/6.6)
-src/app/(app)/{campaign,request,sbu,import,cai-dat,nguoi-dung}/
+src/app/(app)/bao-cao/              Dashboard quản lý (Mục 12.2) + xuất báo cáo định kỳ
+src/app/(app)/{campaign,content,quay-chup,request,sbu,giam-sat,ads,nen-tang,
+               tro-ly-ai,import,cai-dat,nguoi-dung}/
 src/app/xac-nhan/[token]/           magic-link xác nhận task (public, không cần đăng nhập)
+public/sw.js                        service worker tối giản cho Web push
 ```
 
 ## Lệnh hay dùng

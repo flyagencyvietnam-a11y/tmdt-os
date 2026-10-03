@@ -2,10 +2,13 @@
 
 import { format, getDay, parse, startOfWeek } from "date-fns";
 import { vi } from "date-fns/locale";
+import { Link as LinkIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { toast } from "sonner";
 import { Calendar, dateFnsLocalizer, type View } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import { Button } from "@/components/ui/button";
 import type { TaskItem } from "./task-board";
 
 const locales = { vi };
@@ -50,7 +53,7 @@ interface CalEvent {
   task: TaskItem;
 }
 
-export function TaskCalendar({ tasks }: { tasks: TaskItem[] }) {
+export function TaskCalendar({ tasks, icsUrl }: { tasks: TaskItem[]; icsUrl?: string }) {
   const router = useRouter();
   const [view, setView] = React.useState<View>("month");
   const [date, setDate] = React.useState(new Date());
@@ -67,8 +70,26 @@ export function TaskCalendar({ tasks }: { tasks: TaskItem[] }) {
   );
 
   return (
-    <div className="rounded-md border bg-background p-2" style={{ height: 650 }}>
-      <Calendar
+    <div className="space-y-2">
+      {icsUrl && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const full = `${window.location.origin}${icsUrl}`;
+              navigator.clipboard.writeText(full).then(
+                () => toast.success("Đã sao chép link — dán vào Google Calendar › Thêm lịch › Từ URL."),
+                () => toast.error("Không sao chép được link."),
+              );
+            }}
+          >
+            <LinkIcon className="mr-1 h-4 w-4" /> Lấy link đăng ký (ICS)
+          </Button>
+        </div>
+      )}
+      <div className="rounded-md border bg-background p-2" style={{ height: 650 }}>
+        <Calendar
         localizer={localizer}
         events={events}
         startAccessor="start"
@@ -90,7 +111,8 @@ export function TaskCalendar({ tasks }: { tasks: TaskItem[] }) {
             opacity: e.task.status === "done" || e.task.status === "cancelled" ? 0.6 : 1,
           },
         })}
-      />
+        />
+      </div>
     </div>
   );
 }

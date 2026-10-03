@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { notifications, users } from "@/lib/db/schema";
 import { sendMail } from "@/lib/email";
+import { sendPushToUser } from "./push";
 import { todayVnDayStr } from "@/lib/time";
 
 export type NotifKind =
@@ -67,6 +68,14 @@ export async function notify(db: DB, input: NotifyInput): Promise<boolean> {
   });
   if (input.alsoEmail) {
     await sendMail({ to: input.alsoEmail.to, subject: input.alsoEmail.subject, text: input.alsoEmail.text });
+  }
+  // Web push (SPEC Mục 11.1, P2) — best-effort, không chặn luồng thông báo app chính nếu lỗi.
+  if (channel === "in_app") {
+    sendPushToUser(db, input.userId, {
+      title: input.title,
+      body: input.body ?? undefined,
+      url: input.taskId ? `/task/${input.taskId}` : "/",
+    }).catch(() => {});
   }
   return true;
 }

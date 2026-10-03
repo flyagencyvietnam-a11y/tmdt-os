@@ -45,12 +45,14 @@ export function TaskBoard({
   campaigns,
   currentUserId,
   canAssignOthers,
+  icsUrl,
 }: {
   tasks: TaskItem[];
   users: { id: string; fullName: string }[];
   campaigns: { id: string; code: string; name: string }[];
   currentUserId: string;
   canAssignOthers: boolean;
+  icsUrl?: string;
 }) {
   const router = useRouter();
   const [view, setView] = React.useState<"list" | "kanban" | "calendar">("list");
@@ -157,7 +159,7 @@ export function TaskBoard({
           </div>
         </DndContext>
       )}
-      {view === "calendar" && <TaskCalendar tasks={visible} />}
+      {view === "calendar" && <TaskCalendar tasks={visible} icsUrl={icsUrl} />}
 
       <CreateTaskDialog
         open={createOpen}

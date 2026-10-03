@@ -12,8 +12,7 @@ export default async function ImportPage() {
         <h1 className="text-xl font-semibold">Nhập liệu bằng file template</h1>
         <p className="text-sm text-muted-foreground">
           SPEC Mục 10 — tải lên → kiểm tra → xem trước → xác nhận. Nạp lại đúng file cũ không
-          tạo trùng, không ghi đè trường đã sửa tay (T1/T3). T5–T9 (Request/Content/Media/
-          Foundation/Catalog) để Phase 2.
+          tạo trùng, không ghi đè trường đã sửa tay (T1/T3/T5/T6).
         </p>
       </div>
       <ImportWizard isAdmin={user.role === "admin"} />

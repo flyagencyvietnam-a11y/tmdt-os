@@ -19,7 +19,13 @@ export type Resource =
   | "sbu"
   | "workloadReport"
   | "importData"
-  | "userManagement";
+  | "userManagement"
+  | "content" // Content calendar (Mục 9.6)
+  | "media" // Media production plan (Mục 9.7)
+  | "monitoring" // Monitoring hạng mục thay mới (Mục 9.5)
+  | "ads" // Ads hàng tháng theo SBU (Mục 9.4)
+  | "managementDashboard" // Dashboard quản lý (Mục 12.2)
+  | "aiAssist"; // Trợ lý AI (Mục 14.4)
 
 type RoleMatrix = Partial<Record<Resource, Partial<Record<Action, Scope>>>>;
 
@@ -43,6 +49,12 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     workloadReport: { read: "all" },
     importData: { create: "all", read: "all" },
     userManagement: ALL,
+    content: ALL,
+    media: ALL,
+    monitoring: ALL,
+    ads: ALL,
+    managementDashboard: { read: "all" },
+    aiAssist: { read: "all", create: "all" },
   },
 
   manager: {
@@ -56,6 +68,12 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     sbu: ALL,
     workloadReport: { read: "all" },
     importData: { create: "all", read: "all" },
+    content: ALL,
+    media: ALL,
+    monitoring: ALL,
+    ads: ALL,
+    managementDashboard: { read: "all" },
+    aiAssist: { read: "all", create: "all" },
     // không userManagement, không xóa dữ liệu gốc (Mục 3.1)
   },
 
@@ -69,6 +87,10 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     recurringRule: { create: "own", read: "all" },
     sbu: { read: "all" },
     workloadReport: { read: "own" },
+    content: { create: "all", read: "all", update: "all" },
+    media: { create: "all", read: "all", update: "all" },
+    monitoring: { read: "all", update: "all" },
+    ads: { read: "all" },
   },
 
   center_contributor: {
@@ -83,6 +105,7 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     campaign: { read: "all" },
     sbu: { read: "all" },
     workloadReport: { read: "all" },
+    managementDashboard: { read: "all" },
   },
 };
 

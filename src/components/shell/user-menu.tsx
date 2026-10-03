@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { signOutAction } from "@/app/(app)/actions";
+import { PushToggle } from "./push-toggle";
 
 export function UserMenu({
   fullName,
@@ -33,6 +34,10 @@ export function UserMenu({
         <DropdownMenuItem render={<Link href="/doi-mat-khau" />}>
           <KeyRound className="mr-2 h-4 w-4" /> Đổi mật khẩu
         </DropdownMenuItem>
+        <div onClick={(e) => e.preventDefault()}>
+          <PushToggle />
+        </div>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOutAction()}>
           <LogOut className="mr-2 h-4 w-4" /> Đăng xuất
         </DropdownMenuItem>

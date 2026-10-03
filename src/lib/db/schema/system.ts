@@ -17,6 +17,7 @@ import {
   importTemplateEnum,
   notificationChannelEnum,
   notificationKindEnum,
+  reportExportKindEnum,
   savedViewEntityEnum,
   savedViewVisibilityEnum,
 } from "./enums";
@@ -141,7 +142,46 @@ export const appSettings = pgTable("app_settings", {
   updatedBy: uuid("updated_by").references(() => users.id),
 });
 
+/** SPEC Mục 11.1 — Web push (P2). Mỗi trình duyệt/thiết bị đăng ký 1 dòng. */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: pkUuid(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("push_subscriptions_user_idx").on(t.userId)],
+);
+
+/**
+ * SPEC Mục 10.5 / 14.4 — file xuất lưu tại chỗ (không có kho lưu trữ ngoài ở
+ * đợt này): báo cáo định kỳ, lịch tuần BOD... Nội dung mã hoá base64 trong cột text
+ * để tránh phụ thuộc kiểu bytea đặc thù driver.
+ */
+export const reportExports = pgTable(
+  "report_exports",
+  {
+    id: pkUuid(),
+    kind: reportExportKindEnum("kind").notNull(),
+    period: text("period"),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    dataBase64: text("data_base64").notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("report_exports_kind_idx").on(t.kind, t.createdAt)],
+);
+
 export type NotificationRow = typeof notifications.$inferSelect;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type ReportExport = typeof reportExports.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;
 export type ImportRow = typeof importRows.$inferSelect;
 export type SavedView = typeof savedViews.$inferSelect;

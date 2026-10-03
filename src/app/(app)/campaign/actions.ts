@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { campaigns } from "@/lib/db/schema";
+import { duplicateCampaign } from "@/lib/services/campaigns";
 
 const schema = z.object({
   code: z.string().min(1),
@@ -61,6 +62,27 @@ export async function updateCampaignAction(input: z.infer<typeof updateSchema>) 
     revalidatePath("/campaign");
     revalidatePath(`/campaign/${id}`);
     return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+const duplicateSchema = z.object({
+  campaignId: z.string().uuid(),
+  newCode: z.string().min(1),
+  dayOffset: z.number().int(),
+  newName: z.string().optional(),
+});
+
+/** SPEC Mục 5.3 / 14.3 — nhân bản campaign (bao gồm task con, dời ngày theo khoảng lệch). */
+export async function duplicateCampaignAction(input: z.infer<typeof duplicateSchema>) {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false as const, error: "Chỉ admin/manager được nhân bản campaign." };
+  try {
+    const d = duplicateSchema.parse(input);
+    const created = await duplicateCampaign(db, d.campaignId, { newCode: d.newCode, dayOffset: d.dayOffset, newName: d.newName }, user.id);
+    revalidatePath("/campaign");
+    return { ok: true as const, id: created.id };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }

@@ -239,7 +239,47 @@ export const auditActionEnum = pgEnum("audit_action", [
   "IMPORT",
 ]);
 
-export const importTemplateEnum = pgEnum("import_template", ["T1", "T2", "T3", "T4"]);
+export const importTemplateEnum = pgEnum("import_template", [
+  "T1",
+  "T2",
+  "T3",
+  "T4",
+  "T5",
+  "T6",
+  "T7",
+  "T8",
+  "T9",
+]);
+
+export const monitoringKindEnum = pgEnum("monitoring_kind", [
+  "posm",
+  "signage",
+  "ooh",
+  "google_maps",
+  "vmp_booth",
+  "exam_room",
+  "other",
+]);
+
+export const monitoringAlertEnum = pgEnum("monitoring_alert", [
+  "overdue",
+  "due_soon",
+  "ok",
+  "no_data",
+]);
+
+export const adsStatusEnum = pgEnum("ads_status", [
+  "planned",
+  "running",
+  "done",
+  "cancelled",
+]);
+
+export const reportExportKindEnum = pgEnum("report_export_kind", [
+  "weekly_summary",
+  "monthly_summary",
+  "bod_schedule",
+]);
 
 export const importRowResultEnum = pgEnum("import_row_result", [
   "created",

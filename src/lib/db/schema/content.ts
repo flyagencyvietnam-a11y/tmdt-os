@@ -1,4 +1,5 @@
-import { date, index, integer, pgTable, text, time, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { date, index, integer, jsonb, pgTable, text, time, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, pkUuid, softDeleteColumn } from "./_shared";
 import { contentStatusEnum, shootStatusEnum } from "./enums";
 import { brands } from "./brands";
@@ -36,10 +37,18 @@ export const contentItems = pgTable(
     status: contentStatusEnum("status").notNull().default("brief"),
     postUrl: text("post_url"),
     parentTaskId: uuid("parent_task_id").references(() => tasks.id),
+    /** Khoá upsert khi import T6 (Mục 10.2). */
+    externalKey: text("external_key"),
+    importScope: text("import_scope"),
     ...auditColumns,
     ...softDeleteColumn,
   },
-  (t) => [index("content_items_publish_idx").on(t.publishDate)],
+  (t) => [
+    index("content_items_publish_idx").on(t.publishDate),
+    uniqueIndex("content_items_import_uniq")
+      .on(t.importScope, t.externalKey)
+      .where(sql`${t.externalKey} is not null and ${t.deletedAt} is null`),
+  ],
 );
 
 /** SPEC Mục 4.2 / 7.3 / 9.7 `media_shoots` + `media_deliverables` — Phase 2. */
@@ -80,5 +89,20 @@ export const mediaDeliverables = pgTable(
   (t) => [index("media_deliverables_shoot_idx").on(t.shootId)],
 );
 
+/**
+ * SPEC Mục 7.2 / 13.4 `content_workflow_template` — các bước task con tự sinh
+ * cho 1 content_item ("Soạn nội dung", "Thiết kế", "Duyệt", "Đăng bài"...).
+ * `brandId`/`channel` null = áp dụng mặc định khi không có template riêng.
+ * `steps`: [{ label, offsetWorkdaysBeforePublish, assigneeId? }], theo thứ tự mảng.
+ */
+export const contentWorkflowTemplates = pgTable("content_workflow_templates", {
+  id: pkUuid(),
+  brandId: uuid("brand_id").references(() => brands.id),
+  channel: text("channel"),
+  steps: jsonb("steps").notNull(),
+  ...auditColumns,
+});
+
 export type ContentItem = typeof contentItems.$inferSelect;
 export type MediaShoot = typeof mediaShoots.$inferSelect;
+export type ContentWorkflowTemplate = typeof contentWorkflowTemplates.$inferSelect;

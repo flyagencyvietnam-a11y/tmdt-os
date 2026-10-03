@@ -1,4 +1,5 @@
-import { date, index, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { date, index, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, pkUuid, softDeleteColumn } from "./_shared";
 import {
   requestInScopeEnum,
@@ -35,12 +36,18 @@ export const requests = pgTable(
     deliverableUrl: text("deliverable_url"),
     rejectReason: text("reject_reason"),
     taskId: uuid("task_id").references(() => tasks.id),
+    /** Khoá upsert khi import T5 (Mục 10.2) — giống cơ chế `tasks.external_key`. */
+    externalKey: text("external_key"),
+    importScope: text("import_scope"),
     ...auditColumns,
     ...softDeleteColumn,
   },
   (t) => [
     index("requests_status_idx").on(t.status),
     index("requests_sbu_idx").on(t.requesterSbuId),
+    uniqueIndex("requests_import_uniq")
+      .on(t.importScope, t.externalKey)
+      .where(sql`${t.externalKey} is not null and ${t.deletedAt} is null`),
   ],
 );
 

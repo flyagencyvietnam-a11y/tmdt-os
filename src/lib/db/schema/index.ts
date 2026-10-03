@@ -9,5 +9,7 @@ export * from "./task-relations";
 export * from "./requests";
 export * from "./content";
 export * from "./sbu-catalog";
+export * from "./ads";
+export * from "./monitoring";
 export * from "./system";
 export * from "./relations";
