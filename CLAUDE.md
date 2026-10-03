@@ -65,9 +65,15 @@ là một app hoàn toàn mới về nghiệp vụ.
   fan-out + seed Phụ lục C, thông báo app/email + web push + cron, dashboard,
   List/Kanban/**Lịch**/**Gantt**/**Workload**, campaign master + **nhân bản
   campaign**, request, SBU + **ma trận hạng mục × SBU** (`/sbu/matrix`, tự cập
-  nhật từ task thật — Mục 6.6), **Content calendar** (`/content`, tự sinh task
-  cha+con theo `content_workflow_templates`, mặc định Soạn/Thiết kế(Trân)/Duyệt
-  (Trưởng phòng)/Đăng), **Media production plan** (`/quay-chup`, tự sinh task
+  nhật từ task thật — Mục 6.6), **Content calendar** (`/content` — List
+  (DataGrid, màu theo brand+kênh) **và Lịch** (react-big-calendar, màu theo
+  brand), tab lọc nhanh theo brand, cột tick nhanh "Đã đăng" (+ trong quick-view
+  dialog khi bấm vào ô Lịch), nút "Nhập plan tháng" link sang Import?tab=t6; tự
+  sinh task cha+con theo `content_workflow_templates`, mặc định Soạn/Thiết kế
+  (Trân)/Duyệt(Trưởng phòng)/Đăng; tick "Đã đăng" đóng **toàn bộ** task con +
+  task cha, không chỉ task cha — xem `content-colors.ts` cho bảng màu 7 brand +
+  6 kênh (Fanpage/TikTok/Zalo/Website/YouTube/Khác), đổi màu thì sửa ở đây, đừng
+  lặp bảng màu riêng ở nơi khác), **Media production plan** (`/quay-chup`, tự sinh task
   chuẩn bị+quay+hậu kỳ, tạo lịch quay định kỳ), **Foundation** (`/nen-tang`,
   lưới brand×cấu phần + lịch sử + "tạo task từ ô"), **Monitoring** (`/giam-sat`,
   cảnh báo quá hạn/sắp hạn tự sinh task), **Ads hàng tháng theo SBU** (`/ads`),

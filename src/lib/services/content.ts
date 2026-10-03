@@ -203,7 +203,19 @@ export async function updateContentItem(
   }
 
   // "Đăng bài" task done ⇄ content_item.status = published (đồng bộ 2 chiều, Mục 7.2).
+  // Tick "Đã đăng" nghĩa là toàn bộ quy trình đã xong — đóng luôn các task con
+  // (Soạn nội dung/Thiết kế/Duyệt/Đăng bài) đang mở, không chỉ riêng task cha,
+  // để task "Đăng bài: ..." không bị kẹt ở "Cần làm" trong khi content đã published.
   if (patch.status === "published" && before.parentTaskId) {
+    const openChildren = await db
+      .select({ id: tasks.id, status: tasks.status })
+      .from(tasks)
+      .where(and(eq(tasks.parentId, before.parentTaskId), isNull(tasks.deletedAt)));
+    for (const child of openChildren) {
+      if (child.status !== "done" && child.status !== "cancelled") {
+        await updateTask(db, child.id, { status: "done" }, actorId, { trackManualEdit: false });
+      }
+    }
     await updateTask(db, before.parentTaskId, { status: "done" }, actorId, { trackManualEdit: false });
   }
 

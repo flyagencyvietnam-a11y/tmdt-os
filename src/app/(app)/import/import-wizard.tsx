@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { T1Wizard } from "./t1-wizard";
 import { T2Wizard } from "./t2-wizard";
@@ -11,9 +12,15 @@ import { T7Wizard } from "./t7-wizard";
 import { T8Wizard } from "./t8-wizard";
 import { T9Wizard } from "./t9-wizard";
 
+const VALID_TABS = ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9"];
+
 export function ImportWizard({ isAdmin }: { isAdmin: boolean }) {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const initialTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : "t1";
+
   return (
-    <Tabs defaultValue="t1">
+    <Tabs defaultValue={initialTab}>
       <TabsList className="flex-wrap">
         <TabsTrigger value="t1">T1 — Plan campaign</TabsTrigger>
         <TabsTrigger value="t3">T3 — Task lẻ</TabsTrigger>
