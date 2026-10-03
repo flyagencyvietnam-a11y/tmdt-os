@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, pkUuid } from "./_shared";
 import { sbuCatalogGroupEnum, sbuItemStatusEnum, sbuItemStatusSourceEnum } from "./enums";
 import { recurringRules } from "./recurring-rules";
@@ -47,7 +47,7 @@ export const sbuItemStatus = pgTable(
   },
   (t) => [
     index("sbu_item_status_period_idx").on(t.period),
-    index("sbu_item_status_catalog_sbu_idx").on(t.catalogItemId, t.sbuId, t.period),
+    uniqueIndex("sbu_item_status_catalog_sbu_uniq").on(t.catalogItemId, t.sbuId, t.period),
   ],
 );
 

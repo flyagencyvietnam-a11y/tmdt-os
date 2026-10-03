@@ -10,10 +10,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { createTaskAction, updateTaskAction } from "./actions";
 import { KanbanColumn } from "./kanban-column";
+import { TaskCalendar } from "./task-calendar";
+import { TaskGrid } from "./task-grid";
 
 export interface TaskItem {
   id: string;
@@ -26,6 +27,8 @@ export interface TaskItem {
   dueDate: string | null;
   campaignId: string | null;
   blockedReason: string | null;
+  sourceType: string;
+  channel: string | null;
 }
 
 const STATUSES = [
@@ -35,13 +38,6 @@ const STATUSES = [
   { key: "blocked", label: "Bị chặn" },
   { key: "done", label: "Xong" },
 ] as const;
-
-const PRIORITY_LABEL: Record<string, string> = { urgent: "Gấp", high: "Cao", medium: "TB", low: "Thấp" };
-
-const STATUS_SELECT_OPTIONS: { value: string; label: string }[] = [
-  ...STATUSES.map((s) => ({ value: s.key as string, label: s.label as string })),
-  { value: "cancelled", label: "Huỷ" },
-];
 
 export function TaskBoard({
   tasks,
@@ -57,7 +53,7 @@ export function TaskBoard({
   canAssignOthers: boolean;
 }) {
   const router = useRouter();
-  const [view, setView] = React.useState<"list" | "kanban">("list");
+  const [view, setView] = React.useState<"list" | "kanban" | "calendar">("list");
   const [statusFilter, setStatusFilter] = React.useState<string>("open");
   const [assigneeFilter, setAssigneeFilter] = React.useState<string>("all");
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -113,6 +109,12 @@ export function TaskBoard({
           >
             Kanban
           </button>
+          <button
+            className={cn("px-2.5 py-1", view === "calendar" && "bg-brand/10 font-medium text-brand")}
+            onClick={() => setView("calendar")}
+          >
+            Lịch
+          </button>
         </div>
         <SimpleSelect
           value={statusFilter}
@@ -137,54 +139,8 @@ export function TaskBoard({
         </Button>
       </div>
 
-      {view === "list" ? (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Mã</th>
-                <th className="px-3 py-2">Tiêu đề</th>
-                <th className="px-3 py-2">Người phụ trách</th>
-                <th className="px-3 py-2">Hạn</th>
-                <th className="px-3 py-2">Ưu tiên</th>
-                <th className="px-3 py-2">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((t) => {
-                const overdue = !!t.dueDate && t.dueDate < today && t.status !== "done" && t.status !== "cancelled";
-                return (
-                  <tr key={t.id} className="border-b hover:bg-muted/20">
-                    <td className="px-3 py-2 text-xs text-muted-foreground">{t.code}</td>
-                    <td className="px-3 py-2">
-                      <a href={`/task/${t.id}`} className="hover:underline">
-                        {t.title}
-                      </a>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{userName(t.assigneeId)}</td>
-                    <td className={cn("px-3 py-2", overdue && "font-medium text-crit")}>{fmtDate(t.dueDate)}</td>
-                    <td className="px-3 py-2">{PRIORITY_LABEL[t.priority]}</td>
-                    <td className="px-3 py-2">
-                      <SimpleSelect
-                        value={t.status}
-                        onValueChange={(v) => v && move(t.id, v)}
-                        options={STATUS_SELECT_OPTIONS}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-              {visible.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
-                    Không có task.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      ) : (
+      {view === "list" && <TaskGrid rows={visible} users={users} campaigns={campaigns} canEdit canAssignOthers={canAssignOthers} />}
+      {view === "kanban" && (
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
           <div className="grid gap-3 md:grid-cols-5">
             {STATUSES.map((col) => (
@@ -201,6 +157,7 @@ export function TaskBoard({
           </div>
         </DndContext>
       )}
+      {view === "calendar" && <TaskCalendar tasks={visible} />}
 
       <CreateTaskDialog
         open={createOpen}

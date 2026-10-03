@@ -4,6 +4,8 @@ import {
   activityLog,
   checklistItems,
   comments,
+  sbuCatalogItems,
+  sbuItemStatus,
   taskCollaborators,
   taskDependencies,
   taskLabels,
@@ -473,12 +475,28 @@ export async function toggleChecklistItem(
     const [task] = await db.select().from(tasks).where(eq(tasks.id, item.taskId)).limit(1);
     if (task?.recurringRuleId && task.occurrenceDate) {
       const period = task.occurrenceDate.slice(0, 7);
-      // cascade: nếu rule gắn với hạng mục catalog (default_recurring_rule_id), cập nhật trạng thái.
-      await db.execute(sql`
-        update sbu_item_status set status = ${done ? "done" : "in_progress"}, status_source = 'derived_from_task', task_id = ${task.id}
-        where sbu_id = ${item.sbuId} and period = ${period}
-          and catalog_item_id in (select id from sbu_catalog_items where default_recurring_rule_id = ${task.recurringRuleId})
-      `);
+      // cascade: nếu rule gắn với hạng mục catalog (default_recurring_rule_id), upsert trạng thái
+      // (Mục 6.6) — chưa có dòng sẵn cho (hạng mục, SBU, kỳ) nên phải insert-or-update, không thể update suông.
+      const catalogMatches = await db
+        .select({ id: sbuCatalogItems.id })
+        .from(sbuCatalogItems)
+        .where(eq(sbuCatalogItems.defaultRecurringRuleId, task.recurringRuleId));
+      for (const { id: catalogItemId } of catalogMatches) {
+        await db
+          .insert(sbuItemStatus)
+          .values({
+            catalogItemId,
+            sbuId: item.sbuId,
+            period,
+            status: done ? "done" : "in_progress",
+            statusSource: "derived_from_task",
+            taskId: task.id,
+          })
+          .onConflictDoUpdate({
+            target: [sbuItemStatus.catalogItemId, sbuItemStatus.sbuId, sbuItemStatus.period],
+            set: { status: done ? "done" : "in_progress", statusSource: "derived_from_task", taskId: task.id, updatedBy: actorId },
+          });
+      }
     }
   }
 

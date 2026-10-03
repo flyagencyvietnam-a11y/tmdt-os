@@ -60,7 +60,7 @@ export interface DataGridProps<Row> {
   rows: Row[];
   getRowId: (row: Row) => string;
   /** Cho saved views + tên file export. */
-  entity: "LEADS" | "CAMPAIGNS" | "TASKS" | "DAILY_METRICS" | "ENROLLMENTS";
+  entity: string;
   initialView?: ViewConfig;
   savedViews?: SavedViewLike[];
   onSaveView?: (name: string, config: ViewConfig) => Promise<void> | void;

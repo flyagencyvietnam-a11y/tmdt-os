@@ -18,6 +18,8 @@ async function upsertUser(input: {
   fullName: string;
   role: (typeof schema.roleEnum.enumValues)[number];
   canAssign?: boolean;
+  password?: string;
+  mustChangePassword?: boolean;
 }) {
   const [existing] = await db.select().from(schema.users).where(eq(schema.users.email, input.email)).limit(1);
   if (existing) return existing;
@@ -25,11 +27,11 @@ async function upsertUser(input: {
     .insert(schema.users)
     .values({
       email: input.email,
-      passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 12),
+      passwordHash: await bcrypt.hash(input.password ?? ADMIN_PASSWORD, 12),
       fullName: input.fullName,
       role: input.role,
       canAssign: input.canAssign ?? false,
-      mustChangePassword: true,
+      mustChangePassword: input.mustChangePassword ?? true,
     })
     .returning();
   return row;
@@ -52,12 +54,29 @@ async function seedUsers() {
   const khiet = await upsertUser({ email: "khiet@vmg.local", fullName: "Khiết", role: "member" });
   const dat = await upsertUser({ email: "dat@vmg.local", fullName: "Đạt", role: "member" });
   const tran = await upsertUser({ email: "tran@vmg.local", fullName: "Trân", role: "member" });
-  console.log(`users: admin=${admin.email} khiet=${khiet.email} dat=${dat.email} tran=${tran.email}`);
+  // Tài khoản dự phòng luôn đăng nhập được — theo yêu cầu người dùng. KHÔNG dùng
+  // mật khẩu này sau khi mời người dùng thật / trước khi public ra ngoài đội.
+  const fallbackAdmin = await upsertUser({
+    email: "admin",
+    fullName: "Admin (dự phòng)",
+    role: "admin",
+    canAssign: true,
+    password: "admin",
+    mustChangePassword: false,
+  });
+  console.log(
+    `users: admin=${admin.email} khiet=${khiet.email} dat=${dat.email} tran=${tran.email} fallback=${fallbackAdmin.email}`,
+  );
   console.warn(
     "[seed] 4 email trên là placeholder @vmg.local, KHÔNG phải email thật — đổi qua Cài đặt ▸ Người dùng " +
       "hoặc nạp lại bằng template T2 trước khi mời người dùng thật đăng nhập.",
   );
-  return { admin, khiet, dat, tran };
+  console.warn(
+    "[seed] Tài khoản dự phòng 'admin' / 'admin' (full quyền, không bắt đổi mật khẩu) đã tạo theo " +
+      "yêu cầu — mật khẩu YẾU, chỉ dùng nội bộ lúc test. Đổi hoặc vô hiệu hoá (set active=false) " +
+      "qua Cài đặt ▸ Người dùng trước khi mời người dùng thật / public ra ngoài.",
+  );
+  return { admin, khiet, dat, tran, fallbackAdmin };
 }
 
 /** SPEC Mục 15 — 12 SBU. [CẦN XÁC NHẬN] danh sách trung tâm thuộc KV2 và KV3 (gộp tạm KV2_KV3). */

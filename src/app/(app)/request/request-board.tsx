@@ -4,13 +4,14 @@ import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Textarea } from "@/components/ui/textarea";
+import { DataGrid, type GridColumn } from "@/components/data-grid";
+import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
 import { acceptRequestAction, createRequestAction, updateRequestStatusAction } from "./actions";
 
@@ -47,6 +48,15 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: "Từ chối",
   postponed: "Hoãn",
 };
+const STATUS_COLORS: Record<string, TagColor> = {
+  new: "red",
+  accepted: "blue",
+  in_progress: "amber",
+  in_review: "violet",
+  done: "emerald",
+  rejected: "gray",
+  postponed: "slate",
+};
 
 export function RequestBoard({
   requests,
@@ -59,7 +69,85 @@ export function RequestBoard({
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [pending, start] = React.useTransition();
+
+  const sbuLabel = React.useCallback(
+    (id: string | null) => {
+      const s = sbus.find((x) => x.id === id);
+      return s ? s.code : "";
+    },
+    [sbus],
+  );
+
+  const columns: GridColumn<RequestItem>[] = React.useMemo(
+    () => [
+      { field: "code", header: "Mã", kind: "text", accessor: (r) => r.code, defaultWidth: 100, groupable: false },
+      { field: "requesterName", header: "Người yêu cầu", kind: "text", accessor: (r) => r.requesterName, defaultWidth: 160, groupable: false },
+      {
+        field: "requesterSbuId",
+        header: "Trung tâm",
+        kind: "enum",
+        accessor: (r) => r.requesterSbuId ?? "",
+        cell: (r) => sbuLabel(r.requesterSbuId) || <span className="text-muted-foreground">—</span>,
+        enumOptions: sbus.map((s) => ({ value: s.id, label: s.code })),
+        filterOptions: sbus.map((s) => ({ value: s.id, label: s.code })),
+        defaultWidth: 100,
+      },
+      {
+        field: "requestType",
+        header: "Loại",
+        kind: "enum",
+        accessor: (r) => r.requestType,
+        enumLabels: TYPE_LABEL,
+        defaultWidth: 110,
+      },
+      {
+        field: "description",
+        header: "Mô tả",
+        kind: "text",
+        accessor: (r) => r.description,
+        defaultWidth: 280,
+        groupable: false,
+        cell: (r) => (
+          <span className="line-clamp-1" title={r.description}>
+            {r.description}
+          </span>
+        ),
+      },
+      {
+        field: "committedDate",
+        header: "Hạn cam kết",
+        kind: "date",
+        accessor: (r) => r.committedDate,
+        cell: (r) => fmtDate(r.committedDate),
+        defaultWidth: 110,
+        groupable: false,
+      },
+      {
+        field: "status",
+        header: "Trạng thái",
+        kind: "enum",
+        accessor: (r) => r.status,
+        enumLabels: STATUS_LABEL,
+        enumColors: STATUS_COLORS,
+        defaultWidth: 120,
+      },
+      ...(canManage
+        ? ([
+            {
+              field: "__actions",
+              header: "Thao tác",
+              kind: "text",
+              accessor: () => "",
+              sortable: false,
+              groupable: false,
+              defaultWidth: 160,
+              cell: (r) => <RequestActions request={r} />,
+            },
+          ] as GridColumn<RequestItem>[])
+        : []),
+    ],
+    [sbus, sbuLabel, canManage],
+  );
 
   return (
     <div className="space-y-3">
@@ -68,105 +156,74 @@ export function RequestBoard({
           <Plus className="mr-1 h-4 w-4" /> Request mới
         </Button>
       </div>
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Mã</th>
-              <th className="px-3 py-2">Người yêu cầu</th>
-              <th className="px-3 py-2">Loại</th>
-              <th className="px-3 py-2">Mô tả</th>
-              <th className="px-3 py-2">Hạn cam kết</th>
-              <th className="px-3 py-2">Trạng thái</th>
-              {canManage && <th className="px-3 py-2 text-right">Thao tác</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((r) => (
-              <RequestRow key={r.id} r={r} canManage={canManage} pending={pending} start={start} router={router} />
-            ))}
-            {requests.length === 0 && (
-              <tr>
-                <td colSpan={canManage ? 7 : 6} className="px-3 py-6 text-center text-muted-foreground">
-                  Chưa có request.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
 
-      <CreateRequestDialog open={open} onOpenChange={setOpen} sbus={sbus} onDone={() => { setOpen(false); router.refresh(); }} />
+      <DataGrid
+        entity="requests"
+        columns={columns}
+        rows={requests}
+        getRowId={(r) => r.id}
+        initialView={{ sorts: [{ field: "receivedDate", direction: "desc" }] }}
+        emptyText="Chưa có request."
+      />
+
+      <CreateRequestDialog
+        open={open}
+        onOpenChange={setOpen}
+        sbus={sbus}
+        onDone={() => {
+          setOpen(false);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
 
-function RequestRow({
-  r,
-  canManage,
-  pending,
-  start,
-  router,
-}: {
-  r: RequestItem;
-  canManage: boolean;
-  pending: boolean;
-  start: React.TransitionStartFunction;
-  router: ReturnType<typeof useRouter>;
-}) {
+function RequestActions({ request: r }: { request: RequestItem }) {
+  const router = useRouter();
+  const [pending, start] = React.useTransition();
   const [committedDate, setCommittedDate] = React.useState(r.desiredDate ?? "");
-  return (
-    <tr className="border-b align-top hover:bg-muted/20">
-      <td className="px-3 py-2 text-xs text-muted-foreground">{r.code}</td>
-      <td className="px-3 py-2">{r.requesterName}</td>
-      <td className="px-3 py-2">{TYPE_LABEL[r.requestType] ?? r.requestType}</td>
-      <td className="max-w-xs px-3 py-2 truncate" title={r.description}>{r.description}</td>
-      <td className="px-3 py-2 text-muted-foreground">{fmtDate(r.committedDate)}</td>
-      <td className="px-3 py-2">
-        <Badge variant="secondary">{STATUS_LABEL[r.status] ?? r.status}</Badge>
-      </td>
-      {canManage && (
-        <td className="px-3 py-2">
-          <div className="flex flex-col items-end gap-1">
-            {r.status === "new" && (
-              <div className="flex items-center gap-1">
-                <Input type="date" className="h-7 w-32 text-xs" value={committedDate} onChange={(e) => setCommittedDate(e.target.value)} />
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  onClick={() =>
-                    start(async () => {
-                      const res = await acceptRequestAction(r.id, committedDate);
-                      if (res.ok) router.refresh();
-                      else toast.error(res.error);
-                    })
-                  }
-                >
-                  Nhận
-                </Button>
-              </div>
-            )}
-            {["accepted", "in_progress", "in_review"].includes(r.status) && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={() =>
-                  start(async () => {
-                    const res = await updateRequestStatusAction(r.id, "done");
-                    if (res.ok) router.refresh();
-                    else toast.error(res.error);
-                  })
-                }
-              >
-                Đánh dấu xong
-              </Button>
-            )}
-          </div>
-        </td>
-      )}
-    </tr>
-  );
+
+  if (r.status === "new") {
+    return (
+      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <Input type="date" className="h-7 w-28 text-xs" value={committedDate} onChange={(e) => setCommittedDate(e.target.value)} />
+        <Button
+          size="sm"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              const res = await acceptRequestAction(r.id, committedDate);
+              if (res.ok) router.refresh();
+              else toast.error(res.error);
+            })
+          }
+        >
+          Nhận
+        </Button>
+      </div>
+    );
+  }
+  if (["accepted", "in_progress", "in_review"].includes(r.status)) {
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={(e) => {
+          e.stopPropagation();
+          start(async () => {
+            const res = await updateRequestStatusAction(r.id, "done");
+            if (res.ok) router.refresh();
+            else toast.error(res.error);
+          });
+        }}
+      >
+        Đánh dấu xong
+      </Button>
+    );
+  }
+  return null;
 }
 
 function CreateRequestDialog({

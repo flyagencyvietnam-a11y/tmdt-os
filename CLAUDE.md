@@ -60,11 +60,17 @@ là một app hoàn toàn mới về nghiệp vụ.
   khẩu do admin tạo). Google OAuth domain-restricted để dành khi công ty xác
   nhận có Workspace. Magic-link xác nhận task cho `center_contributor` (Mục
   3.3/11.4) độc lập với đăng nhập, đã làm (`/xac-nhan/[token]`).
-- Phạm vi đã build: Phase 0 (schema, auth, seed) + phần lớn Phase 1 MVP (task
-  engine, recurring đầy đủ + fan-out + seed Phụ lục C, thông báo app/email +
-  cron, dashboard, List/Kanban, campaign master, request, import **T3 only**).
-  **Chưa làm**: import T1/T2/T4 (UI), Lịch/Gantt/Workload, Content calendar,
-  Media plan, Foundation UI, SBU matrix đầy đủ — xem SPEC Mục 14.3 (Phase 2).
+- Phạm vi đã build: Phase 0 đầy đủ + Phase 1 MVP đầy đủ, cộng một phần Phase 2
+  (task engine, recurring đầy đủ + fan-out + seed Phụ lục C, thông báo app/email
+  + cron, dashboard, List/Kanban/**Lịch**, campaign master, request, SBU +
+  **ma trận hạng mục × SBU** (`/sbu/matrix`, tự cập nhật từ task thật — Mục
+  6.6), import **T1/T2/T3/T4** đủ 4 bước + undo). Mọi view dạng bảng (Task/
+  Campaign/Request/SBU) dùng chung `src/components/data-grid/` — filter/sort/
+  group-by/saved-view kiểu Airtable, **bắt buộc dùng component này cho mọi
+  gridview mới**, không tự viết `<table>` thô.
+  **Chưa làm**: Gantt, Workload, Content calendar tự sinh task, Media
+  production plan, Foundation UI, xuất ICS/lịch tuần BOD, nhân bản campaign,
+  web push, Zalo, AI assist — xem SPEC Mục 14.3/14.4 (Phase 2 còn lại/Phase 3).
 - Stack: Next.js 16 (App Router) + React 19 + Tailwind v4 + shadcn/ui (Base UI)
   + Drizzle + postgres-js + Auth.js v5 (Credentials) + `rrule` + `@dnd-kit` +
   `react-big-calendar` (chưa dùng, cài sẵn cho Lịch ở lượt sau) + `exceljs`.
@@ -84,8 +90,11 @@ src/lib/services/tasks.ts           *** task engine — nguồn logic trạng th
 src/lib/services/recurring.ts       *** recurring engine — đọc kỹ trước khi sửa ***
 src/lib/services/workdays.ts        ngày làm việc / ngày lễ (dùng cho recurring)
 src/lib/services/jobs.ts            tác vụ cron (digest, escalate, spawn-recurring)
-src/lib/services/import/            pipeline nhập liệu (parse → validate → dry-run → confirm)
-src/app/(app)/task/                 Dashboard + List/Kanban + task detail
+src/lib/services/import/            pipeline nhập liệu T1-T4 (parse → validate → dry-run → confirm)
+src/components/data-grid/           *** grid dùng chung (filter/sort/group-by kiểu Airtable) —
+                                     mọi view bảng mới PHẢI dùng component này, không viết <table> thô
+src/app/(app)/task/                 Dashboard + List (DataGrid)/Kanban/Lịch + task detail
+src/app/(app)/sbu/matrix/           ma trận hạng mục × SBU × kỳ (SPEC Mục 9.3/6.6)
 src/app/(app)/{campaign,request,sbu,import,cai-dat,nguoi-dung}/
 src/app/xac-nhan/[token]/           magic-link xác nhận task (public, không cần đăng nhập)
 ```

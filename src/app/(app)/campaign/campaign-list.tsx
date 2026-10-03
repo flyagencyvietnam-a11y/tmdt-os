@@ -4,14 +4,15 @@ import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { DataGrid, type GridColumn } from "@/components/data-grid";
+import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
-import { createCampaignAction } from "./actions";
+import { createCampaignAction, updateCampaignAction } from "./actions";
 
 const TYPE_LABEL: Record<string, string> = {
   brand_theme: "Brand Theme",
@@ -32,19 +33,127 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Huỷ",
   needs_confirmation: "Cần xác nhận",
 };
+const STATUS_COLORS: Record<string, TagColor> = {
+  planned: "slate",
+  preparing: "amber",
+  running: "blue",
+  paused: "orange",
+  done: "emerald",
+  cancelled: "gray",
+  needs_confirmation: "red",
+};
 
-export function CampaignList({
-  campaigns,
-  canEdit,
-}: {
-  campaigns: { id: string; code: string; name: string; type: string; startDate: string; endDate: string; status: string }[];
-  canEdit: boolean;
-}) {
+interface CampaignRow {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  taskTotal: number;
+  taskDone: number;
+  progressPct: number | null;
+  overdueCount: number;
+}
+
+export function CampaignList({ campaigns, canEdit }: { campaigns: CampaignRow[]; canEdit: boolean }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, start] = React.useTransition();
   const [f, setF] = React.useState({ code: "", name: "", type: "other", startDate: "", endDate: "" });
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  const onEditCell = React.useCallback(
+    async (rowId: string, field: string, raw: string) => {
+      if (field !== "status" && field !== "type") return;
+      const res = await updateCampaignAction({ id: rowId, [field]: raw } as never);
+      if (res.ok) router.refresh();
+      else toast.error(res.error);
+    },
+    [router],
+  );
+
+  const columns: GridColumn<CampaignRow>[] = React.useMemo(
+    () => [
+      { field: "code", header: "Mã", kind: "text", accessor: (r) => r.code, defaultWidth: 120, groupable: false },
+      {
+        field: "name",
+        header: "Tên",
+        kind: "text",
+        accessor: (r) => r.name,
+        defaultWidth: 260,
+        groupable: false,
+        cell: (r) => (
+          <a href={`/campaign/${r.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+            {r.name}
+          </a>
+        ),
+      },
+      {
+        field: "type",
+        header: "Loại",
+        kind: "enum",
+        accessor: (r) => r.type,
+        enumLabels: TYPE_LABEL,
+        editable: canEdit,
+        editKind: "select",
+        editOptions: Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label })),
+        editValue: (r) => r.type,
+        defaultWidth: 160,
+      },
+      {
+        field: "status",
+        header: "Trạng thái",
+        kind: "enum",
+        accessor: (r) => r.status,
+        enumLabels: STATUS_LABEL,
+        enumColors: STATUS_COLORS,
+        editable: canEdit,
+        editKind: "select",
+        editOptions: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
+        editValue: (r) => r.status,
+        defaultWidth: 140,
+      },
+      {
+        field: "startDate",
+        header: "Bắt đầu",
+        kind: "date",
+        accessor: (r) => r.startDate,
+        cell: (r) => fmtDate(r.startDate),
+        defaultWidth: 100,
+        groupable: false,
+      },
+      {
+        field: "endDate",
+        header: "Kết thúc",
+        kind: "date",
+        accessor: (r) => r.endDate,
+        cell: (r) => fmtDate(r.endDate),
+        defaultWidth: 100,
+        groupable: false,
+      },
+      {
+        field: "progressPct",
+        header: "Tiến độ",
+        kind: "number",
+        accessor: (r) => r.progressPct,
+        cell: (r) => (r.progressPct === null ? <span className="text-muted-foreground">—</span> : `${r.taskDone}/${r.taskTotal} (${r.progressPct}%)`),
+        align: "right",
+        groupable: false,
+      },
+      {
+        field: "overdueCount",
+        header: "Trễ hạn",
+        kind: "number",
+        accessor: (r) => r.overdueCount,
+        cell: (r) => (r.overdueCount > 0 ? <span className="font-medium text-crit">{r.overdueCount}</span> : "0"),
+        align: "right",
+        groupable: false,
+      },
+    ],
+    [canEdit],
+  );
 
   return (
     <div className="space-y-3">
@@ -55,45 +164,16 @@ export function CampaignList({
           </Button>
         </div>
       )}
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Mã</th>
-              <th className="px-3 py-2">Tên</th>
-              <th className="px-3 py-2">Loại</th>
-              <th className="px-3 py-2">Thời gian</th>
-              <th className="px-3 py-2">Trạng thái</th>
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map((c) => (
-              <tr key={c.id} className="border-b hover:bg-muted/20">
-                <td className="px-3 py-2 text-xs text-muted-foreground">{c.code}</td>
-                <td className="px-3 py-2">
-                  <a href={`/campaign/${c.id}`} className="font-medium hover:underline">
-                    {c.name}
-                  </a>
-                </td>
-                <td className="px-3 py-2">{TYPE_LABEL[c.type] ?? c.type}</td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {fmtDate(c.startDate)} – {fmtDate(c.endDate)}
-                </td>
-                <td className="px-3 py-2">
-                  <Badge variant={c.status === "needs_confirmation" ? "outline" : "secondary"}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
-                </td>
-              </tr>
-            ))}
-            {campaigns.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
-                  Chưa có campaign. Nạp qua template T1 hoặc tạo thủ công.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+
+      <DataGrid
+        entity="campaigns"
+        columns={columns}
+        rows={campaigns}
+        getRowId={(r) => r.id}
+        initialView={{ sorts: [{ field: "startDate", direction: "desc" }] }}
+        onEditCell={canEdit ? onEditCell : undefined}
+        emptyText="Chưa có campaign. Nạp qua template T1 hoặc tạo thủ công."
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

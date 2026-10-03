@@ -11,7 +11,7 @@ Dự án này kế thừa hạ tầng (Vercel project, repo, Postgres) từ **TM
 (lead/ads tracker) — dự án đó đã dừng vĩnh viễn. MKT OS là một ứng dụng hoàn
 toàn khác về nghiệp vụ, xây lại từ đầu trên cùng stack kỹ thuật.
 
-## Trạng thái: Phase 0 (nền tảng) + phần lớn Phase 1 (MVP)
+## Trạng thái: Phase 0 + Phase 1 (MVP) đầy đủ, cộng một phần Phase 2
 
 ### Đã làm
 
@@ -35,17 +35,21 @@ toàn khác về nghiệp vụ, xây lại từ đầu trên cùng stack kỹ th
   `/api/cron`), dedupe theo `(user, channel, dedupe_key)`.
 - **Magic-link** cho `center_contributor` xác nhận task không cần đăng nhập
   (`/xac-nhan/[token]`, SPEC Mục 3.3/11.4).
-- **Giao diện**: Dashboard "Việc của tôi", Task List/Kanban (kéo thả
-  `@dnd-kit`), trang chi tiết task, Campaign master + Action plan, Request,
-  SBU (xem), Nhập liệu (template **T3** đầy đủ 4 bước: tải lên → kiểm tra →
-  xem trước → xác nhận, có undo 72h), Cài đặt, Người dùng.
+- **Data Grid dùng chung** (`src/components/data-grid/`) — filter/sort/
+  group-by/view đã lưu kiểu Airtable, inline-edit, bulk action, xuất CSV/XLSX.
+  Dùng cho mọi bảng: Task, Campaign, Request, SBU.
+- **Giao diện**: Dashboard "Việc của tôi", Task List (Data Grid)/Kanban (kéo
+  thả `@dnd-kit`)/**Lịch** (`react-big-calendar`), trang chi tiết task,
+  Campaign master + Action plan, Request, SBU + **ma trận hạng mục × SBU**
+  (`/sbu/matrix`, tự cập nhật từ task thật — Mục 6.6), **Nhập liệu T1–T4 đầy
+  đủ** (Plan campaign/Users-SBU/Task lẻ/Recurring — 4 bước: tải lên → kiểm
+  tra → xem trước → xác nhận, undo 72h cho T1/T3), Cài đặt, Người dùng.
 
-### Chưa làm (xem SPEC Mục 14.3 — Phase 2/3)
+### Chưa làm (xem SPEC Mục 14.3/14.4 — Phase 2 còn lại/Phase 3)
 
-Import T1 (Plan campaign)/T2 (Users-SBU)/T4 (Recurring) qua UI, Lịch, Gantt,
-Workload, Content calendar tự sinh task, Media production plan, Foundation
-UI, SBU master matrix đầy đủ, xuất ICS/lịch tuần BOD, nhân bản campaign, web
-push, Zalo, AI assist.
+Gantt, Workload, Content calendar tự sinh task, Media production plan,
+Foundation UI, xuất ICS/lịch tuần BOD, nhân bản campaign, web push, Zalo, AI
+assist.
 
 ### Câu hỏi mở — cần chủ sản phẩm trả lời trước khi lên production thật
 
@@ -59,7 +63,7 @@ agent — nạp qua template T1/T9 khi có file).
 
 TypeScript · Next.js 16 (App Router) · React 19 · Tailwind v4 + shadcn/ui ·
 Drizzle ORM + postgres-js · Auth.js v5 (Credentials) · `rrule` · `@dnd-kit` ·
-`exceljs` · `zod` · `vitest`.
+`react-big-calendar` · `exceljs` · `zod` · `vitest`.
 
 ## Chạy local
 

@@ -39,7 +39,7 @@ export default async function TaskListPage() {
       <div>
         <h1 className="text-xl font-semibold">Tất cả task</h1>
         <p className="text-sm text-muted-foreground">
-          List &amp; Kanban dùng chung bộ lọc (SPEC Mục 8.3). Lịch/Gantt/Workload để Phase 2.
+          List, Kanban &amp; Lịch dùng chung bộ lọc (SPEC Mục 8.3). Gantt/Workload để Phase 2.
         </p>
       </div>
       <TaskBoard
@@ -54,6 +54,8 @@ export default async function TaskListPage() {
           dueDate: t.dueDate,
           campaignId: t.campaignId,
           blockedReason: t.blockedReason,
+          sourceType: t.sourceType,
+          channel: t.channel,
         }))}
         users={allUsers}
         campaigns={allCampaigns}

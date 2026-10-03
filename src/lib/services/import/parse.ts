@@ -23,7 +23,25 @@ export async function parseSheet(buf: Buffer, filename: string): Promise<ParsedR
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as never);
   const ws = wb.worksheets[0];
-  if (!ws) return [];
+  return ws ? parseWorksheet(ws) : [];
+}
+
+/** Đọc nhiều sheet theo tên (ví dụ T1: CAMPAIGN + ACTIONS). Chỉ hỗ trợ .xlsx. */
+export async function parseWorkbookSheets(
+  buf: Buffer,
+  sheetNames: string[],
+): Promise<Record<string, ParsedRow[]>> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf as never);
+  const out: Record<string, ParsedRow[]> = {};
+  for (const name of sheetNames) {
+    const ws = wb.worksheets.find((w) => w.name.trim().toLowerCase() === name.toLowerCase());
+    out[name] = ws ? parseWorksheet(ws) : [];
+  }
+  return out;
+}
+
+function parseWorksheet(ws: ExcelJS.Worksheet): ParsedRow[] {
   const headerRow = ws.getRow(1).values as unknown[];
   const headers = headerRow.map((v) => (v == null ? "" : String(v).trim()));
   const out: ParsedRow[] = [];
