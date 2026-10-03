@@ -60,6 +60,18 @@ là một app hoàn toàn mới về nghiệp vụ.
   khẩu do admin tạo). Google OAuth domain-restricted để dành khi công ty xác
   nhận có Workspace. Magic-link xác nhận task cho `center_contributor` (Mục
   3.3/11.4) độc lập với đăng nhập, đã làm (`/xac-nhan/[token]`).
+- **Mốc CAD-01** (họp thống nhất Brand Theme tháng sau với BGĐ): ngày làm
+  việc cuối cùng của tháng — cùng ngày với CAD-07 (báo cáo Marketing tháng).
+  Rule đã `active=true`, `dayRule=last_working_day` (seed.ts + DB hiện tại).
+- **Tuần làm việc**: T2-T6 + **Thứ 7 (chỉ buổi sáng)**. `app_settings.work_days`
+  = `[1,2,3,4,5,6]` — lưu ý cột này KHÔNG phân biệt được nửa ngày, nên mọi tính
+  toán `last_working_day`/`first_working_day` coi Thứ 7 là ngày làm việc đầy
+  đủ (đơn giản hoá đã biết, chấp nhận được vì chỉ ảnh hưởng ngày deadline, không
+  ảnh hưởng giờ).
+- **KV2/KV3**: KV3 chỉ có **Bình Phước (BPH)**; LDN, TPU, PTA, NTI, HVG thuộc
+  **KV2**. Đã sửa `sbus.region` trực tiếp (seed.ts + DB hiện tại), không còn
+  dùng giá trị gộp `KV2_KV3` cho 6 SBU này nữa (enum value `KV2_KV3` vẫn giữ
+  trong schema phòng khi cần dùng lại, nhưng không SBU nào tham chiếu nữa).
 - Phạm vi đã build: Phase 0 + Phase 1 MVP đầy đủ, **cộng toàn bộ Phase 2 và
   phần Phase 3 không cần tích hợp bên ngoài** (task engine, recurring đầy đủ +
   fan-out + seed Phụ lục C, thông báo app/email + web push + cron, dashboard,
@@ -177,7 +189,11 @@ public/sw.js                        service worker tối giản cho Web push
 
 ## Câu hỏi mở chưa có câu trả lời (không tự đoán — hỏi chủ sản phẩm)
 
-Ngày họp mốc CAD-01 · SLA request theo loại · danh sách trung tâm KV2 và KV3 ·
-có làm việc thứ Bảy không · email thật của admin/Khiết/Đạt/Trân (đang seed
-placeholder `*@vmg.local`) · dữ liệu 28 campaign + 46 hạng mục SBU catalog từ
-file `VMG_Marketing_Strategy_Operations_2026.xlsx` (chưa được cung cấp).
+Email thật của admin/Khiết/Đạt/Trân (đang seed placeholder `*@vmg.local`) ·
+dữ liệu 28 campaign + 46 hạng mục SBU catalog từ file
+`VMG_Marketing_Strategy_Operations_2026.xlsx` (chưa được cung cấp) · SLA
+request theo loại (đã hỏi — chủ sản phẩm xác nhận CHƯA CÓ, giữ mặc định
+"người tiếp nhận tự nhập hạn cam kết", không phải việc còn treo nữa).
+
+4 câu đã CHỐT (xem "Quyết định đã chốt" bên trên) — không hỏi lại: ngày họp
+CAD-01, work_days có Thứ 7, danh sách KV2/KV3.

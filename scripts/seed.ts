@@ -86,12 +86,13 @@ async function seedSbus(khietId: string, datId: string) {
     { code: "PVT", name: "PVT", kind: "center", region: "KV1", hoOwnerId: khietId },
     { code: "NKN", name: "NKN", kind: "center", region: "KV1", hoOwnerId: khietId },
     { code: "TBM", name: "TBM", kind: "center", region: "KV1", hoOwnerId: khietId },
-    { code: "LDN", name: "LDN", kind: "center", region: "KV2_KV3", hoOwnerId: datId },
-    { code: "TPU", name: "TPU", kind: "center", region: "KV2_KV3", hoOwnerId: datId },
-    { code: "PTA", name: "PTA", kind: "center", region: "KV2_KV3", hoOwnerId: datId },
-    { code: "NTI", name: "NTI", kind: "center", region: "KV2_KV3", hoOwnerId: datId },
-    { code: "HVG", name: "HVG", kind: "center", region: "KV2_KV3", hoOwnerId: datId },
-    { code: "BPH", name: "BPH", kind: "center", region: "KV2_KV3", hoOwnerId: datId },
+    // KV2/KV3 đã chốt với chủ sản phẩm: KV3 chỉ có Bình Phước, còn lại thuộc KV2.
+    { code: "LDN", name: "LDN", kind: "center", region: "KV2", hoOwnerId: datId },
+    { code: "TPU", name: "TPU", kind: "center", region: "KV2", hoOwnerId: datId },
+    { code: "PTA", name: "PTA", kind: "center", region: "KV2", hoOwnerId: datId },
+    { code: "NTI", name: "NTI", kind: "center", region: "KV2", hoOwnerId: datId },
+    { code: "HVG", name: "HVG", kind: "center", region: "KV2", hoOwnerId: datId },
+    { code: "BPH", name: "BPH", kind: "center", region: "KV3", hoOwnerId: datId },
     { code: "TMDT", name: "Trung tâm Kinh doanh TMĐT", kind: "online_center", region: "ONLINE", hoOwnerId: khietId },
     { code: "VMP_VMT", name: "VMP_VMT", kind: "group", region: "RND", hoOwnerId: datId },
   ];
@@ -143,7 +144,14 @@ async function seedHolidays() {
 
 async function seedAppSettings(adminId: string) {
   const rows: (typeof schema.appSettings.$inferInsert)[] = [
-    { key: "work_days", value: [1, 2, 3, 4, 5], description: "Tuần làm việc của phòng — Mục 16.2 Q3 (mặc định T2-T6)", updatedBy: adminId },
+    {
+      key: "work_days",
+      value: [1, 2, 3, 4, 5, 6],
+      description:
+        "Tuần làm việc của phòng — Mục 16.2 Q3, ĐÃ CHỐT: T2-T6 + Thứ 7 (chỉ làm buổi sáng — work_days không " +
+        "phân biệt được nửa ngày, coi Thứ 7 là ngày làm việc đầy đủ cho mục đích tính last/first_working_day).",
+      updatedBy: adminId,
+    },
     { key: "quiet_hours", value: { start: "19:00", end: "07:30" }, description: "Giờ yên lặng — không gửi email ngoài khung này (Mục 11.3)", updatedBy: adminId },
     { key: "escalation_threshold_days", value: 2, description: "Số ngày làm việc trễ hạn trước khi nhắc quản lý (Mục 11.2)", updatedBy: adminId },
     {
@@ -169,16 +177,18 @@ async function seedRecurringRules(adminId: string) {
     {
       ruleCode: "CAD-01",
       name: "Họp thống nhất Brand Theme tháng sau",
-      description: "[CẦN XÁC NHẬN] ngày họp trong tháng — xem SPEC Phụ lục C mốc 01. Tạm để active=false cho tới khi có ngày.",
+      description:
+        "Mốc 01 — ĐÃ CHỐT: ngày làm việc cuối cùng của tháng (cùng ngày với CAD-07 báo cáo Marketing tháng, " +
+        "trước khi tháng kế tiếp bắt đầu).",
       taskTemplate: { title: "Họp thống nhất Brand Theme tháng {{next_month}}/{{year}} với BĐH", type: "meeting", priority: "high" },
       freq: "monthly",
-      dayRule: "calendar_day",
-      holidayPolicy: "shift_later",
+      dayRule: "last_working_day",
+      holidayPolicy: "none",
       startsOn,
       assignmentMode: "fixed_user",
       fixedAssigneeId: adminId,
       scopeMode: "single",
-      active: false, // chưa có ngày xác nhận — xem mô tả
+      active: true,
       createdBy: adminId,
     },
     {
@@ -366,7 +376,7 @@ async function seedRecurringRules(adminId: string) {
   for (const r of rules) {
     await db.insert(schema.recurringRules).values(r).onConflictDoNothing({ target: schema.recurringRules.ruleCode });
   }
-  console.log(`recurring_rules: ${rules.length} (Phụ lục C — CAD-01 tạm active=false, chưa có ngày họp xác nhận)`);
+  console.log(`recurring_rules: ${rules.length} (Phụ lục C — CAD-01 nay đã active, ngày họp = ngày làm việc cuối tháng)`);
 }
 
 /** SPEC Mục 16.1 — chỉ seed hạng mục catalog được NÊU TÊN RÕ trong spec, không bịa đủ 46 dòng. */
