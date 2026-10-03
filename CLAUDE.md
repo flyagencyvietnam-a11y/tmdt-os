@@ -123,10 +123,33 @@ là một app hoàn toàn mới về nghiệp vụ.
   (Khiết/Đạt), tái dùng 100% recurring engine có sẵn, không code mới.
   **Danh sách 10 trung tâm B2C offline đã xác nhận lại với chủ sản phẩm** (ăn
   khớp SPEC "10 trung tâm + TMĐT"): VTS, PVT, NKN, TBM, LDN, TPU, PTA, NTI,
-  HVG, BPH — **KHÔNG đổi** so với seed gốc. 4 tên khác xuất hiện trong file
-  Excel lịch sử (Trương Định/Trần Phú/Đại Phước/Nguyễn Trãi) là **trung tâm đã
-  đóng cửa**, cố tình KHÔNG có SBU record — nếu thấy số liệu ads cũ nhắc tới 4
-  tên này, đó là dữ liệu quá khứ, không phải trung tâm cần tạo mới.
+  HVG, BPH — **KHÔNG đổi** so với seed gốc. 2 tên khác xuất hiện trong sheet
+  "B2C Trung tâm" (Trương Định/Đại Phước) là **trung tâm đã đóng cửa**, cố
+  tình KHÔNG có SBU record — nếu thấy số liệu ads cũ nhắc tới 2 tên này, đó là
+  dữ liệu quá khứ, không phải trung tâm cần tạo mới.
+  **UI `/ads` tách rõ 4 tab theo đúng 3 chu kỳ report thật** (`ads-view.tsx`
+  chỉ còn là container mỏng): `weekly-view.tsx` (Theo tuần — chỉ Mục 1 + Mục 2,
+  chỉ Ngân sách+Mess, đúng phạm vi sheet "Tracking Tuần"), `monthly-view.tsx`
+  (Theo tháng — đủ 6 mảng, đủ CPL/CAC/CVR/điểm hiệu quả, logic y hệt bản cũ),
+  `requests-view.tsx` (Theo request — danh sách phẳng TẤT CẢ `ads_campaigns`
+  mọi SBU/kỳ, lọc theo SBU/kỳ, không gộp theo chu kỳ — trước đây bị giấu trong
+  dialog riêng từng SBU, giờ là 1 tab ngang hàng), `disbursement-panel.tsx`
+  (Giải ngân, không đổi). Type dùng chung ở `shared.ts` (Line/MetricRow/
+  SbuLite/CampaignRow/DisbursementRow/LINE_LABELS) — sửa field nào thì sửa ở
+  đây, đừng định nghĩa lại interface riêng ở từng view con.
+  **Đã nạp số liệu THẬT từ 3 file Excel gốc vào DB dev** (script một lần, đã
+  xoá sau khi chạy — không còn trong repo): 141 `ads_metrics` (6 mảng T1-T9/2026
+  từ sheet "Tổng hợp" + 10 SBU từ sheet "B2C Trung tâm", + tuần 1-8 từ sheet
+  "Tracking Tuần"), 33 `ads_campaigns` (từ "ads tt.xlsx" tháng 8+9), 9 dòng kế
+  hoạch giải ngân Mục 5/OSIR (22.5tr/tháng, từ sheet "Giải ngân Digital" — Mục
+  1/Mục 3 KHÔNG có kế hoạch tách dòng trong file gốc nên không tạo). Đã verify
+  khớp 100% với số liệu gốc qua UI (CPL/CAC/CVR/điểm hiệu quả, giải ngân).
+  **Mã viết tắt trung tâm KHÁC NHAU giữa 3 file** (vd. "ads tt.xlsx" dùng
+  nt/lkh/lth/xlc/bpc/ptn, "Báo cáo Q3" dùng TPU/LKH/LDN/XLO/BPC/PTN) đã được
+  đối chiếu chéo qua số chi tiêu/Lead/HVM trùng khớp tuyệt đối với sheet "B2C
+  Trung tâm" (nguồn gốc nhất) để xác nhận: nt=TPU, lkh=NTI, lth=LDN, xlc=HVG,
+  bpc=BPH, ptn=PTA — nếu nạp thêm dữ liệu từ các file này sau này, dùng lại
+  đúng bảng quy đổi này, đừng suy đoán lại từ đầu.
 - **Bẫy đã gặp 1 lần, đừng lặp lại**: `next.config.ts` từng có khối
   `redirects()` sót lại từ TMĐT OS cũ trỏ `/bao-cao → /` — route `/bao-cao`
   (Dashboard quản lý) mới tạo bị nuốt silently (307 về "/", KHÔNG log ở Next

@@ -57,6 +57,7 @@ export default async function AdsPage() {
         disbursementPlan={disbursementPlan}
         canManage={user.role === "admin" || user.role === "manager"}
         currentMonth={todayVnDayStr().slice(0, 7)}
+        weeks={[...new Set(metrics.filter((m) => m.periodType === "week").map((m) => m.period))].sort().reverse()}
       />
     </div>
   );
