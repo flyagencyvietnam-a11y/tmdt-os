@@ -275,6 +275,24 @@ export const adsStatusEnum = pgEnum("ads_status", [
   "cancelled",
 ]);
 
+/**
+ * 6 mảng digital ads thực tế VMG đang report (file VMG_Digital_Tracker —
+ * sheet "Tổng hợp", Mục 1-6). b2c_system = Mục 1 (ngân sách hệ thống, không
+ * theo SBU); b2c_center = Mục 2 (theo từng trung tâm — NS Trung tâm order +
+ * NS P.MKT thêm tách riêng); ecom/b2b/osir/vmp = Mục 3-6, không theo SBU.
+ */
+export const adsLineEnum = pgEnum("ads_line", [
+  "b2c_system",
+  "b2c_center",
+  "ecom",
+  "b2b",
+  "osir",
+  "vmp",
+]);
+
+/** Chu kỳ report ads thực tế: tuần (Thứ 7 → hết Thứ 6, xem reportWeekBounds) hoặc tháng. */
+export const adsPeriodTypeEnum = pgEnum("ads_period_type", ["week", "month"]);
+
 export const reportExportKindEnum = pgEnum("report_export_kind", [
   "weekly_summary",
   "monthly_summary",

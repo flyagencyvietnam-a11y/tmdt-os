@@ -162,6 +162,9 @@ async function seedAppSettings(adminId: string) {
 /** SPEC Phụ lục C — 9 quy tắc lặp điều phối Brand Campaign hàng tháng. */
 async function seedRecurringRules(adminId: string) {
   const startsOn = "2026-10-01";
+  // 10 trung tâm B2C offline (kind='center') — phạm vi báo cáo ads tuần/tháng (Mục 2), KHÔNG gồm TMDT/VMP_VMT.
+  const b2cCenters = await db.select({ id: schema.sbus.id }).from(schema.sbus).where(eq(schema.sbus.kind, "center"));
+  const b2cCenterIds = b2cCenters.map((s) => s.id);
   const rules: (typeof schema.recurringRules.$inferInsert)[] = [
     {
       ruleCode: "CAD-01",
@@ -320,6 +323,42 @@ async function seedRecurringRules(adminId: string) {
       startsOn,
       assignmentMode: "sbu_ho_owner",
       scopeMode: "per_sbu",
+      fanOutMode: "checklist_per_owner",
+      createdBy: adminId,
+    },
+    {
+      ruleCode: "ADS-01",
+      name: "Báo cáo ads tuần (B2C trung tâm)",
+      description:
+        "Chu kỳ Thứ 7 tuần trước → hết Thứ 6 tuần này (khớp reportWeekBounds trong lib/time.ts), theo dữ liệu " +
+        "thật ở file VMG_Digital_Tracker_2026 sheet 'Tracking Tuần'. checklist_per_owner theo 10 SBU B2C offline " +
+        "(Khiết/Đạt) — cập nhật Ngân sách + Mess cho mỗi trung tâm ở /ads.",
+      taskTemplate: { title: "Báo cáo ads tuần — hạn {{due_date}}", type: "ads", priority: "high" },
+      freq: "weekly",
+      byWeekday: [5], // Thứ Sáu
+      dayRule: "calendar_day",
+      holidayPolicy: "shift_earlier",
+      startsOn,
+      assignmentMode: "sbu_ho_owner",
+      scopeMode: "per_sbu",
+      scopeSbuIds: b2cCenterIds.length ? b2cCenterIds : null,
+      fanOutMode: "checklist_per_owner",
+      createdBy: adminId,
+    },
+    {
+      ruleCode: "ADS-02",
+      name: "Báo cáo ads tháng (B2C trung tâm)",
+      description:
+        "Ngày làm việc cuối tháng, theo dữ liệu thật ở sheet 'Tổng hợp' + 'B2C Trung tâm'. checklist_per_owner " +
+        "theo 10 SBU B2C offline — cập nhật Ngân sách (TT order + MKT thêm), Lead, HVM cho mỗi trung tâm ở /ads.",
+      taskTemplate: { title: "Báo cáo ads tháng {{month}}/{{year}} — B2C trung tâm", type: "ads", priority: "high" },
+      freq: "monthly",
+      dayRule: "last_working_day",
+      holidayPolicy: "none",
+      startsOn,
+      assignmentMode: "sbu_ho_owner",
+      scopeMode: "per_sbu",
+      scopeSbuIds: b2cCenterIds.length ? b2cCenterIds : null,
       fanOutMode: "checklist_per_owner",
       createdBy: adminId,
     },

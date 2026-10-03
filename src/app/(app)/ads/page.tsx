@@ -3,51 +3,60 @@ import { requireUser } from "@/lib/auth/session";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { sbus } from "@/lib/db/schema";
-import { listAdsMonthly } from "@/lib/services/ads";
+import { adsCampaigns, sbus } from "@/lib/db/schema";
+import { listAdsMetrics, listDisbursementPlan } from "@/lib/services/ads";
 import { todayVnDayStr } from "@/lib/time";
-import { AdsMonthlyView } from "./ads-view";
+import { AdsView } from "./ads-view";
 
-export const metadata = { title: "Ads hàng tháng theo SBU — VMG MKT OS" };
+export const metadata = { title: "Ads — VMG MKT OS" };
 export const dynamic = "force-dynamic";
 
-export default async function AdsMonthlyPage() {
+/**
+ * SPEC Mục 9.4 (mở rộng theo dữ liệu thật — xem CLAUDE.md "Ads redesign"):
+ * 6 mảng digital ads thật (B2C Hệ thống/B2C Trung tâm/Ecom/B2B/OSIR/VMP),
+ * grain tuần + tháng, chiến dịch Facebook chi tiết, kế hoạch giải ngân.
+ */
+export default async function AdsPage() {
   const user = await requireUser();
   if (!canSee(user.role, "ads")) redirect("/khong-co-quyen");
 
-  const [rows, allSbus] = await Promise.all([
-    listAdsMonthly(db),
-    db.select({ id: sbus.id, code: sbus.code }).from(sbus).where(eq(sbus.active, true)),
+  const [metrics, allSbus, campaigns, disbursementPlan] = await Promise.all([
+    listAdsMetrics(db),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.kind, "center")),
+    db.select().from(adsCampaigns),
+    listDisbursementPlan(db),
   ]);
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">Ads hàng tháng theo SBU</h1>
+        <h1 className="text-xl font-semibold">Ads — Digital Marketing</h1>
         <p className="text-sm text-muted-foreground">
-          SPEC Mục 9.4 — &quot;Ngân sách Trung tâm&quot; chỉ tính phần trung tâm tự order; phần HO hỗ trợ
-          thêm luôn ghi vào &quot;Ngân sách Hệ thống (HO)&quot;. CPL tính tại chỗ = chi tiêu thực tế / lead thực tế.
+          6 mảng thật: B2C Hệ thống · B2C Trung tâm · Ecom · B2B · OSIR · VMP. CPL/CAC/CVR/ROAS/điểm hiệu quả
+          tính tại chỗ. Chu kỳ tuần = Thứ 7 tuần trước → hết Thứ 6 tuần này (báo cáo tuần/tháng tự sinh task
+          cho Khiết/Đạt — xem Cài đặt ▸ Tác vụ định kỳ, mã ADS-01/ADS-02).
         </p>
       </div>
-      <AdsMonthlyView
-        rows={rows.map((r) => ({
-          id: r.id,
-          period: r.period,
-          sbuId: r.sbuId,
-          product: r.product,
-          channel: r.channel,
-          objective: r.objective,
-          centerBudget: r.centerBudget,
-          hoBudget: r.hoBudget,
-          actualSpend: r.actualSpend,
-          actualLeads: r.actualLeads,
-          cpl: r.cpl,
-          misaOrderCode: r.misaOrderCode,
-          status: r.status,
-          reportUrl: r.reportUrl,
+      <AdsView
+        metrics={metrics.map((m) => ({
+          ...m,
+          budget: m.budget,
+          centerOrderBudget: m.centerOrderBudget,
+          hoTopupBudget: m.hoTopupBudget,
+          leads: m.leads,
+          newStudents: m.newStudents,
+          messages: m.messages,
+          impressions: m.impressions,
+          revenue: m.revenue,
+          actualRevenue: m.actualRevenue,
+          mql: m.mql,
+          deals: m.deals,
         }))}
         sbus={allSbus}
-        currentPeriod={todayVnDayStr().slice(0, 7)}
+        campaigns={campaigns}
+        disbursementPlan={disbursementPlan}
+        canManage={user.role === "admin" || user.role === "manager"}
+        currentMonth={todayVnDayStr().slice(0, 7)}
       />
     </div>
   );

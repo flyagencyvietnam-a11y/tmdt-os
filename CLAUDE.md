@@ -76,8 +76,9 @@ là một app hoàn toàn mới về nghiệp vụ.
   lặp bảng màu riêng ở nơi khác), **Media production plan** (`/quay-chup`, tự sinh task
   chuẩn bị+quay+hậu kỳ, tạo lịch quay định kỳ), **Foundation** (`/nen-tang`,
   lưới brand×cấu phần + lịch sử + "tạo task từ ô"), **Monitoring** (`/giam-sat`,
-  cảnh báo quá hạn/sắp hạn tự sinh task), **Ads hàng tháng theo SBU** (`/ads`),
-  **Dashboard quản lý** (`/bao-cao`: trễ hạn theo người, tiến độ campaign, %SBU,
+  cảnh báo quá hạn/sắp hạn tự sinh task), **Ads** (`/ads` — ĐÃ XÂY LẠI theo dữ
+  liệu thật, xem "Ads redesign" bên dưới, không còn là bản `ads_monthly` đơn
+  giản theo SBU nữa), **Dashboard quản lý** (`/bao-cao`: trễ hạn theo người, tiến độ campaign, %SBU,
   tỷ lệ đúng hạn, việc lặp đúng hạn + xuất báo cáo định kỳ lưu `report_exports`),
   **Trợ lý AI** (`/tro-ly-ai`, gọi Anthropic API nếu có `ANTHROPIC_API_KEY`,
   LUÔN có bước người duyệt trước khi tạo task), **xuất ICS** (lịch cá nhân,
@@ -91,7 +92,29 @@ là một app hoàn toàn mới về nghiệp vụ.
   `/bao-cao`, `/ads`, `/cai-dat` không cần filter/sort).
   **Chưa làm** (chủ động bỏ qua vì cần tích hợp/key ngoài chưa có, xem SPEC Mục
   14.4): đồng bộ Google Calendar hai chiều, nhắc qua Zalo, tải tệp đính kèm lên
-  kho lưu trữ ngoài. Ads hàng tháng mới có CRUD cơ bản, chưa có import riêng.
+  kho lưu trữ ngoài. Ads chưa có import riêng (nhập tay hoặc qua "Chiến dịch" +
+  "Cộng dồn vào tháng" ở mỗi dòng SBU).
+- **Ads redesign (nghiên cứu từ 3 file Excel thật — xem lịch sử chat, không có
+  file lưu lại trong repo)**: `ads_monthly` cũ (chỉ phủ 1 mảng, chỉ theo SBU)
+  đã bị thay bằng 3 bảng: `ads_metrics` (6 mảng thật — b2c_system/b2c_center/
+  ecom/b2b/osir/vmp, grain tuần+tháng, CPL/CAC/CVR/ROAS/CPMQL + điểm hiệu quả
+  suy ra tại truy vấn trong `lib/services/ads.ts::computeAdsDerived` — ĐÃ xác
+  minh khớp số liệu thật 100% khi test), `ads_campaigns` (chi tiết từng chiến
+  dịch Facebook, cộng dồn lên `ads_metrics` qua nút "Cộng dồn vào tháng" —
+  KHÔNG tự động, tránh ghi đè số đã sửa tay), `ads_disbursement_plan` (kế
+  hoạch giải ngân Mục 1+3+5, so với thực tế tính từ `ads_metrics`). Ngưỡng
+  điểm hiệu quả (CPL/CAC tiers) lưu ở `app_settings.ads_effectiveness_rubric`,
+  sửa qua Cài đặt ▸ Cấu hình chung nếu công ty đổi chuẩn đánh giá.
+  **2 recurring rule mới** (seed Phụ lục C mở rộng): `ADS-01` (báo cáo ads
+  tuần, Thứ Sáu hàng tuần) và `ADS-02` (báo cáo ads tháng, ngày làm việc cuối
+  tháng) — cả hai `checklist_per_owner` theo đúng 10 SBU `kind='center'`
+  (Khiết/Đạt), tái dùng 100% recurring engine có sẵn, không code mới.
+  **Danh sách 10 trung tâm B2C offline đã xác nhận lại với chủ sản phẩm** (ăn
+  khớp SPEC "10 trung tâm + TMĐT"): VTS, PVT, NKN, TBM, LDN, TPU, PTA, NTI,
+  HVG, BPH — **KHÔNG đổi** so với seed gốc. 4 tên khác xuất hiện trong file
+  Excel lịch sử (Trương Định/Trần Phú/Đại Phước/Nguyễn Trãi) là **trung tâm đã
+  đóng cửa**, cố tình KHÔNG có SBU record — nếu thấy số liệu ads cũ nhắc tới 4
+  tên này, đó là dữ liệu quá khứ, không phải trung tâm cần tạo mới.
 - **Bẫy đã gặp 1 lần, đừng lặp lại**: `next.config.ts` từng có khối
   `redirects()` sót lại từ TMĐT OS cũ trỏ `/bao-cao → /` — route `/bao-cao`
   (Dashboard quản lý) mới tạo bị nuốt silently (307 về "/", KHÔNG log ở Next

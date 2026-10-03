@@ -2,7 +2,16 @@
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { deleteAdsMonthly, upsertAdsMonthly, type UpsertAdsMonthlyInput } from "@/lib/services/ads";
+import {
+  deleteAdsCampaign,
+  deleteAdsMetric,
+  rollupCampaignsToMetric,
+  upsertAdsCampaign,
+  upsertAdsMetric,
+  upsertDisbursementPlan,
+  type UpsertAdsCampaignInput,
+  type UpsertAdsMetricInput,
+} from "@/lib/services/ads";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -12,23 +21,73 @@ async function requireManagerLike() {
   return user;
 }
 
-export async function upsertAdsMonthlyAction(input: UpsertAdsMonthlyInput): Promise<Result<{ id: string }>> {
+export async function upsertAdsMetricAction(input: UpsertAdsMetricInput): Promise<Result<{ id: string }>> {
   const user = await requireManagerLike();
   if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
   try {
-    const row = await upsertAdsMonthly(db, input, user.id);
+    const row = await upsertAdsMetric(db, input, user.id);
     return { ok: true, data: { id: row.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }
 }
 
-export async function deleteAdsMonthlyAction(id: string): Promise<Result> {
+export async function deleteAdsMetricAction(id: string): Promise<Result> {
   const user = await requireManagerLike();
   if (!user) return { ok: false, error: "Chỉ admin/manager được xoá." };
   try {
-    await deleteAdsMonthly(db, id, user.id);
+    await deleteAdsMetric(db, id, user.id);
     return { ok: true, data: undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function upsertAdsCampaignAction(input: UpsertAdsCampaignInput): Promise<Result<{ id: string }>> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  try {
+    const row = await upsertAdsCampaign(db, input, user.id);
+    return { ok: true, data: { id: row.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function deleteAdsCampaignAction(id: string): Promise<Result> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ admin/manager được xoá." };
+  try {
+    await deleteAdsCampaign(db, id, user.id);
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function rollupCampaignsAction(sbuId: string, period: string): Promise<Result<{ id: string }>> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ admin/manager được cộng dồn." };
+  try {
+    const row = await rollupCampaignsToMetric(db, sbuId, period, user.id);
+    return { ok: true, data: { id: row.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function upsertDisbursementPlanAction(input: {
+  id?: string;
+  line: "b2c_system" | "ecom" | "osir";
+  period: string;
+  plannedAmount: string;
+  notes?: string | null;
+}): Promise<Result<{ id: string }>> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  try {
+    const row = await upsertDisbursementPlan(db, input, user.id);
+    return { ok: true, data: { id: row.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }

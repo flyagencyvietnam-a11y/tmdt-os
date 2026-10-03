@@ -1,0 +1,1 @@
+DROP TABLE "ads_monthly" CASCADE;
