@@ -187,6 +187,12 @@ là một app hoàn toàn mới về nghiệp vụ.
   - Tab Theo tháng ▸ B2C: bảng **Tổng hợp chỉ số theo trung tâm × tháng** (`center-trend.tsx`) thay cho bảng
     nhiệt nhiều tab. Heatmap theo LUẬT (không min–max): CPL/CAC/Điểm HQ theo thang `ads_effectiveness_rubric`
     (5 mức), HVM=0 khi đã chi = đỏ; NS/Lead/HVM/CVR xanh dương đậm dần theo cột. Có dòng Cộng từng TT + Tổng cộng.
+- **Đã nạp plan thực tế EduNext (10/2026)** từ file "VMG_EduNext_ActionPlan": campaign `EDUNEXT-2026` (product_gtm, brand VMG,
+  03/09–30/11/2026, owner = Trưởng phòng Marketing) + 21 hạng mục Action Plan. Mỗi hạng mục = 1 task duy nhất: 14 task chạy qua pipeline T1
+  (`importScope=T1:EDUNEXT-2026`, `externalKey=A01..A21`, có thể undo) + 7 hạng mục #11,13,15,16,17,18,19 là bài content nên là task cha của 7
+  `content_items` (không sinh task con, ngày đăng = hạn hạng mục vì Lịch Content chỉ ghi tuần). Map tên: Khiết/Trân → `*@vmg.local`, Nghiêm →
+  `admin@vmg.local`. "Giám đốc Khu vực"/"R&D" không có tài khoản nên chỉ nằm trong mô tả task. Link Canva + thư mục media ở `campaigns.notes`;
+  Sale Kit chưa có link (`[CẦN BỔ SUNG]`). Hạng mục #11 (Action Plan: Chưa bắt đầu) lệch Lịch Content (Hoàn thành) → đang theo Lịch Content (published).
 - **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
   `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
   dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`
