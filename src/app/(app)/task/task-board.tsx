@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadMore, ScopeChips, useUrlParam } from "@/components/scope-chips";
+import { TASK_VIEW_LABEL, type TaskView } from "@/lib/task-view";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { cn } from "@/lib/utils";
 import { createTaskAction, updateTaskAction } from "./actions";
@@ -42,6 +44,12 @@ const STATUSES = [
 
 export function TaskBoard({
   tasks,
+  total,
+  counts,
+  view: scopeView,
+  defaultView,
+  assigneeId,
+  pageSize,
   users,
   campaigns,
   currentUserId,
@@ -49,6 +57,13 @@ export function TaskBoard({
   icsUrl,
 }: {
   tasks: TaskItem[];
+  /** Tổng số task khớp phạm vi (có thể lớn hơn số đã tải). */
+  total: number;
+  counts: Record<TaskView, number>;
+  view: TaskView;
+  defaultView: TaskView;
+  assigneeId: string | null;
+  pageSize: number;
   users: { id: string; fullName: string }[];
   campaigns: { id: string; code: string; name: string }[];
   currentUserId: string;
@@ -57,8 +72,7 @@ export function TaskBoard({
 }) {
   const router = useRouter();
   const [view, setView] = React.useState<"list" | "kanban" | "calendar">("list");
-  const [statusFilter, setStatusFilter] = React.useState<string>("open");
-  const [assigneeFilter, setAssigneeFilter] = React.useState<string>("all");
+  const url = useUrlParam();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [pending, start] = React.useTransition();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -66,13 +80,8 @@ export function TaskBoard({
 
   const userName = (id: string | null) => users.find((u) => u.id === id)?.fullName ?? "—";
 
-  const visible = tasks.filter((t) => {
-    if (statusFilter === "open" && (t.status === "done" || t.status === "cancelled")) return false;
-    if (statusFilter !== "open" && statusFilter !== "all" && t.status !== statusFilter) return false;
-    if (assigneeFilter === "mine" && t.assigneeId !== currentUserId) return false;
-    if (assigneeFilter !== "all" && assigneeFilter !== "mine" && t.assigneeId !== assigneeFilter) return false;
-    return true;
-  });
+  // Phạm vi (view / người phụ trách / giới hạn) đã được SERVER lọc; bảng bên dưới lọc mịn thêm trên số đã tải.
+  const visible = tasks;
 
   const overdueCount = visible.filter((t) => t.dueDate && t.dueDate < today && t.status !== "done" && t.status !== "cancelled").length;
 
@@ -100,6 +109,14 @@ export function TaskBoard({
 
   return (
     <div className="space-y-3">
+      <div className="rounded-xl border bg-card px-2 py-1.5 shadow-xs">
+        <ScopeChips
+          param="view"
+          value={scopeView}
+          defaultValue={defaultView}
+          options={(["active", "mine", "overdue", "week", "done", "archived", "all"] as TaskView[]).map((v) => ({ value: v, label: TASK_VIEW_LABEL[v], count: counts[v], alert: v === "overdue" }))}
+        />
+      </div>
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
         <div className="flex rounded-lg bg-muted p-0.5 text-sm">
           {(
@@ -123,19 +140,16 @@ export function TaskBoard({
           ))}
         </div>
         <SimpleSelect
-          triggerClassName="h-8 w-40"
-          value={statusFilter}
-          onValueChange={(v) => v && setStatusFilter(v)}
-          options={[
-            { value: "open", label: "Đang mở" },
-            { value: "all", label: "Tất cả trạng thái" },
-            ...STATUSES.map((s) => ({ value: s.key, label: s.label })),
-          ]}
-        />
-        <SimpleSelect
           triggerClassName="h-8 w-48"
-          value={assigneeFilter}
-          onValueChange={(v) => v && setAssigneeFilter(v)}
+          value={scopeView === "mine" ? "mine" : (assigneeId ?? "all")}
+          onValueChange={(v) => {
+            if (!v) return;
+            if (v === "mine") return url.set({ view: "mine", assignee: null });
+            // Chọn 1 người cụ thể khi đang ở "Của tôi" → chuyển sang "Đang làm việc" để lọc đúng người đó.
+            const updates: Record<string, string | null> = { assignee: v === "all" ? null : v };
+            if (scopeView === "mine") updates.view = defaultView === "active" ? null : "active";
+            url.set(updates);
+          }}
           options={[
             { value: "all", label: "Mọi người phụ trách" },
             { value: "mine", label: "Của tôi" },
@@ -143,7 +157,8 @@ export function TaskBoard({
           ]}
         />
         <span className="text-xs text-muted-foreground">
-          {visible.length} task{overdueCount > 0 && <span className="ml-1 font-medium text-red-600 dark:text-red-400">· {overdueCount} trễ hạn</span>}
+          {visible.length.toLocaleString("vi-VN")}{total > visible.length ? ` / ${total.toLocaleString("vi-VN")}` : ""} task
+          {overdueCount > 0 && <span className="ml-1 font-medium text-red-600 dark:text-red-400">· {overdueCount} trễ hạn</span>}
         </span>
         <Button size="sm" className="ml-auto" onClick={() => setCreateOpen(true)}>
           <Plus className="mr-1 h-4 w-4" /> Task mới
@@ -169,6 +184,8 @@ export function TaskBoard({
         </DndContext>
       )}
       {view === "calendar" && <TaskCalendar tasks={visible} icsUrl={icsUrl} />}
+
+      <LoadMore shown={visible.length} total={total} step={pageSize} />
 
       <CreateTaskDialog
         open={createOpen}

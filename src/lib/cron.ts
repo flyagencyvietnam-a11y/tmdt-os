@@ -13,6 +13,7 @@ import {
   runMonitoringAlertsJob,
   runMonthlyReportExportIfLastWorkday,
   runOverdueMorning,
+  runArchiveOldTasks,
   runSpawnRecurring,
   runWeeklyReportExport,
   runWeeklySummary,
@@ -46,6 +47,7 @@ export function startCron() {
   cron.schedule("0 8 * * *", wrap("escalate-managers", () => runEscalateToManagers(db)), { timezone: TZ });
   cron.schedule("0 8 * * 1", wrap("weekly-summary", () => runWeeklySummary(db)), { timezone: TZ });
   cron.schedule("0 8 * * 1", wrap("weekly-report-export", () => runWeeklyReportExport(db)), { timezone: TZ });
+  cron.schedule("40 0 * * *", wrap("archive-old-tasks", () => runArchiveOldTasks(db)), { timezone: TZ });
   cron.schedule("45 0 * * *", wrap("monitoring-alerts", () => runMonitoringAlertsJob(db)), { timezone: TZ });
   cron.schedule("50 0 * * *", wrap("monthly-report-export", () => runMonthlyReportExportIfLastWorkday(db)), { timezone: TZ });
 

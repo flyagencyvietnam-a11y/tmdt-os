@@ -268,6 +268,8 @@ export async function updateTask(
   if (patch.status === "done" && before.status !== "done") set.completedAt = new Date();
   if (patch.status && patch.status !== "done" && before.status === "done") set.completedAt = null;
   if (patch.status && patch.status !== "blocked") set.blockedReason = null;
+  // Mở lại task đã lưu trữ → đưa trở lại danh sách làm việc.
+  if (patch.status && patch.status !== "done" && patch.status !== "cancelled" && before.archivedAt) set.archivedAt = null;
 
   const manualFields = opts.trackManualEdit === false ? [] : Object.keys(patch).filter((k) => MANUAL_EDIT_FIELDS.has(k));
   if (manualFields.length) {

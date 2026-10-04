@@ -1,37 +1,39 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { campaigns, taskSbus, tasks, users } from "@/lib/db/schema";
+import { campaigns, users } from "@/lib/db/schema";
 import { calendarToken } from "@/lib/services/ics";
+import { clampLimit, defaultTaskView, listTasksScoped, PAGE_SIZE, parseTaskView, taskViewCounts, type TaskScope } from "@/lib/services/task-lists";
+import { todayVnDayStr } from "@/lib/time";
 import { TaskBoard } from "./task-board";
 import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Tất cả task — VMG MKT OS" };
 export const dynamic = "force-dynamic";
 
-export default async function TaskListPage() {
+/**
+ * Danh sách task tải THEO PHẠM VI (view + người phụ trách + giới hạn) từ server — không tải cả nghìn task.
+ * Mặc định theo vai trò: nhân viên → "Của tôi"; quản lý/admin → "Đang làm việc" (việc mở + vừa xong 30 ngày).
+ */
+export default async function TaskListPage({ searchParams }: { searchParams: Promise<{ view?: string; assignee?: string; limit?: string }> }) {
+  const sp = await searchParams;
   const user = await requireUser();
   if (!canSee(user.role, "task")) redirect("/khong-co-quyen");
 
-  let rows: (typeof tasks.$inferSelect)[];
-  if (user.role === "center_contributor") {
-    if (!user.sbuId) {
-      rows = [];
-    } else {
-      const scoped = await db
-        .select({ task: tasks })
-        .from(taskSbus)
-        .innerJoin(tasks, eq(tasks.id, taskSbus.taskId))
-        .where(and(eq(taskSbus.sbuId, user.sbuId), isNull(tasks.deletedAt)));
-      rows = scoped.map((r) => r.task);
-    }
-  } else {
-    rows = await db.select().from(tasks).where(isNull(tasks.deletedAt)).orderBy(asc(tasks.dueDate), asc(tasks.priority));
-  }
+  const view = parseTaskView(sp.view) ?? defaultTaskView(user.role);
+  const limit = clampLimit(sp.limit);
+  const scope: TaskScope = {
+    userId: user.id,
+    sbuId: user.role === "center_contributor" ? (user.sbuId ?? "none") : null,
+    today: todayVnDayStr(),
+  };
+  const assigneeId = view === "mine" ? null : sp.assignee || null;
 
-  const [allUsers, allCampaigns] = await Promise.all([
+  const [{ rows, total }, counts, allUsers, allCampaigns] = await Promise.all([
+    listTasksScoped(db, scope, { view, assigneeId, limit }),
+    taskViewCounts(db, scope),
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
     db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns),
   ]);
@@ -54,6 +56,12 @@ export default async function TaskListPage() {
           sourceType: t.sourceType,
           channel: t.channel,
         }))}
+        total={total}
+        counts={counts}
+        view={view}
+        defaultView={defaultTaskView(user.role)}
+        assigneeId={assigneeId}
+        pageSize={PAGE_SIZE}
         users={allUsers}
         campaigns={allCampaigns}
         currentUserId={user.id}

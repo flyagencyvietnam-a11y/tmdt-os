@@ -205,6 +205,22 @@ là một app hoàn toàn mới về nghiệp vụ.
   xong → content `published`; mở lại khi content đang published → content về `approved`; content `cancelled` không bị kéo. Hàm này chỉ ghi
   thẳng lên content (không gọi `updateContentItem`) nên không lặp vô hạn — **mọi chỗ đổi trạng thái task phải đi qua `updateTask`** (đừng `db.update(tasks)`
   trực tiếp, sẽ mất đồng bộ). Link qua lại: cột "Task đăng bài" + khối trong dialog ở `/content`; khối "Bài content" ở trang task, mở bài bằng `/content?item=ID`.
+- **Đã nạp file "VMG_Marketing_Strategy_Operations_2026" (10/2026)** — đây chính là nguồn 28 campaign + 46 hạng mục SBU mà mục "câu hỏi mở" từng ghi là chưa có:
+  (1) **Brand Foundation**: 7 brand × 30 cấu phần (A1..I2) = 210 ô vào `brand_foundation_entries`; trạng thái suy từ thẻ trong ô — có "[CẦN XÁC NHẬN]" →
+  `needs_confirmation` (92), chỉ "[ĐỀ XUẤT]" → `proposed` (28), không thẻ (lấy từ context project) → `confirmed` (90). Nội dung giữ nguyên cả thẻ.
+  (2) **Campaign Master**: 28 campaign (CP-01..11 + BT-2026-08..BT-2027-12; ngày theo THÁNG = đầu tháng → cuối tháng). Hai campaign nạp trước đó được **đổi mã**
+  UPLEARN-Q4-2026 → CP-08, EDUNEXT-2026 → CP-09 (giữ nguyên task/content, ngày và trạng thái chi tiết của plan riêng; `importScope` của task vẫn là mã cũ).
+  7 mục "Backlog/đề xuất/lịch sử" cuối sheet (Every Step Matters, Brand Playlist, FuturePath...) KHÔNG nạp vì chưa có mốc thời gian. Chủ campaign để trống (file không ghi).
+  (3) **Danh mục SBU**: 46 hạng mục OI/OO/FI/FO/CC-xx; 3 hạng mục mẫu cũ đổi mã OI-POSM→FI-01, OI-GMAPS→OI-02, OI-CONTENT→OI-05 (giữ rule CAD-09/08/05).
+  19 ô N/A (hạng mục vật lý × TT Kinh doanh TMĐT, kỳ 2026-10) đã ghi trạng thái "không áp dụng"; mọi ô còn lại mặc định "Chưa" nên không tạo dòng.
+  Chưa nạp vì sheet chỉ là khung trống: 3a_Ads_Thang (chỉ khung T10-T12), 4_Request_Order (0 request), 3b_Monitoring (42 dòng "Chưa kiểm tra", chưa có ngày lắp/chu kỳ).
+- **Danh sách lớn: tải theo PHẠM VI từ server (10/2026) — đừng quay lại kiểu "tải hết rồi lọc ở client"**: `/task`, `/content`, `/campaign`, `/request` nhận
+  `?view|scope=` và `?limit=` trên URL (chip `components/scope-chips.tsx` + nút "Hiện thêm" = tăng `limit`, mỗi bước 300, trần 3000). **Task** (`services/task-lists.ts`,
+  hằng số client-safe ở `lib/task-view.ts` — client KHÔNG được import `services/*` vì kéo nodemailer vào bundle): view `active` (việc mở + xong/huỷ trong 30 ngày) · `mine` ·
+  `overdue` · `week` (7 ngày tới) · `done` · `archived` · `all`; mặc định theo vai trò (member → `mine`, còn lại → `active`); chip có số đếm (1 truy vấn). **Lưu trữ**:
+  cột `tasks.archived_at`, job `archive-old-tasks` (00:40 hằng ngày, cả cron Vercel lẫn node-cron) gom task xong/huỷ quá 90 ngày; mở lại task thì `updateTask` tự bỏ lưu
+  trữ; báo cáo/Gantt/campaign vẫn tính cả task đã lưu trữ. **Content**: mặc định "gần đây & chưa đăng" (từ min(30 ngày trước, đầu tháng); bài chưa đăng quá hạn LUÔN hiện);
+  mở `/content?item=ID` tự xem đủ. **Campaign**: ẩn done/cancelled. **Request**: ẩn done/rejected quá 30 ngày; thẻ thống kê tính trên toàn bộ.
 - **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
   `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
   dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`

@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { brands, campaigns, sbus, tasks, users } from "@/lib/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { listContentItems } from "@/lib/services/content";
+import { listContentItemsScoped } from "@/lib/services/content";
+import { clampLimit, PAGE_SIZE } from "@/lib/services/task-lists";
 import { todayVnDayStr } from "@/lib/time";
 import { ContentCalendarView } from "./content-view";
 import { PageHeader } from "@/components/shell/page-header";
@@ -12,13 +13,16 @@ import { PageHeader } from "@/components/shell/page-header";
 export const metadata = { title: "Content calendar — VMG MKT OS" };
 export const dynamic = "force-dynamic";
 
-export default async function ContentPage({ searchParams }: { searchParams: Promise<{ item?: string }> }) {
-  const { item: openItem } = await searchParams;
+export default async function ContentPage({ searchParams }: { searchParams: Promise<{ item?: string; scope?: string; limit?: string }> }) {
+  const { item: openItem, scope: scopeParam, limit: limitParam } = await searchParams;
   const user = await requireUser();
   if (!canSee(user.role, "content")) redirect("/khong-co-quyen");
 
-  const [items, allBrands, allCampaigns, allSbus, allUsers] = await Promise.all([
-    listContentItems(db),
+  const today = todayVnDayStr();
+  // Mở thẳng 1 bài (link từ task) thì xem đủ phạm vi để chắc chắn tìm thấy bài đó.
+  const scope = scopeParam === "all" || openItem ? "all" : "recent";
+  const [{ rows: items, total, allCount }, allBrands, allCampaigns, allSbus, allUsers] = await Promise.all([
+    listContentItemsScoped(db, { scope, today, limit: clampLimit(limitParam) }),
     db.select().from(brands),
     db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns),
     db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus),
@@ -58,7 +62,11 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
         campaigns={allCampaigns}
         sbus={allSbus}
         users={allUsers}
-        today={todayVnDayStr()}
+        today={today}
+        scope={scope}
+        total={total}
+        allCount={allCount}
+        pageSize={PAGE_SIZE}
         initialOpenId={openItem ?? null}
       />
     </div>

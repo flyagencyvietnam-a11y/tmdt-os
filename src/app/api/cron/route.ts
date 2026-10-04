@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import {
   runDailyDigest,
   runDueTodayReminder,
+  runArchiveOldTasks,
   runDueTodayUnfinished,
   runEscalateToManagers,
   runMonitoringAlertsJob,
@@ -41,8 +42,9 @@ export async function GET(req: Request) {
       const [summary, reportExport] = await Promise.all([runWeeklySummary(db), runWeeklyReportExport(db)]);
       return NextResponse.json({ summary, reportExport });
     }
-    const [recurring, overdue, dueToday, escalate, digest, monitoring, monthlyReport] = await Promise.all([
+    const [recurring, archive, overdue, dueToday, escalate, digest, monitoring, monthlyReport] = await Promise.all([
       runSpawnRecurring(db),
+      runArchiveOldTasks(db),
       runOverdueMorning(db),
       runDueTodayReminder(db),
       runEscalateToManagers(db),
@@ -50,7 +52,7 @@ export async function GET(req: Request) {
       runMonitoringAlertsJob(db),
       runMonthlyReportExportIfLastWorkday(db),
     ]);
-    return NextResponse.json({ recurring, overdue, dueToday, escalate, digest, monitoring, monthlyReport });
+    return NextResponse.json({ recurring, archive, overdue, dueToday, escalate, digest, monitoring, monthlyReport });
   } catch (e) {
     console.error("[cron] lỗi", e);
     return NextResponse.json(

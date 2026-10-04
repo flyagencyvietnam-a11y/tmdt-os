@@ -50,6 +50,8 @@ export const tasks = pgTable(
     timeSlot: timeSlotEnum("time_slot"),
     estimateHours: numeric("estimate_hours", { precision: 6, scale: 2 }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** Tự lưu trữ task đã xong/huỷ quá lâu (job archive-old-tasks) — ẩn khỏi danh sách mặc định, vẫn tra cứu ở view "Lưu trữ" và vẫn tính vào báo cáo. */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     parentId: uuid("parent_id"),
     campaignId: uuid("campaign_id").references(() => campaigns.id),
     brandId: uuid("brand_id").references(() => brands.id),
@@ -82,6 +84,7 @@ export const tasks = pgTable(
     index("tasks_assignee_due_idx").on(t.assigneeId, t.dueDate),
     index("tasks_campaign_idx").on(t.campaignId),
     index("tasks_status_idx").on(t.status),
+    index("tasks_archived_idx").on(t.archivedAt),
     index("tasks_parent_idx").on(t.parentId),
     index("tasks_source_idx").on(t.sourceType, t.sourceId),
   ],

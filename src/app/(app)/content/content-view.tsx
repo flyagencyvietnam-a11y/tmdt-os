@@ -18,6 +18,7 @@ import { SimpleSelect } from "@/components/ui/simple-select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
+import { LoadMore, ScopeChips } from "@/components/scope-chips";
 import { createContentItemAction, updateContentItemAction } from "./actions";
 import { CHANNEL_OPTIONS, colorForBrand, colorForChannel } from "./content-colors";
 import { ContentCalendarGrid } from "./content-calendar-grid";
@@ -81,6 +82,10 @@ export function ContentCalendarView({
   sbus,
   users,
   today,
+  scope,
+  total,
+  allCount,
+  pageSize,
   initialOpenId,
 }: {
   items: ContentRow[];
@@ -89,6 +94,10 @@ export function ContentCalendarView({
   sbus: Lite[];
   users: Lite[];
   today: string;
+  scope: "recent" | "all";
+  total: number;
+  allCount: number;
+  pageSize: number;
   /** Mở sẵn dialog 1 bài (link từ trang task: /content?item=ID). */
   initialOpenId?: string | null;
 }) {
@@ -331,6 +340,15 @@ export function ContentCalendarView({
             <CalendarDays className="h-3.5 w-3.5" /> Lịch
           </SegBtn>
         </div>
+        <ScopeChips
+          param="scope"
+          value={scope}
+          defaultValue="recent"
+          options={[
+            { value: "recent", label: "Gần đây & chưa đăng", count: total },
+            { value: "all", label: "Tất cả", count: allCount },
+          ]}
+        />
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
         <FilterChips label="Brand" options={brandOptions} value={brandFilter} onChange={setBrandFilter} />
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
@@ -372,6 +390,8 @@ export function ContentCalendarView({
           onSelect={(id) => setDialog({ mode: "edit", id })}
         />
       )}
+
+      <LoadMore shown={items.length} total={total} step={pageSize} />
 
       {dialog && (
         <ContentDialog

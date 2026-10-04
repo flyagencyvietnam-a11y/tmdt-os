@@ -10,6 +10,7 @@ import { generateAllRecurringTasks } from "./recurring";
 import { emailsFor, getManagerIds, notify, notifyMany } from "./notifications";
 import { sendMail } from "@/lib/email";
 import { overdueSqlFragment } from "./tasks";
+import { archiveOldTasks } from "./task-lists";
 import { runMonitoringAlerts } from "./monitoring";
 import { generatePeriodicReport } from "./reports";
 import { lastWorkingDayOfMonth, loadDeptWorkDays, loadHolidaySet } from "./workdays";
@@ -25,6 +26,12 @@ export interface JobResult {
 export async function runSpawnRecurring(db: DB, now = new Date()): Promise<JobResult> {
   const r = await generateAllRecurringTasks(db, now);
   return { job: "spawn-recurring", createdNotifications: 0, affected: r.created };
+}
+
+/** 00:40 — lưu trữ task đã xong/huỷ quá 90 ngày (ẩn khỏi danh sách mặc định, không xoá). */
+export async function runArchiveOldTasks(db: DB, now = new Date()): Promise<JobResult> {
+  const n = await archiveOldTasks(db, undefined, now);
+  return { job: "archive-old-tasks", createdNotifications: 0, affected: n };
 }
 
 /** 08:00 — task sắp đến hạn hôm nay (nhắc trong app) (Mục 11.2). */

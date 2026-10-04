@@ -1,4 +1,4 @@
-import { and, arrayContains, desc, eq, isNull, like } from "drizzle-orm";
+import { and, arrayContains, desc, eq, gte, isNull, like, notInArray, or, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import {
   contentItems,
@@ -290,4 +290,33 @@ export async function listContentItems(db: DB, filters: { brandId?: string } = {
     .from(contentItems)
     .where(and(isNull(contentItems.deletedAt), filters.brandId ? arrayContains(contentItems.brandIds, [filters.brandId]) : undefined))
     .orderBy(desc(contentItems.publishDate));
+}
+
+export const CONTENT_RECENT_DAYS = 30;
+
+/** Mốc bắt đầu của phạm vi "Gần đây": 30 ngày trước, nhưng không muộn hơn đầu tháng hiện tại (để số liệu "trong tháng" luôn đủ). */
+export function contentRecentSince(today: string): string {
+  const d = new Date(`${today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - CONTENT_RECENT_DAYS);
+  const since = d.toISOString().slice(0, 10);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  return since < monthStart ? since : monthStart;
+}
+
+/**
+ * Danh sách content có phạm vi + phân trang phía server. "recent" (mặc định) = bài từ `since` trở đi + MỌI bài
+ * chưa đăng/chưa huỷ (kể cả quá hạn — để không bao giờ giấu bài trễ lịch); "all" = tất cả.
+ */
+export async function listContentItemsScoped(db: DB, q: { scope: "recent" | "all"; today: string; limit: number }) {
+  const scopeWhere =
+    q.scope === "all"
+      ? undefined
+      : or(gte(contentItems.publishDate, contentRecentSince(q.today)), notInArray(contentItems.status, ["published", "cancelled"]));
+  const where = and(isNull(contentItems.deletedAt), scopeWhere);
+  const [rows, [{ n }], [{ all }]] = await Promise.all([
+    db.select().from(contentItems).where(where).orderBy(desc(contentItems.publishDate)).limit(q.limit),
+    db.select({ n: sql<number>`count(*)::int` }).from(contentItems).where(where),
+    db.select({ all: sql<number>`count(*)::int` }).from(contentItems).where(isNull(contentItems.deletedAt)),
+  ]);
+  return { rows, total: Number(n), allCount: Number(all) };
 }
