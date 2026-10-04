@@ -4,72 +4,62 @@ import { AlertOctagon, AlertTriangle, ChevronRight, Coins, Info, Target, UserPlu
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DeltaBadge, StatCard } from "@/components/stat-card";
-import type { EffectivenessRubric } from "@/lib/ads-metrics";
 import { cn } from "@/lib/utils";
 import type { AdsAlert } from "./alerts";
 import { axisProps, ChartCard, ChartTooltip, gridProps, Sparkline } from "./charts";
-import {
-  aggregate,
-  change,
-  derive,
-  fmt,
-  fmtMoney,
-  fmtPct,
-  LINE_COLORS,
-  LINE_LABELS,
-  LINES,
-  monthLabel,
-  prevMonth,
-  type Line,
-  type MetricRow,
-} from "./shared";
+import { b2cSummary, OVERVIEW_COLORS, OVERVIEW_KEYS, OVERVIEW_LABELS, overviewAgg, overviewTotal, quarterKey, quarterLabel, quarterMonths, type OverviewAgg } from "./rollups";
+import { aggregate, change, fmt, fmtMoney, fmtPct, LINE_COLORS, LINE_LABELS, LINES, monthLabel, type MetricRow } from "./shared";
+
+/** Khoảng thời gian đang xem ở Tổng quan: 1 tháng hoặc 1 quý (= cộng 3 dòng THÁNG, không cộng từ tuần). */
+export interface OverviewRange {
+  kind: "month" | "quarter";
+  key: string;
+  label: string;
+  months: string[];
+  /** Kỳ liền trước để tính Δ. */
+  prevLabel: string;
+  prevMonths: string[];
+  /** Quý còn dang dở: số tháng đã có số liệu / 3. */
+  filledMonths: number;
+}
 
 export function OverviewView({
   metrics,
   months,
-  month,
-  rubric,
+  range,
   alerts,
+  alertsMonthLabel,
   onOpenTab,
 }: {
   metrics: MetricRow[];
+  /** Mọi tháng đã có số liệu. */
   months: string[];
-  month: string;
-  rubric: EffectivenessRubric;
+  range: OverviewRange;
   alerts: AdsAlert[];
+  alertsMonthLabel: string;
   onOpenTab: (tab: AdsAlert["tab"]) => void;
 }) {
-  const monthly = metrics.filter((m) => m.periodType === "month");
-  const prev = prevMonth(month);
-  const of = (p: string, line?: Line) => monthly.filter((m) => m.period === p && (!line || m.line === line));
+  const isQuarter = range.kind === "quarter";
+  const cur = overviewTotal(metrics, range.months);
+  const old = overviewTotal(metrics, range.prevMonths);
 
-  // Tổng toàn phòng: CPL/CAC chỉ tính trên các mảng CÓ số lead/HVM (tránh chia chi phí mảng chưa nhập lead).
-  const total = (p: string) => {
-    const rows = of(p);
-    const all = aggregate(rows);
-    const withLeads = aggregate(rows.filter((r) => r.leads != null));
-    const withHvm = aggregate(rows.filter((r) => r.newStudents != null));
-    return {
-      spend: all.spend,
-      leads: all.leads,
-      newStudents: all.newStudents,
-      cpl: withLeads.spend != null && withLeads.leads ? withLeads.spend / withLeads.leads : null,
-      cac: withHvm.spend != null && withHvm.newStudents ? withHvm.spend / withHvm.newStudents : null,
-    };
-  };
-  const cur = total(month);
-  const old = total(prev);
+  // Các "cột" của biểu đồ/xu hướng: tháng, hoặc quý khi xem theo quý.
+  const buckets = React.useMemo(() => {
+    const sorted = [...new Set([...months, ...range.months])].sort();
+    if (!isQuarter) return sorted.map((p) => ({ key: p, label: monthLabel(p, true), months: [p] }));
+    const qs = [...new Set(sorted.map(quarterKey))].sort();
+    return qs.map((q) => ({ key: q, label: `${quarterLabel(q, true)}/${q.slice(2, 4)}`, months: quarterMonths(q) }));
+  }, [months, range.months, isQuarter]);
 
-  const trend = months
-    .slice()
-    .sort()
-    .map((p) => {
-      const row: Record<string, number | string | null> = { period: p, label: monthLabel(p, true) };
-      for (const l of LINES) row[l] = aggregate(of(p, l)).spend;
-      return row;
-    });
+  const spendOfLine = (line: (typeof LINES)[number], ms: string[]) => aggregate(metrics.filter((m) => m.periodType === "month" && m.line === line && ms.includes(m.period))).spend;
 
-  const shares = LINES.map((l) => ({ line: l, label: LINE_LABELS[l], spend: aggregate(of(month, l)).spend ?? 0 }))
+  const trend = buckets.map((b) => {
+    const row: Record<string, number | string | null> = { period: b.key, label: b.label };
+    for (const l of LINES) row[l] = spendOfLine(l, b.months);
+    return row;
+  });
+
+  const shares = LINES.map((l) => ({ line: l, label: LINE_LABELS[l], spend: spendOfLine(l, range.months) ?? 0 }))
     .filter((x) => x.spend > 0)
     .sort((a, b) => b.spend - a.spend);
   const shareTotal = shares.reduce((s, x) => s + x.spend, 0);
@@ -77,13 +67,24 @@ export function OverviewView({
   const crit = alerts.filter((a) => a.level === "crit").length;
   const warn = alerts.filter((a) => a.level === "warn").length;
 
+  const sparkBuckets = buckets.slice(isQuarter ? -4 : -6);
+  const b2cCur = b2cSummary(metrics, range.months);
+  const b2cOld = b2cSummary(metrics, range.prevMonths);
+  const vs = `vs ${range.prevLabel}`;
+
   return (
     <div className="space-y-4">
+      {isQuarter && range.filledMonths < 3 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+          {range.label} mới có số liệu {range.filledMonths}/3 tháng — tổng và % thay đổi so với {range.prevLabel} chưa phản ánh đủ quý.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard label={`Tổng chi ${monthLabel(month)}`} value={fmtMoney(cur.spend)} icon={Coins} tone="brand" delta={change(cur.spend, old.spend)} deltaGoodWhen="down" hint={`vs ${monthLabel(prev, true)}`} />
-        <StatCard label="Lead / Data" value={fmt(cur.leads)} icon={Users} tone="info" delta={change(cur.leads, old.leads)} hint={`vs ${monthLabel(prev, true)}`} />
-        <StatCard label="Học viên mới" value={fmt(cur.newStudents)} icon={UserPlus} tone="ok" delta={change(cur.newStudents, old.newStudents)} hint={`vs ${monthLabel(prev, true)}`} />
-        <StatCard label="CPL bình quân" value={fmtMoney(cur.cpl)} icon={Target} delta={change(cur.cpl, old.cpl)} deltaGoodWhen="down" hint="chỉ mảng có số lead" />
+        <StatCard label={`Tổng chi ${range.label}`} value={fmtMoney(cur.spend)} icon={Coins} tone="brand" delta={change(cur.spend, old.spend)} deltaGoodWhen="down" hint={vs} />
+        <StatCard label="Lead / Data" value={fmt(cur.leads)} icon={Users} tone="info" delta={change(cur.leads, old.leads)} hint={vs} />
+        <StatCard label="Học viên mới" value={fmt(cur.newStudents)} icon={UserPlus} tone="ok" delta={change(cur.newStudents, old.newStudents)} hint={vs} />
+        <StatCard label="CPL bình quân" value={fmtMoney(cur.cpl)} icon={Target} delta={change(cur.cpl, old.cpl)} deltaGoodWhen="down" hint="Tổng chi ÷ tổng lead" />
         <StatCard
           label="Cảnh báo"
           value={alerts.length}
@@ -95,8 +96,8 @@ export function OverviewView({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <ChartCard
-          title="Chi tiêu theo tháng, tách theo mảng"
-          description="Cột chồng = tổng chi digital mỗi tháng. Rê chuột để xem từng mảng."
+          title={isQuarter ? "Chi tiêu theo quý, tách theo mảng" : "Chi tiêu theo tháng, tách theo mảng"}
+          description={`Cột chồng = tổng chi digital mỗi ${isQuarter ? "quý" : "tháng"}. Rê chuột để xem từng mảng.`}
           legend={LINES.map((l) => ({ label: LINE_LABELS[l], color: LINE_COLORS[l] }))}
         >
           <div className="h-72">
@@ -105,7 +106,7 @@ export function OverviewView({
                 <CartesianGrid {...gridProps} />
                 <XAxis dataKey="label" {...axisProps} />
                 <YAxis {...axisProps} width={56} tickFormatter={(v) => fmtMoney(v)} />
-                <Tooltip cursor={{ fill: "var(--muted)", opacity: 0.6 }} content={<ChartTooltip fmtValue={(v) => fmtMoney(v)} fmtLabel={(l) => `Tháng ${l.slice(1)}`} />} />
+                <Tooltip cursor={{ fill: "var(--muted)", opacity: 0.6 }} content={<ChartTooltip fmtValue={(v) => fmtMoney(v)} />} />
                 {LINES.map((l, i) => (
                   <Bar key={l} dataKey={l} name={LINE_LABELS[l]} stackId="spend" fill={LINE_COLORS[l]} stroke="var(--card)" strokeWidth={1} radius={i === LINES.length - 1 ? [4, 4, 0, 0] : 0} />
                 ))}
@@ -114,28 +115,36 @@ export function OverviewView({
           </div>
         </ChartCard>
 
-        <ChartCard title={`Cơ cấu chi ${monthLabel(month)}`} description={`Tổng ${fmtMoney(shareTotal)}`}>
+        <ChartCard title={`Cơ cấu chi ${range.label}`} description={`Tổng ${fmtMoney(shareTotal)}`}>
           {shares.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">Chưa có số liệu tháng này.</p>
+            <p className="py-10 text-center text-sm text-muted-foreground">Chưa có số liệu {isQuarter ? "quý" : "tháng"} này.</p>
           ) : (
-            <ul className="space-y-3">
-              {shares.map((s) => (
-                <li key={s.line}>
-                  <div className="mb-1 flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: LINE_COLORS[s.line] }} />
-                      {s.label}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {fmtMoney(s.spend)} · <b className="text-foreground">{Math.round((s.spend / shareTotal) * 100)}%</b>
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full" style={{ width: `${(s.spend / shares[0].spend) * 100}%`, background: LINE_COLORS[s.line] }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-3">
+                {shares.map((s) => (
+                  <li key={s.line}>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: LINE_COLORS[s.line] }} />
+                        {s.label}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {fmtMoney(s.spend)} · <b className="text-foreground">{Math.round((s.spend / shareTotal) * 100)}%</b>
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full" style={{ width: `${(s.spend / shares[0].spend) * 100}%`, background: LINE_COLORS[s.line] }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-4 flex items-center justify-between border-t pt-3 text-sm font-semibold">
+                <span>Tổng cộng</span>
+                <span className="tabular-nums">
+                  {fmtMoney(shareTotal)} · 100%
+                </span>
+              </div>
+            </>
           )}
         </ChartCard>
       </div>
@@ -143,8 +152,10 @@ export function OverviewView({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
           <header className="border-b px-4 py-3">
-            <h3 className="text-sm font-semibold">So sánh các mảng — {monthLabel(month)}</h3>
-            <p className="text-xs text-muted-foreground">Δ so với {monthLabel(prev)}. Chi phí tăng tô đỏ, giảm tô xanh. Cột cuối: xu hướng chi 6 tháng.</p>
+            <h3 className="text-sm font-semibold">So sánh các mảng — {range.label}</h3>
+            <p className="text-xs text-muted-foreground">
+              Δ so với {range.prevLabel}. Chi phí tăng tô đỏ, giảm tô xanh. B2C = Hệ thống + Trung tâm, Lead/HVM tính chung. Ecom: MQL tính là lead. Cột cuối: xu hướng chi {isQuarter ? "4 quý" : "6 tháng"}.
+            </p>
           </header>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -161,44 +172,75 @@ export function OverviewView({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {LINES.map((l) => {
-                  const d = derive(aggregate(of(month, l)), l, rubric);
-                  const p = derive(aggregate(of(prev, l)), l, rubric);
-                  const spark = months.slice().sort().slice(-6).map((m) => aggregate(of(m, l)).spend);
+                {OVERVIEW_KEYS.map((k) => {
+                  const d = overviewAgg(metrics, k, range.months);
+                  const p = overviewAgg(metrics, k, range.prevMonths);
+                  const spark = sparkBuckets.map((b) => overviewAgg(metrics, k, b.months).spend);
                   return (
-                    <tr key={l} className="hover:bg-muted/30">
-                      <td className="px-3 py-2">
-                        <span className="flex items-center gap-2 font-medium">
-                          <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: LINE_COLORS[l] }} />
-                          {LINE_LABELS[l]}
-                        </span>
-                      </td>
-                      <Num value={fmtMoney(d.spend)} delta={change(d.spend, p.spend)} good="down" />
-                      <Num value={fmt(d.leads)} delta={change(d.leads, p.leads)} good="up" />
-                      <Num value={fmt(d.newStudents)} delta={change(d.newStudents, p.newStudents)} good="up" />
-                      <Num value={fmtMoney(d.cpl)} delta={change(d.cpl, p.cpl)} good="down" />
-                      <Num value={fmtMoney(d.cac)} delta={change(d.cac, p.cac)} good="down" />
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtPct(d.cvr)}</td>
-                      <td className="px-3 py-2">
-                        <Sparkline values={spark} color={LINE_COLORS[l]} />
-                      </td>
-                    </tr>
+                    <React.Fragment key={k}>
+                      <AggRow label={OVERVIEW_LABELS[k]} color={OVERVIEW_COLORS[k]} d={d} p={p} spark={spark} />
+                      {k === "b2c" && (
+                        <>
+                          <SubRow label="Hệ thống (HO chạy chung)" spend={b2cCur.systemSpend} prev={b2cOld.systemSpend} />
+                          <SubRow label="Trung tâm (NS riêng từng TT)" spend={b2cCur.centerSpend} prev={b2cOld.centerSpend} />
+                        </>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
+              <tfoot className="border-t-2 bg-muted/40 font-semibold">
+                <AggRow label="Tổng cộng" d={cur} p={old} spark={sparkBuckets.map((b) => overviewTotal(metrics, b.months).spend)} total />
+              </tfoot>
             </table>
           </div>
         </section>
 
-        <AlertsPanel alerts={alerts} onOpenTab={onOpenTab} />
+        <AlertsPanel alerts={alerts} onOpenTab={onOpenTab} subtitle={`Rà theo ${alertsMonthLabel}: ngưỡng hiệu quả, biến động chi phí, giải ngân.`} />
       </div>
     </div>
   );
 }
 
-function Num({ value, delta, good }: { value: string; delta: number | null; good: "up" | "down" }) {
+function AggRow({ label, color, d, p, spark, total }: { label: string; color?: string; d: OverviewAgg; p: OverviewAgg; spark: (number | null)[]; total?: boolean }) {
   return (
-    <td className="px-3 py-2 text-right">
+    <tr className={cn(!total && "hover:bg-muted/30")}>
+      <td className="px-3 py-2">
+        <span className="flex items-center gap-2 font-medium">
+          {color && <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />}
+          {label}
+        </span>
+      </td>
+      <Num value={fmtMoney(d.spend)} delta={change(d.spend, p.spend)} good="down" />
+      <Num value={fmt(d.leads)} delta={change(d.leads, p.leads)} good="up" />
+      <Num value={fmt(d.newStudents)} delta={change(d.newStudents, p.newStudents)} good="up" />
+      <Num value={fmtMoney(d.cpl)} delta={change(d.cpl, p.cpl)} good="down" />
+      <Num value={fmtMoney(d.cac)} delta={change(d.cac, p.cac)} good="down" />
+      <td className="px-3 py-2 text-right tabular-nums">{fmtPct(d.cvr)}</td>
+      <td className="px-3 py-2">
+        <Sparkline values={spark} color={color ?? "var(--foreground)"} />
+      </td>
+    </tr>
+  );
+}
+
+/** Dòng con của B2C: chỉ có ngân sách (Lead/HVM được tính chung ở dòng B2C). */
+function SubRow({ label, spend, prev }: { label: string; spend: number | null; prev: number | null }) {
+  if (spend == null) return null;
+  return (
+    <tr className="text-muted-foreground">
+      <td className="px-3 py-1.5 pl-8 text-xs">↳ {label}</td>
+      <Num value={fmtMoney(spend)} delta={change(spend, prev)} good="down" muted />
+      <td colSpan={6} className="px-3 py-1.5 text-[11px] italic">
+        Lead/HVM tính chung ở dòng B2C Offline
+      </td>
+    </tr>
+  );
+}
+
+function Num({ value, delta, good, muted }: { value: string; delta: number | null; good: "up" | "down"; muted?: boolean }) {
+  return (
+    <td className={cn("px-3 py-2 text-right", muted && "py-1.5 text-xs")}>
       <div className="tabular-nums">{value}</div>
       {delta != null && <DeltaBadge delta={delta} goodWhen={good} className="mt-0.5" />}
     </td>
@@ -211,7 +253,7 @@ const ALERT_STYLE = {
   info: { icon: Info, cls: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10", label: "Thiếu dữ liệu" },
 } as const;
 
-export function AlertsPanel({ alerts, onOpenTab, className }: { alerts: AdsAlert[]; onOpenTab?: (tab: AdsAlert["tab"]) => void; className?: string }) {
+export function AlertsPanel({ alerts, onOpenTab, className, subtitle }: { alerts: AdsAlert[]; onOpenTab?: (tab: AdsAlert["tab"]) => void; className?: string; subtitle?: string }) {
   const [showAll, setShowAll] = React.useState(false);
   const shown = showAll ? alerts : alerts.slice(0, 8);
   return (
@@ -219,7 +261,7 @@ export function AlertsPanel({ alerts, onOpenTab, className }: { alerts: AdsAlert
       <header className="flex items-center justify-between border-b px-4 py-3">
         <div>
           <h3 className="text-sm font-semibold">Cảnh báo tự động</h3>
-          <p className="text-xs text-muted-foreground">Rà theo ngưỡng hiệu quả, biến động chi phí, giải ngân.</p>
+          <p className="text-xs text-muted-foreground">{subtitle ?? "Rà theo ngưỡng hiệu quả, biến động chi phí, giải ngân."}</p>
         </div>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums">{alerts.length}</span>
       </header>

@@ -150,6 +150,28 @@ là một app hoàn toàn mới về nghiệp vụ.
   Trung tâm" (nguồn gốc nhất) để xác nhận: nt=TPU, lkh=NTI, lth=LDN, xlc=HVG,
   bpc=BPH, ptn=PTA — nếu nạp thêm dữ liệu từ các file này sau này, dùng lại
   đúng bảng quy đổi này, đừng suy đoán lại từ đầu.
+- **Ads — logic B2C/Ecom/quý (chủ sản phẩm chỉnh 10/2026, đọc kỹ trước khi sửa `/ads`)**:
+  - **B2C Offline = Hệ thống + Trung tâm, Lead/HVM tính CHUNG** (sheet "Tổng hợp" mục 1+2).
+    Dòng tháng `b2c_system` mang `budget` = NS Hệ thống (HO chạy chung) VÀ
+    `leads`/`newStudents` = Lead/HVM TỔNG cả B2C (đã nạp T1-T9 từ sheet gốc). Còn
+    `leads`/`newStudents` của `b2c_center` (theo từng SBU, từ T7/2026 — báo cáo ads Q3)
+    là phần quy RIÊNG cho ads ngân sách từng TT = TẬP CON của số tổng, **không được
+    cộng thêm** vào số tổng. "Phần còn lại" (Hệ thống + nguồn khác) = tổng − TT, chỉ SUY RA.
+    Mọi phép gộp B2C đi qua `b2cSummary` (`ads/rollups.ts`) — đừng cộng tay lead của 2 line.
+  - **Số THÁNG nhập riêng, không phải tổng các tuần** (chu kỳ tính khác nhau). Tổng quan/quý
+    chỉ cộng các dòng `periodType="month"`, không bao giờ cộng tuần. Quý = `quarterMonths`.
+  - Tổng quan có công tắc **Theo tháng / Theo quý**, bảng "So sánh các mảng" có dòng **Tổng
+    cộng** (đúng "TỔNG HỢP DIGITAL" của sheet: tổng chi ÷ tổng lead/HVM; Ecom tính MQL là lead).
+    Các bảng theo tháng (B2C, từng mảng) cũng có dòng Tổng cộng. Cảnh báo luôn rà theo 1 tháng.
+  - **Ecom theo sản phẩm**: bảng `ads_ecom_products` (kỳ × sản phẩm; Spend/MQL/HV/Doanh thu;
+    CAC/CP-MQL/ROAS suy ra), UI ở `ads/ecom-products.tsx` dưới tab Ecom. Giai đoạn Test
+    T6-T7 chỉ có số gộp → `period_end` ≠ `period`. "Spend chưa phân bổ" = tổng Ecom (bảng tháng)
+    − Σ sản phẩm; "Chênh lệch" so với bảng tháng là bình thường (HV/doanh thu ghi nhận theo tháng
+    khác nhau — xem ghi chú sheet gốc). Danh sách 7 nhóm sản phẩm cố định: `ECOM_PRODUCTS`
+    trong `lib/ads-metrics.ts`. Đã nạp T6-T7/T8/T9 từ file "TMĐT theo SP theo tháng" (khớp 100%
+    sheet "Báo cáo").
+  - Chênh lệch nhỏ đã biết: tổng NS TT cộng từ các SBU lệch sheet "Tổng hợp" ~1,2tr ở T1 (chi phí của
+    trung tâm đã đóng cửa không có SBU) và vài nghìn đồng ở T7/T9 — do chính file gốc không khớp nhau.
 - **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
   `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
   dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`

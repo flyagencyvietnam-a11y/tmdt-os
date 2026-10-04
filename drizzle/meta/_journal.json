@@ -50,6 +50,13 @@
       "when": 1791040296558,
       "tag": "0006_content_multi_brand_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791081206214,
+      "tag": "0007_magical_harrier",
+      "breakpoints": true
     }
   ]
 }

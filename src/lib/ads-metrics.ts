@@ -96,3 +96,21 @@ export function computeAdsDerived(row: AdsMetricLike, rubric: EffectivenessRubri
 
   return { totalBudget, cpl, cac, cvr, roas, cpmql, effectivenessScore, effectivenessLabel: effectivenessLabel(effectivenessScore) };
 }
+
+/**
+ * Nhóm sản phẩm Ecom dùng trong báo cáo "TMĐT theo sản phẩm" (bảng
+ * `ads_ecom_products`). Danh sách cố định — thêm nhóm mới thì thêm vào đây.
+ */
+export const ECOM_PRODUCTS = [
+  { key: "tesol_epath", label: "TESOL E-PATH" },
+  { key: "ft15", label: "Fast Track 1.5 (FT15)" },
+  { key: "chinese", label: "Tiếng Trung" },
+  { key: "flextrack", label: "FlexTrack 1-1" },
+  { key: "ielts", label: "IELTS (Express + Coaching)" },
+  { key: "giao_tiep", label: "Tiếng Anh Giao Tiếp" },
+  { key: "other", label: "Khác (VSTEP, SAT, chưa gán SP)" },
+] as const;
+
+export type EcomProductKey = (typeof ECOM_PRODUCTS)[number]["key"];
+
+export const ECOM_PRODUCT_LABELS: Record<string, string> = Object.fromEntries(ECOM_PRODUCTS.map((p) => [p.key, p.label]));

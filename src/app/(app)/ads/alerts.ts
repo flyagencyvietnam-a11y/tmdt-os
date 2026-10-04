@@ -16,6 +16,7 @@ import {
   type MetricRow,
   type SbuLite,
 } from "./shared";
+import { b2cSummary } from "./rollups";
 
 export type AlertLevel = "crit" | "warn" | "info";
 
@@ -66,7 +67,8 @@ export function computeAdsAlerts({
   const monthRows = (line: Line, p: string, sbuId?: string) =>
     metrics.filter((m) => m.periodType === "month" && m.line === line && m.period === p && (sbuId === undefined || m.sbuId === sbuId));
 
-  // --- 1. Trung tâm: hiệu quả, chi mà chưa ra HVM, CPL tăng mạnh ---
+  // --- 1. Trung tâm (ads ngân sách riêng, có số quy riêng từ T7/2026): hiệu quả, chi mà chưa ra HVM, CPL tăng mạnh ---
+  const attributed = b2cSummary(metrics, [month]).attributedMonths > 0;
   for (const s of sbus) {
     const cur = monthRows("b2c_center", month, s.id);
     if (!cur.length) continue;
@@ -83,14 +85,34 @@ export function computeAdsAlerts({
     if (cplUp != null && cplUp > ALERT_THRESHOLDS.costIncrease) {
       out.push({ level: "warn", tab: "month", title: `${s.code}: CPL tăng ${pct(cplUp)}`, detail: `${fmtMoney(p.cpl)} → ${fmtMoney(d.cpl)} so với ${monthLabel(prev)}.` });
     }
-    if (d.spend && d.leads == null) {
+    if (attributed && d.spend && d.leads == null) {
       out.push({ level: "info", tab: "month", title: `${s.code}: thiếu số Lead/HVM`, detail: `${monthLabel(month)} đã chi ${fmtMoney(d.spend)} nhưng chưa nhập Lead/HVM — chưa tính được CPL/CAC.` });
     }
   }
 
-  // --- 2. Các mảng còn lại: CPL/CAC tăng mạnh, thiếu số liệu ---
+  // --- 2a. B2C Offline gộp (Hệ thống + Trung tâm, Lead/HVM tính chung) ---
+  const b2c = b2cSummary(metrics, [month]);
+  const b2cPrev = b2cSummary(metrics, [prev]);
+  if (b2c.totalSpend) {
+    const cplUp = change(b2c.cpl, b2cPrev.cpl);
+    if (cplUp != null && cplUp > ALERT_THRESHOLDS.costIncrease) {
+      out.push({ level: "warn", tab: "month", title: `B2C Offline: CPL tăng ${pct(cplUp)}`, detail: `${fmtMoney(b2cPrev.cpl)} → ${fmtMoney(b2c.cpl)} so với ${monthLabel(prev)}.` });
+    }
+    const cacUp = change(b2c.cac, b2cPrev.cac);
+    if (cacUp != null && cacUp > ALERT_THRESHOLDS.costIncrease) {
+      out.push({ level: "warn", tab: "month", title: `B2C Offline: CAC tăng ${pct(cacUp)}`, detail: `${fmtMoney(b2cPrev.cac)} → ${fmtMoney(b2c.cac)} so với ${monthLabel(prev)}.` });
+    }
+    if (b2c.leads == null) {
+      out.push({ level: "info", tab: "month", title: "B2C Offline: thiếu Lead/HVM tổng", detail: `${monthLabel(month)} đã chi ${fmtMoney(b2c.totalSpend)} (Hệ thống + Trung tâm) nhưng chưa nhập Lead/HVM tổng.` });
+    }
+  }
+  if (b2c.inconsistentMonths.length) {
+    out.push({ level: "crit", tab: "month", title: "B2C Offline: số TT lớn hơn số tổng", detail: `${monthLabel(month)}: Lead/HVM quy riêng cho trung tâm vượt Lead/HVM tổng — kiểm tra lại số nhập.` });
+  }
+
+  // --- 2b. Các mảng còn lại: CPL/CAC tăng mạnh, thiếu số liệu ---
   for (const line of LINES) {
-    if (line === "b2c_center") continue;
+    if (line === "b2c_center" || line === "b2c_system") continue;
     const cur = monthRows(line, month);
     if (!cur.length) continue;
     const d = derive(aggregate(cur), line, rubric);
@@ -103,7 +125,7 @@ export function computeAdsAlerts({
     if (cacUp != null && cacUp > ALERT_THRESHOLDS.costIncrease) {
       out.push({ level: "warn", tab: "month", title: `${LINE_LABELS[line]}: CAC tăng ${pct(cacUp)}`, detail: `${fmtMoney(p.cac)} → ${fmtMoney(d.cac)} so với ${monthLabel(prev)}.` });
     }
-    if (d.spend && d.leads == null) {
+    if (d.spend && (line === "ecom" ? d.mql : d.leads) == null) {
       out.push({ level: "info", tab: "month", title: `${LINE_LABELS[line]}: thiếu số Lead`, detail: `${monthLabel(month)} đã chi ${fmtMoney(d.spend)} nhưng chưa nhập Lead/HVM.` });
     }
   }

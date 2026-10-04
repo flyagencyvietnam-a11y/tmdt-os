@@ -5,11 +5,14 @@ import { db } from "@/lib/db";
 import {
   deleteAdsCampaign,
   deleteAdsMetric,
+  deleteEcomProductPeriod,
+  saveEcomProductPeriod,
   rollupCampaignsToMetric,
   upsertAdsCampaign,
   upsertAdsMetric,
   upsertDisbursementPlan,
   type UpsertAdsCampaignInput,
+  type EcomProductRowInput,
   type UpsertAdsMetricInput,
 } from "@/lib/services/ads";
 
@@ -88,6 +91,30 @@ export async function upsertDisbursementPlanAction(input: {
   try {
     const row = await upsertDisbursementPlan(db, input, user.id);
     return { ok: true, data: { id: row.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function saveEcomProductPeriodAction(input: { period: string; periodEnd?: string | null; rows: EcomProductRowInput[] }): Promise<Result> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  if (!/^d{4}-d{2}$/.test(input.period)) return { ok: false, error: "Kỳ không hợp lệ." };
+  if (input.periodEnd && (!/^d{4}-d{2}$/.test(input.periodEnd) || input.periodEnd < input.period)) return { ok: false, error: "Tháng kết thúc phải sau hoặc bằng tháng bắt đầu." };
+  try {
+    await saveEcomProductPeriod(db, input, user.id);
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function deleteEcomProductPeriodAction(period: string): Promise<Result> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ admin/manager được xoá." };
+  try {
+    await deleteEcomProductPeriod(db, period, user.id);
+    return { ok: true, data: undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }

@@ -5,11 +5,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
 import { computeAdsAlerts, type AdsAlert } from "./alerts";
 import { DisbursementPanel } from "./disbursement-panel";
-import { MonthlyView, MonthPicker } from "./monthly-view";
-import { OverviewView } from "./overview-view";
+import { MonthPicker, QuarterPicker } from "./ads-ui";
+import { MonthlyView } from "./monthly-view";
+import { OverviewView, type OverviewRange } from "./overview-view";
 import { RequestsView } from "./requests-view";
-import { WeeklyView } from "./weekly-view";
-import type { CampaignRow, DisbursementRow, MetricRow, SbuLite } from "./shared";
+import { prevQuarter, quarterKey, quarterLabel, quarterMonths, type EcomProductRow } from "./rollups";
+import { monthLabel, prevMonth, type CampaignRow, type DisbursementRow, type MetricRow, type SbuLite } from "./shared";
+import { Segmented, WeeklyView } from "./weekly-view";
 
 type Tab = "overview" | "week" | "month" | "request" | "disbursement";
 
@@ -25,6 +27,7 @@ export function AdsView({
   metrics,
   sbus,
   campaigns,
+  ecomProducts,
   disbursementPlan,
   canManage,
   currentMonth,
@@ -34,6 +37,7 @@ export function AdsView({
   metrics: MetricRow[];
   sbus: SbuLite[];
   campaigns: CampaignRow[];
+  ecomProducts: EcomProductRow[];
   disbursementPlan: DisbursementRow[];
   canManage: boolean;
   currentMonth: string;
@@ -44,10 +48,26 @@ export function AdsView({
   // Mặc định: tháng gần nhất CÓ dữ liệu (đầu tháng mới thường chưa có số).
   const [month, setMonth] = React.useState(() => months[months.length - 1] ?? currentMonth);
   const [tab, setTab] = React.useState<Tab>("overview");
+  const [mode, setMode] = React.useState<"month" | "quarter">("month");
+  const quarters = React.useMemo(() => [...new Set(months.map(quarterKey))].sort(), [months]);
+  const [quarter, setQuarter] = React.useState(() => quarterKey(months[months.length - 1] ?? currentMonth));
 
+  // Tổng quan: 1 tháng hoặc 1 quý (cộng 3 dòng tháng — không bao giờ cộng từ dữ liệu tuần).
+  const range: OverviewRange = React.useMemo(() => {
+    if (mode === "month") {
+      const prev = prevMonth(month);
+      return { kind: "month", key: month, label: monthLabel(month), months: [month], prevLabel: monthLabel(prev, true), prevMonths: [prev], filledMonths: 1 };
+    }
+    const qm = quarterMonths(quarter);
+    const pq = prevQuarter(quarter);
+    return { kind: "quarter", key: quarter, label: quarterLabel(quarter), months: qm, prevLabel: quarterLabel(pq), prevMonths: quarterMonths(pq), filledMonths: qm.filter((m) => months.includes(m)).length };
+  }, [mode, month, quarter, months]);
+
+  // Cảnh báo luôn rà theo 1 THÁNG: ở chế độ quý lấy tháng mới nhất của quý có số liệu.
+  const alertMonth = mode === "month" ? month : ([...range.months].reverse().find((m) => months.includes(m)) ?? range.months[0]);
   const alerts = React.useMemo(
-    () => computeAdsAlerts({ metrics, sbus, plan: disbursementPlan, rubric, month, currentMonth }),
-    [metrics, sbus, disbursementPlan, rubric, month, currentMonth],
+    () => computeAdsAlerts({ metrics, sbus, plan: disbursementPlan, rubric, month: alertMonth, currentMonth }),
+    [metrics, sbus, disbursementPlan, rubric, alertMonth, currentMonth],
   );
   const critCount = alerts.filter((a) => a.level !== "info").length;
 
@@ -66,14 +86,21 @@ export function AdsView({
         </TabsList>
         {tab === "overview" && (
           <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-            Tháng
-            <MonthPicker months={months} value={month} onChange={setMonth} />
+            <Segmented
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: "month", label: "Theo tháng" },
+                { value: "quarter", label: "Theo quý" },
+              ]}
+            />
+            {mode === "month" ? <MonthPicker months={months} value={month} onChange={setMonth} /> : <QuarterPicker quarters={quarters} value={quarter} onChange={setQuarter} />}
           </div>
         )}
       </div>
 
       <TabsContent value="overview" className="pt-4">
-        <OverviewView metrics={metrics} months={months} month={month} rubric={rubric} alerts={alerts} onOpenTab={(t: AdsAlert["tab"]) => setTab(t)} />
+        <OverviewView metrics={metrics} months={months} range={range} alerts={alerts} alertsMonthLabel={monthLabel(alertMonth)} onOpenTab={(t: AdsAlert["tab"]) => setTab(t)} />
       </TabsContent>
 
       <TabsContent value="week" className="pt-4">
@@ -81,7 +108,7 @@ export function AdsView({
       </TabsContent>
 
       <TabsContent value="month" className="pt-4">
-        <MonthlyView metrics={metrics} sbus={sbus} campaigns={campaigns} canManage={canManage} months={months} month={month} onMonthChange={setMonth} rubric={rubric} />
+        <MonthlyView metrics={metrics} sbus={sbus} campaigns={campaigns} ecomProducts={ecomProducts} canManage={canManage} months={months} month={month} onMonthChange={setMonth} rubric={rubric} />
       </TabsContent>
 
       <TabsContent value="request" className="pt-4">

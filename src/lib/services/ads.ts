@@ -1,6 +1,6 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { adsCampaigns, adsDisbursementPlan, adsMetrics, appSettings, type AdsCampaign, type AdsMetric } from "@/lib/db/schema";
+import { adsCampaigns, adsDisbursementPlan, adsEcomProducts, adsMetrics, appSettings, type AdsCampaign, type AdsMetric } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { computeAdsDerived, DEFAULT_EFFECTIVENESS_RUBRIC, type EffectivenessRubric } from "@/lib/ads-metrics";
 
@@ -233,4 +233,51 @@ export async function actualSpendForLine(db: DB, line: AdsMetric["line"], period
     const amt = r.line === "b2c_center" ? (r.centerOrderBudget ? Number(r.centerOrderBudget) : 0) + (r.hoTopupBudget ? Number(r.hoTopupBudget) : 0) : r.budget ? Number(r.budget) : 0;
     return s + amt;
   }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Ecom theo sản phẩm (báo cáo "TMĐT theo SP theo tháng")
+// ---------------------------------------------------------------------------
+
+export async function listEcomProducts(db: DB) {
+  return db.select().from(adsEcomProducts).orderBy(asc(adsEcomProducts.period));
+}
+
+export interface EcomProductRowInput {
+  product: string;
+  spend?: string | null;
+  mql?: string | null;
+  newStudents?: string | null;
+  revenue?: string | null;
+}
+
+/**
+ * Lưu cả 1 kỳ (mọi sản phẩm) một lần. Dòng trống hoàn toàn (không số nào) bị xoá
+ * để bảng không đầy dòng rỗng; dòng có số thì upsert theo (kỳ, sản phẩm).
+ */
+export async function saveEcomProductPeriod(
+  db: DB,
+  input: { period: string; periodEnd?: string | null; rows: EcomProductRowInput[] },
+  actorId: string | null,
+) {
+  const periodEnd = input.periodEnd && input.periodEnd !== input.period ? input.periodEnd : null;
+  const keys = input.rows.map((r) => r.product);
+  const empty = (r: EcomProductRowInput) => [r.spend, r.mql, r.newStudents, r.revenue].every((v) => v == null || v === "");
+  const toDelete = input.rows.filter(empty).map((r) => r.product);
+  if (toDelete.length) {
+    await db.delete(adsEcomProducts).where(and(eq(adsEcomProducts.period, input.period), inArray(adsEcomProducts.product, toDelete)));
+  }
+  for (const r of input.rows.filter((r) => !empty(r))) {
+    const vals = { period: input.period, periodEnd, product: r.product, spend: r.spend || null, mql: r.mql || null, newStudents: r.newStudents || null, revenue: r.revenue || null };
+    await db
+      .insert(adsEcomProducts)
+      .values({ ...vals, createdBy: actorId })
+      .onConflictDoUpdate({ target: [adsEcomProducts.period, adsEcomProducts.product], set: { ...vals, updatedBy: actorId } });
+  }
+  await writeAudit(db, { actorId, entity: "ads_ecom_products", entityId: input.period, action: "UPDATE", changes: { products: keys.length } });
+}
+
+export async function deleteEcomProductPeriod(db: DB, period: string, actorId: string | null) {
+  await db.delete(adsEcomProducts).where(eq(adsEcomProducts.period, period));
+  await writeAudit(db, { actorId, entity: "ads_ecom_products", entityId: period, action: "DELETE" });
 }

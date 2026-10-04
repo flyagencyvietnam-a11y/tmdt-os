@@ -410,6 +410,8 @@ Các tab này là nơi **xem và quản lý kế hoạch**; công việc thực 
 ### 9.4 Ads hàng tháng theo SBU [P3]
 Theo dõi từng tháng, từng SBU: sản phẩm chạy, kênh, mục tiêu, ngân sách trung tâm đặt hàng, ngân sách hệ thống HO hỗ trợ, chi tiêu thực tế, lead thực tế, CPL (tính), mã order MISA, trạng thái, link báo cáo. **Quy tắc đã chốt:** "Ngân sách Trung tâm" chỉ tính phần trung tâm tự order; phần HO hỗ trợ thêm cho một trung tâm luôn ghi vào "Ngân sách Hệ thống (HO)", không cộng vào ngân sách của trung tâm đó. Hạn chế phase 1: dùng task có `type = ads` và trường link báo cáo, chưa làm bảng số liệu.
 
+**Cập nhật theo dữ liệu thật (10/2026):** "Ngân sách Trung tâm" trong file Digital Tracker gồm *NS TT order (TT chịu)* + *NS P.MKT chạy thêm (tính vào chi phí TT)*; quy tắc "HO hỗ trợ ghi vào Hệ thống" ở trên không còn áp dụng cho báo cáo B2C. B2C Offline = NS Hệ thống + NS Trung tâm; **Lead/HVM là số tổng của cả hai mục** (không tách). Từ T7/2026 có thêm số Lead/HVM quy riêng cho ads ngân sách từng trung tâm (tập con của số tổng) để đo chất lượng. Số liệu tháng nhập riêng, không cộng từ tuần. Ecom báo cáo thêm theo sản phẩm (spend/MQL/HV/doanh thu). Tổng quan có xem theo tháng và theo quý, mọi bảng có dòng Tổng cộng.
+
 ### 9.5 Monitoring hạng mục thay mới định kỳ [P2]
 POSM, bảng hiệu, OOH, Google Maps, quầy tư vấn VMP, phòng thi: mỗi dòng có hiện trạng, ngày cập nhật gần nhất, chu kỳ thay mới (tháng), ngày thay mới kế tiếp (tính), số ngày còn lại, cảnh báo (`Quá hạn` / `Sắp đến hạn trong 30 ngày` / `Còn hạn` / `Chưa có dữ liệu`), link ảnh. Cảnh báo `Quá hạn` hoặc `Sắp đến hạn` tự sinh task cho người phụ trách HO. Ở phase 1 thay bằng task lặp có checklist theo SBU (mục 6.5).
 
