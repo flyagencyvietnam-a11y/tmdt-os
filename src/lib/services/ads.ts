@@ -281,3 +281,17 @@ export async function deleteEcomProductPeriod(db: DB, period: string, actorId: s
   await db.delete(adsEcomProducts).where(eq(adsEcomProducts.period, period));
   await writeAudit(db, { actorId, entity: "ads_ecom_products", entityId: period, action: "DELETE" });
 }
+
+/** Upsert 1 dòng (kỳ, sản phẩm); chỉ ghi các trường có trong `values` — trường vắng giữ nguyên (dùng cho import Excel). */
+export async function upsertEcomProduct(
+  db: DB,
+  input: { period: string; periodEnd?: string | null; product: string; values: { spend?: string; mql?: string; newStudents?: string; revenue?: string } },
+  actorId: string | null,
+) {
+  const periodEnd = input.periodEnd && input.periodEnd !== input.period ? input.periodEnd : null;
+  const set = { periodEnd, ...input.values, updatedBy: actorId };
+  await db
+    .insert(adsEcomProducts)
+    .values({ period: input.period, product: input.product, ...set, createdBy: actorId })
+    .onConflictDoUpdate({ target: [adsEcomProducts.period, adsEcomProducts.product], set });
+}

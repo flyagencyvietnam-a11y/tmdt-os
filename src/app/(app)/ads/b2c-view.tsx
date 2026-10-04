@@ -15,7 +15,8 @@ import { upsertAdsMetricAction } from "./actions";
 import { CampaignsDialog } from "./campaigns-dialog";
 import { EffBadge, F, Preview } from "./ads-ui";
 import { MetricEditDialog } from "./metric-edit-dialog";
-import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle } from "./charts";
+import { axisProps, ChartCard, ChartTooltip, gridProps } from "./charts";
+import { CenterTrendTable } from "./center-trend";
 import { b2cSummary, type B2cSummary } from "./rollups";
 import {
   aggregate,
@@ -31,12 +32,6 @@ import {
   type MetricRow,
   type SbuLite,
 } from "./shared";
-import { Segmented } from "./weekly-view";
-
-type PivotMetric = "spend" | "leads" | "newStudents" | "cpl" | "cac" | "effectivenessScore";
-const PIVOT_LABEL: Record<PivotMetric, string> = { spend: "Tổng NS", leads: "Lead", newStudents: "HVM", cpl: "CPL", cac: "CAC", effectivenessScore: "Điểm HQ" };
-/** Chỉ số mà giá trị CAO là XẤU (tô đỏ). */
-const BAD_WHEN_HIGH: PivotMetric[] = ["spend", "cpl", "cac"];
 
 /**
  * B2C Offline = Mục 1 (Hệ thống, P.MKT chạy chung) + Mục 2 (Trung tâm, ngân sách
@@ -188,7 +183,7 @@ export function B2cView({
           onEdit={(sbu) => setEditingCenter({ row: centerOf(month, sbu.id)[0] ?? null, sbu })}
           onCampaigns={(sbuId) => setCampaignsFor({ sbuId, period: month })}
         />
-        <CenterPivot sbus={sbus} months={b2cMonths} rows={centerOf} der={der} onPickMonth={onMonthChange} activeMonth={month} />
+        <CenterTrendTable sbus={sbus} months={b2cMonths} rows={centerOf} der={der} rubric={rubric} onPickMonth={onMonthChange} activeMonth={month} />
       </section>
 
       {editingTotals && (
@@ -579,83 +574,6 @@ function CenterDetailTable({
               <td />
             </tr>
           </tfoot>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-/** Bảng nhiệt SBU × tháng cho 1 chỉ số — thấy ngay trung tâm nào đang tốt/xấu dần. */
-function CenterPivot({
-  sbus,
-  months,
-  rows,
-  der,
-  onPickMonth,
-  activeMonth,
-}: {
-  sbus: SbuLite[];
-  months: string[];
-  rows: (p: string, sbuId?: string) => MetricRow[];
-  der: (r: MetricRow[]) => AggDerived;
-  onPickMonth: (m: string) => void;
-  activeMonth: string;
-}) {
-  const [metric, setMetric] = React.useState<PivotMetric>("cac");
-  const val = (p: string, sbuId: string) => {
-    const r = rows(p, sbuId);
-    if (!r.length) return null;
-    return der(r)[metric] as number | null;
-  };
-  const all = sbus.flatMap((s) => months.map((m) => val(m, s.id))).filter((v): v is number => v != null);
-  const min = Math.min(...all);
-  const max = Math.max(...all);
-  const fmtV = (v: number | null) => (v == null ? "—" : metric === "leads" || metric === "newStudents" ? fmt(v) : metric === "effectivenessScore" ? v.toFixed(1) : fmtMoney(v));
-
-  return (
-    <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
-      <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-        <div className="mr-auto">
-          <h3 className="text-sm font-semibold">Xu hướng theo trung tâm — {PIVOT_LABEL[metric]}</h3>
-          <p className="text-xs text-muted-foreground">
-            {BAD_WHEN_HIGH.includes(metric) ? "Đỏ đậm = cao (chi phí cao là xấu)." : "Xanh đậm = cao."} Bấm tiêu đề tháng để xem chi tiết tháng đó.
-          </p>
-        </div>
-        <Segmented value={metric} onChange={setMetric} options={(Object.keys(PIVOT_LABEL) as PivotMetric[]).map((k) => ({ value: k, label: PIVOT_LABEL[k] }))} />
-      </header>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">SBU</th>
-              {months.map((m) => (
-                <th key={m} className="px-2 py-2 text-right font-medium">
-                  <button type="button" onClick={() => onPickMonth(m)} className={cn("rounded px-1 hover:bg-muted hover:text-foreground", m === activeMonth && "bg-brand/10 text-brand")}>
-                    {monthLabel(m, true)}
-                  </button>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {sbus.map((s) => (
-              <tr key={s.id}>
-                <td className="px-3 py-1.5 font-medium">{s.code}</td>
-                {months.map((m) => {
-                  const v = val(m, s.id);
-                  const style =
-                    metric === "effectivenessScore"
-                      ? heatStyle(v == null ? null : 5 - v, 0, 4, true)
-                      : heatStyle(v, min, max, BAD_WHEN_HIGH.includes(metric));
-                  return (
-                    <td key={m} style={style} className={cn("whitespace-nowrap px-2 py-1.5 text-right tabular-nums", m === activeMonth && "outline outline-1 -outline-offset-1 outline-brand/30", v == null && "text-muted-foreground/50")}>
-                      {fmtV(v)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
         </table>
       </div>
     </section>

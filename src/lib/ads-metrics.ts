@@ -34,7 +34,7 @@ export const DEFAULT_EFFECTIVENESS_RUBRIC: EffectivenessRubric = {
   noConversionCplThreshold: 400000,
 };
 
-function tierScore(value: number, tiers: [number, number, number, number]): EffectivenessTier {
+export function tierScore(value: number, tiers: [number, number, number, number]): EffectivenessTier {
   if (value <= tiers[0]) return 5;
   if (value <= tiers[1]) return 4;
   if (value <= tiers[2]) return 3;

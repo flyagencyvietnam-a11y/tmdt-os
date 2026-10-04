@@ -52,11 +52,28 @@ function parseWorksheet(ws: ExcelJS.Worksheet): ParsedRow[] {
     headers.forEach((h, idx) => {
       if (!h) return;
       const v = values[idx];
-      data[h] = v == null ? "" : String(v).trim();
+      data[h] = cellText(v);
     });
     if (Object.values(data).some((v) => v !== "")) out.push({ rowNumber, data });
   });
   return out;
+}
+
+/** Chuẩn hoá giá trị ô exceljs thành chuỗi: ngày → dd/mm/yyyy (UTC), công thức → kết quả, rich text/link → chữ. */
+export function cellText(v: unknown): string {
+  if (v == null) return "";
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return "";
+    return `${String(v.getUTCDate()).padStart(2, "0")}/${String(v.getUTCMonth() + 1).padStart(2, "0")}/${v.getUTCFullYear()}`;
+  }
+  if (typeof v === "object") {
+    const o = v as { result?: unknown; richText?: { text: string }[]; text?: unknown };
+    if (o.result !== undefined) return cellText(o.result);
+    if (Array.isArray(o.richText)) return o.richText.map((t) => t.text).join("").trim();
+    if (o.text !== undefined) return cellText(o.text);
+    return "";
+  }
+  return String(v).trim();
 }
 
 function splitCsvLine(line: string): string[] {
@@ -92,5 +109,5 @@ function splitCsvLine(line: string): string[] {
  * khoá "brand_code". Không chuẩn hoá thì cột bắt buộc (có *) không bao giờ đọc được.
  */
 export function headerKey(h: string): string {
-  return h.trim().split(/[s*(]/)[0].trim();
+  return h.trim().split(/[\s*(]/)[0].trim();
 }

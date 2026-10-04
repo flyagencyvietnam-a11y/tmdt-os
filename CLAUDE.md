@@ -172,6 +172,21 @@ là một app hoàn toàn mới về nghiệp vụ.
     sheet "Báo cáo").
   - Chênh lệch nhỏ đã biết: tổng NS TT cộng từ các SBU lệch sheet "Tổng hợp" ~1,2tr ở T1 (chi phí của
     trung tâm đã đóng cửa không có SBU) và vài nghìn đồng ở T7/T9 — do chính file gốc không khớp nhau.
+- **Ads — import Excel + bảng trung tâm (10/2026)**:
+  - Nút **Nhập Excel** ở 3 tab Theo tuần / Theo tháng / Theo request (admin/manager). Service
+    `lib/services/import/ads-import.ts` (`planAdsImport` kiểm tra không ghi → `applyAdsImport` ghi),
+    server action `previewAdsImportAction`/`commitAdsImportAction` (KHÔNG có batch trong DB, mỗi bước
+    đọc + kiểm tra lại file), template tải ở `/api/import/template/ads/[kind]` (điền sẵn tuần/tháng + danh
+    sách trung tâm; `?week=`/`?month=` đổi kỳ). Sheet: `TUAN`; `THANG` + `ECOM_SP`; `REQUEST`. Quy ước: ô TRỐNG =
+    giữ nguyên số cũ, ô có số = ghi đè, dòng chưa điền số = bỏ qua; khoá upsert tuần=(line,tuần,SBU),
+    tháng=(line,tháng,SBU)/(kỳ,sản phẩm), request=(tháng,SBU,tên chiến dịch). Import request KHÔNG tự cộng dồn
+    lên số tháng. Chỉ nhận .xlsx. Mỗi cột chỉ hợp lệ với mảng của nó (vd. `mql` chỉ ecom) — sai thì báo lỗi dòng.
+  - **Đã sửa bug `headerKey`** (`import/parse.ts`): regex `/[s*(]/` cắt cả chữ "s" nên cột bắt đầu bằng "s"
+    (`sbu_code`, `status`, `starts_on`...) bị đọc rỗng ở MỌI importer; nay là `/[\s*(]/`. `parseWorksheet`
+    cũng đã đọc đúng ô ngày (→ dd/mm/yyyy), ô công thức, rich text.
+  - Tab Theo tháng ▸ B2C: bảng **Tổng hợp chỉ số theo trung tâm × tháng** (`center-trend.tsx`) thay cho bảng
+    nhiệt nhiều tab. Heatmap theo LUẬT (không min–max): CPL/CAC/Điểm HQ theo thang `ads_effectiveness_rubric`
+    (5 mức), HVM=0 khi đã chi = đỏ; NS/Lead/HVM/CVR xanh dương đậm dần theo cột. Có dòng Cộng từng TT + Tổng cộng.
 - **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
   `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
   dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`

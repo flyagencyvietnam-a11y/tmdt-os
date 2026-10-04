@@ -3,14 +3,16 @@
 import * as React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
+import { todayVnDayStr } from "@/lib/time";
 import { computeAdsAlerts, type AdsAlert } from "./alerts";
 import { DisbursementPanel } from "./disbursement-panel";
 import { MonthPicker, QuarterPicker } from "./ads-ui";
+import { AdsImportButton } from "./import-dialog";
 import { MonthlyView } from "./monthly-view";
 import { OverviewView, type OverviewRange } from "./overview-view";
 import { RequestsView } from "./requests-view";
 import { prevQuarter, quarterKey, quarterLabel, quarterMonths, type EcomProductRow } from "./rollups";
-import { monthLabel, prevMonth, type CampaignRow, type DisbursementRow, type MetricRow, type SbuLite } from "./shared";
+import { monthLabel, nextWeek, prevMonth, type CampaignRow, type DisbursementRow, type MetricRow, type SbuLite } from "./shared";
 import { Segmented, WeeklyView } from "./weekly-view";
 
 type Tab = "overview" | "week" | "month" | "request" | "disbursement";
@@ -65,6 +67,13 @@ export function AdsView({
 
   // Cảnh báo luôn rà theo 1 THÁNG: ở chế độ quý lấy tháng mới nhất của quý có số liệu.
   const alertMonth = mode === "month" ? month : ([...range.months].reverse().find((m) => months.includes(m)) ?? range.months[0]);
+  // Tuần điền sẵn trong template: tuần kế tiếp sau tuần mới nhất đã có số (không vượt quá hôm nay), nếu chưa có thì để template tự chọn tuần hiện tại.
+  const suggestedWeek = React.useMemo(() => {
+    const latest = weeks[0];
+    if (!latest) return undefined;
+    const next = nextWeek(latest);
+    return next <= todayVnDayStr() ? next : latest;
+  }, [weeks]);
   const alerts = React.useMemo(
     () => computeAdsAlerts({ metrics, sbus, plan: disbursementPlan, rubric, month: alertMonth, currentMonth }),
     [metrics, sbus, disbursementPlan, rubric, alertMonth, currentMonth],
@@ -84,6 +93,14 @@ export function AdsView({
           <TabsTrigger value="request">Theo request</TabsTrigger>
           <TabsTrigger value="disbursement">Giải ngân</TabsTrigger>
         </TabsList>
+        {canManage && (tab === "week" || tab === "month" || tab === "request") && (
+          <div className="ml-auto">
+            <AdsImportButton
+              kind={tab}
+              templateQuery={tab === "week" ? (suggestedWeek ? `week=${suggestedWeek}` : undefined) : tab === "month" ? `month=${month}` : undefined}
+            />
+          </div>
+        )}
         {tab === "overview" && (
           <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
             <Segmented

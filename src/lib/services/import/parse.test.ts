@@ -6,6 +6,9 @@ describe("headerKey", () => {
     expect(headerKey("brand_code* (nhiều: VMG, VMP)")).toBe("brand_code");
     expect(headerKey(" topic* ")).toBe("topic");
     expect(headerKey("campaign_code")).toBe("campaign_code");
+    // cột bắt đầu bằng chữ "s" từng bị đọc thành rỗng
+    expect(headerKey("sbu_code")).toBe("sbu_code");
+    expect(headerKey("starts_on* (dd/mm/yyyy)")).toBe("starts_on");
   });
 
   it("CSV có header bắt buộc vẫn đọc ra đúng khoá", async () => {
