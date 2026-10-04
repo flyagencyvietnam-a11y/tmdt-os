@@ -8,7 +8,7 @@ import {
   type ContentItem,
 } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { createTask, updateTask } from "./tasks";
+import { createTask, isPostStepTitle, updateTask } from "./tasks";
 import { loadDeptWorkDays, loadHolidaySet, addWorkdays } from "./workdays";
 import { ServiceError } from "./errors";
 
@@ -270,18 +270,18 @@ export async function updateContentItem(
     await updateTask(db, before.parentTaskId, { status: "done" }, actorId, { trackManualEdit: false });
   }
 
+  // Bỏ tick "Đã đăng" (published → trạng thái khác, không phải huỷ): mở lại bước "Đăng bài" + task cha để 2 bên khớp nhau.
+  if (before.status === "published" && patch.status && patch.status !== "published" && patch.status !== "cancelled" && before.parentTaskId) {
+    const children = await db.select({ id: tasks.id, title: tasks.title, status: tasks.status }).from(tasks).where(and(eq(tasks.parentId, before.parentTaskId), isNull(tasks.deletedAt)));
+    for (const child of children.filter((x) => isPostStepTitle(x.title) && x.status === "done")) {
+      await updateTask(db, child.id, { status: "todo" }, actorId, { trackManualEdit: false });
+    }
+    const [parent] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, before.parentTaskId)).limit(1);
+    if (parent?.status === "done") await updateTask(db, before.parentTaskId, { status: "in_progress" }, actorId, { trackManualEdit: false });
+  }
+
   await writeAudit(db, { actorId, entity: "content_items", entityId: id, action: "UPDATE", changes: patch });
   return after;
-}
-
-/** Gọi khi task con/cha của content_item chuyển done — đồng bộ ngược trạng thái (Mục 7.2). */
-export async function syncContentItemFromParentTask(db: DB, parentTaskId: string, actorId: string | null) {
-  const [item] = await db.select().from(contentItems).where(eq(contentItems.parentTaskId, parentTaskId)).limit(1);
-  if (!item) return;
-  const [task] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, parentTaskId)).limit(1);
-  if (task?.status === "done" && item.status !== "published") {
-    await db.update(contentItems).set({ status: "published", updatedBy: actorId }).where(eq(contentItems.id, item.id));
-  }
 }
 
 export async function listContentItems(db: DB, filters: { brandId?: string } = {}) {

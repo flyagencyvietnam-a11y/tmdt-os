@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -8,6 +8,7 @@ import {
   campaigns,
   checklistItems,
   comments,
+  contentItems,
   recurringRules,
   tasks,
   users,
@@ -29,7 +30,10 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
   if (!task) notFound();
 
-  const [allUsers, checklist, taskComments, activity, campaign, brand, rule] = await Promise.all([
+  // Content liên kết: task này là task cha của 1 content_item, hoặc 1 bước con (Soạn/Thiết kế/Duyệt/Đăng bài) của nó.
+  const contentParentId = task.sourceType === "content_item" ? (task.parentId ?? task.id) : null;
+
+  const [allUsers, checklist, taskComments, activity, campaign, brand, rule, contentItem] = await Promise.all([
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
     db.select().from(checklistItems).where(eq(checklistItems.taskId, id)).orderBy(asc(checklistItems.sortOrder)),
     db
@@ -47,6 +51,14 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
     task.campaignId ? db.select().from(campaigns).where(eq(campaigns.id, task.campaignId)).limit(1).then((r) => r[0]) : null,
     task.brandId ? db.select().from(brands).where(eq(brands.id, task.brandId)).limit(1).then((r) => r[0]) : null,
     task.recurringRuleId ? db.select().from(recurringRules).where(eq(recurringRules.id, task.recurringRuleId)).limit(1).then((r) => r[0]) : null,
+    contentParentId
+      ? db
+          .select({ id: contentItems.id, topic: contentItems.topic, status: contentItems.status, publishDate: contentItems.publishDate, parentTaskId: contentItems.parentTaskId })
+          .from(contentItems)
+          .where(and(eq(contentItems.parentTaskId, contentParentId), isNull(contentItems.deletedAt)))
+          .limit(1)
+          .then((r) => r[0] ?? null)
+      : null,
   ]);
 
   return (
@@ -59,6 +71,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
       campaign={campaign ?? null}
       brand={brand ?? null}
       recurringRuleName={rule?.name ?? null}
+      contentItem={contentItem ?? null}
       currentUserId={user.id}
       canAssignOthers={user.canAssign || user.role === "admin" || user.role === "manager"}
     />

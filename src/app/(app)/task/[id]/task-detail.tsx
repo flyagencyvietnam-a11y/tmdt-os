@@ -46,6 +46,8 @@ const STATUS_OPTIONS = [
 ];
 const STATUS_COLOR: Record<string, TagColor> = { todo: "slate", in_progress: "blue", in_review: "amber", blocked: "red", done: "emerald", cancelled: "gray" };
 
+const CONTENT_STATUS_LABEL: Record<string, string> = { brief: "Brief", drafting: "Soạn nội dung", designing: "Thiết kế", in_review: "Chờ duyệt", approved: "Đã duyệt", published: "Đã đăng", cancelled: "Huỷ" };
+
 const PRIORITY_OPTIONS = [
   { value: "urgent", label: "Gấp" },
   { value: "high", label: "Cao" },
@@ -91,6 +93,7 @@ export function TaskDetail({
   campaign,
   brand,
   recurringRuleName,
+  contentItem,
   currentUserId,
   canAssignOthers,
 }: {
@@ -102,6 +105,8 @@ export function TaskDetail({
   campaign: { id: string; code: string; name: string } | null;
   brand: { id: string; code: string; name: string } | null;
   recurringRuleName: string | null;
+  /** Bài content gắn với task này (task cha đăng bài hoặc bước con của nó). */
+  contentItem: { id: string; topic: string; status: string; publishDate: string; parentTaskId: string | null } | null;
   currentUserId: string;
   canAssignOthers: boolean;
 }) {
@@ -181,6 +186,22 @@ export function TaskDetail({
               onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
             />
           </div>
+
+          {contentItem && (
+            <Link href={`/content?item=${contentItem.id}`} className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm hover:bg-muted">
+              <CheckCircle2 className={cn("h-4 w-4 shrink-0", contentItem.status === "published" ? "text-emerald-600" : "text-muted-foreground")} />
+              <span className="min-w-0">
+                <span className="block truncate">
+                  Bài content: <b>{contentItem.topic}</b> · đăng {fmtDate(contentItem.publishDate)} ·{" "}
+                  <span className={cn(contentItem.status === "published" && "font-medium text-emerald-700 dark:text-emerald-400")}>{CONTENT_STATUS_LABEL[contentItem.status] ?? contentItem.status}</span>
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {contentItem.parentTaskId === task.id ? "Xong task này = tự tick “Đã đăng” bên Content" : task.title.startsWith("Đăng bài:") ? "Xong bước “Đăng bài” = tự tick “Đã đăng” bên Content" : "Task con trong quy trình của bài content này"}; tick “Đã đăng” bên Content thì task cũng xong.
+                </span>
+              </span>
+              <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            </Link>
+          )}
 
           {overdueDays > 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-700 dark:text-red-400">

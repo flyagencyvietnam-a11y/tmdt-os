@@ -4,6 +4,7 @@ import {
   activityLog,
   checklistItems,
   comments,
+  contentItems,
   sbuCatalogItems,
   sbuItemStatus,
   taskCollaborators,
@@ -333,7 +334,38 @@ export async function updateTask(
     await recomputeParentStatus(db, before.parentId, actorId);
   }
 
+  // Task đăng bài ⇄ content_item: đóng/mở task thì trạng thái "Đã đăng" của content theo (Mục 7.2).
+  if (patch.status && patch.status !== before.status) await syncContentFromTask(db, after, actorId);
+
   return after;
+}
+
+/** Task con bước "Đăng bài" do content_item tự sinh (tiêu đề "Đăng bài: {chủ đề}"). */
+export const isPostStepTitle = (title: string) => title.startsWith("Đăng bài:");
+
+/**
+ * Đồng bộ NGƯỢC task → content (nửa còn lại của updateContentItem). Áp dụng cho task cha của content_item
+ * ("Đăng: …") và bước con "Đăng bài: …":
+ *  - xong → content "published" (Đã đăng);
+ *  - mở lại khi content đang "published" → content về "approved" (đã duyệt, chưa đăng).
+ * Chỉ ghi DB trực tiếp lên content (không gọi updateContentItem) nên không gây vòng lặp; nếu trạng thái
+ * đã khớp thì không làm gì.
+ */
+export async function syncContentFromTask(db: DB, task: Pick<Task, "id" | "title" | "status" | "parentId">, actorId: string | null) {
+  let parentTaskId: string | null = task.id;
+  if (task.parentId && isPostStepTitle(task.title)) parentTaskId = task.parentId;
+  const [item] = await db.select().from(contentItems).where(and(eq(contentItems.parentTaskId, parentTaskId), isNull(contentItems.deletedAt))).limit(1);
+  if (!item || item.status === "cancelled") return;
+  // Bước con khác (Soạn/Thiết kế/Duyệt) không quyết định "đã đăng".
+  if (parentTaskId !== task.id && !isPostStepTitle(task.title)) return;
+
+  if (task.status === "done" && item.status !== "published") {
+    await db.update(contentItems).set({ status: "published", updatedBy: actorId }).where(eq(contentItems.id, item.id));
+    await writeAudit(db, { actorId, entity: "content_items", entityId: item.id, action: "UPDATE", changes: { status: { from: item.status, to: "published", via: "task" } } });
+  } else if (task.status !== "done" && task.status !== "cancelled" && item.status === "published") {
+    await db.update(contentItems).set({ status: "approved", updatedBy: actorId }).where(eq(contentItems.id, item.id));
+    await writeAudit(db, { actorId, entity: "content_items", entityId: item.id, action: "UPDATE", changes: { status: { from: "published", to: "approved", via: "task" } } });
+  }
 }
 
 async function clearSuccessorDependencies(db: DB, predecessorId: string, predecessorTitle: string) {

@@ -200,6 +200,11 @@ là một app hoàn toàn mới về nghiệp vụ.
   task để trống ngày (không bịa). Long/BA/PA/"TMĐT/Vận hành" chưa có tài khoản → 21 task chưa giao, ghi người phụ trách trong mô tả + nhãn. Có 10
   phụ thuộc suy từ ghi chú plan (#28←#6; #26←#7,#24; mốc ra mắt #27←#3,4,5,6,7,9,10). **Bẫy ngày**: cột NGÀY sheet Monthly Execution Plan bị Excel đọc
   nhầm mm/dd (01/10 → "10/01") nên khi đọc lại file phải hoán đổi tháng↔ngày với ô kiểu Date.
+- **Content ⇄ Task đăng bài đồng bộ 2 chiều (10/2026)**: tick "Đã đăng" bên Content → `updateContentItem` đóng task cha + task con; bỏ tick → mở lại
+  bước "Đăng bài" + task cha. Ngược lại **`updateTask` gọi `syncContentFromTask`** (`services/tasks.ts`): task cha "Đăng: …" HOẶC bước con "Đăng bài: …"
+  xong → content `published`; mở lại khi content đang published → content về `approved`; content `cancelled` không bị kéo. Hàm này chỉ ghi
+  thẳng lên content (không gọi `updateContentItem`) nên không lặp vô hạn — **mọi chỗ đổi trạng thái task phải đi qua `updateTask`** (đừng `db.update(tasks)`
+  trực tiếp, sẽ mất đồng bộ). Link qua lại: cột "Task đăng bài" + khối trong dialog ở `/content`; khối "Bài content" ở trang task, mở bài bằng `/content?item=ID`.
 - **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
   `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
   dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`

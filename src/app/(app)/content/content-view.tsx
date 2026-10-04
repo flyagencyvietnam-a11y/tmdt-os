@@ -38,6 +38,10 @@ export interface ContentRow {
   status: string;
   postUrl: string | null;
   contentPillar: string | null;
+  /** Task đăng bài (task cha) — link qua lại với /task/[id]. */
+  taskId: string | null;
+  taskCode: string | null;
+  taskStatus: string | null;
 }
 interface Lite {
   id: string;
@@ -77,6 +81,7 @@ export function ContentCalendarView({
   sbus,
   users,
   today,
+  initialOpenId,
 }: {
   items: ContentRow[];
   brands: Lite[];
@@ -84,9 +89,11 @@ export function ContentCalendarView({
   sbus: Lite[];
   users: Lite[];
   today: string;
+  /** Mở sẵn dialog 1 bài (link từ trang task: /content?item=ID). */
+  initialOpenId?: string | null;
 }) {
   const router = useRouter();
-  const [dialog, setDialog] = React.useState<{ mode: "create" } | { mode: "edit"; id: string } | null>(null);
+  const [dialog, setDialog] = React.useState<{ mode: "create" } | { mode: "edit"; id: string } | null>(() => (initialOpenId && items.some((i) => i.id === initialOpenId) ? { mode: "edit", id: initialOpenId } : null));
   const [view, setView] = React.useState<"list" | "calendar">("list");
   const [brandFilter, setBrandFilter] = React.useState<string[]>([]);
   const [channelFilter, setChannelFilter] = React.useState<string[]>([]);
@@ -244,6 +251,24 @@ export function ContentCalendarView({
           />
         ),
         defaultWidth: 80,
+      },
+      {
+        field: "taskCode",
+        header: "Task đăng bài",
+        kind: "text",
+        accessor: (r) => r.taskCode ?? "",
+        sortable: false,
+        groupable: false,
+        cell: (r) =>
+          r.taskId ? (
+            <Link href={`/task/${r.taskId}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 font-mono text-xs text-brand hover:underline" title="Mở task đăng bài">
+              {r.taskCode ?? "Task"}
+              {r.taskStatus === "done" && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+        defaultWidth: 110,
       },
       {
         field: "ownerId",
@@ -483,6 +508,16 @@ function ContentDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {item?.taskId && (
+            <Link href={`/task/${item.taskId}`} className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm hover:bg-muted">
+              <CheckCircle2 className={cn("h-4 w-4", item.taskStatus === "done" ? "text-emerald-600" : "text-muted-foreground")} />
+              <span>
+                Task đăng bài <b className="font-mono">{item.taskCode}</b>
+                {item.taskStatus === "done" ? " — đã xong" : ""} · tick “Đã đăng” và task luôn khớp nhau
+              </span>
+              <ExternalLink className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+          )}
           <F label="Chủ đề *">
             <Input value={f.topic} onChange={(e) => set("topic", e.target.value)} placeholder="VD: Khai giảng lớp IELTS tháng 11" autoFocus={!item} />
           </F>
