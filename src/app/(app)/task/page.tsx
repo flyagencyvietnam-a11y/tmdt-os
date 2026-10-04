@@ -29,7 +29,9 @@ export default async function TaskListPage({ searchParams }: { searchParams: Pro
     sbuId: user.role === "center_contributor" ? (user.sbuId ?? "none") : null,
     today: todayVnDayStr(),
   };
-  const assigneeId = view === "mine" ? null : sp.assignee || null;
+  // `assignee` đi thẳng vào truy vấn uuid → chỉ nhận đúng định dạng uuid (tránh lỗi 500 khi URL bị sửa tay).
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const assigneeId = view === "mine" ? null : sp.assignee && UUID.test(sp.assignee) ? sp.assignee : null;
 
   const [{ rows, total }, counts, allUsers, allCampaigns] = await Promise.all([
     listTasksScoped(db, scope, { view, assigneeId, limit }),
