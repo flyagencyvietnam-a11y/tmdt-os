@@ -3,6 +3,7 @@
 import { Download, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { FileInput } from "@/components/file-input";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -49,7 +50,7 @@ export function T1Wizard() {
         <a href="/api/import/template/t1" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
           <Download className="mr-1 h-4 w-4" /> Tải template T1
         </a>
-        <input ref={fileRef} type="file" accept=".xlsx" className="text-sm" />
+        <FileInput ref={fileRef} accept=".xlsx" />
         <Button size="sm" onClick={onUpload} disabled={pending}>
           <Upload className="mr-1 h-4 w-4" /> Tải lên &amp; kiểm tra
         </Button>
@@ -70,7 +71,7 @@ export function T1Wizard() {
 
           <div>
             <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Sheet CAMPAIGN</div>
-            <div className="max-h-48 overflow-auto rounded-md border">
+            <div className="max-h-48 overflow-auto rounded-xl border bg-card">
               <table className="w-full text-left text-sm">
                 <thead className="sticky top-0 border-b bg-muted/60 text-xs text-muted-foreground">
                   <tr>
@@ -98,7 +99,7 @@ export function T1Wizard() {
 
           <div>
             <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Sheet ACTIONS</div>
-            <div className="max-h-64 overflow-auto rounded-md border">
+            <div className="max-h-64 overflow-auto rounded-xl border bg-card">
               <table className="w-full text-left text-sm">
                 <thead className="sticky top-0 border-b bg-muted/60 text-xs text-muted-foreground">
                   <tr>

@@ -52,7 +52,7 @@ export function MatrixGrid({
           className="rounded-md border px-2 py-1 text-sm"
         />
       </div>
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
         <table className="w-full border-collapse text-left text-sm">
           <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
             <tr>

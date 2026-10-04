@@ -21,7 +21,22 @@ export function ImportWizard({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <Tabs defaultValue={initialTab}>
-      <TabsList className="flex-wrap">
+      <ol className="mb-4 grid gap-2 sm:grid-cols-3">
+        {[
+          ["Tải template", "Chọn loại dữ liệu bên dưới, bấm “Tải template” để lấy file mẫu đúng cột."],
+          ["Điền & tải lên", "Điền dữ liệu (cột có * là bắt buộc), chọn file rồi bấm “Tải lên & kiểm tra”."],
+          ["Xem trước & xác nhận", "Hệ thống báo dòng lỗi / tạo mới / cập nhật. Chưa ghi gì cho tới khi bạn xác nhận."],
+        ].map(([t, d], i) => (
+          <li key={t} className="flex gap-3 rounded-xl border bg-card p-3 shadow-xs">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-semibold text-brand-foreground">{i + 1}</span>
+            <span>
+              <span className="block text-sm font-medium">{t}</span>
+              <span className="block text-xs text-muted-foreground">{d}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <TabsList className="h-auto flex-wrap justify-start">
         <TabsTrigger value="t1">T1 — Plan campaign</TabsTrigger>
         <TabsTrigger value="t3">T3 — Task lẻ</TabsTrigger>
         <TabsTrigger value="t4">T4 — Quy tắc lặp</TabsTrigger>

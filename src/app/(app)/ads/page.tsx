@@ -4,7 +4,8 @@ import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { adsCampaigns, sbus } from "@/lib/db/schema";
-import { listAdsMetrics, listDisbursementPlan } from "@/lib/services/ads";
+import { listAdsMetrics, listDisbursementPlan, loadEffectivenessRubric } from "@/lib/services/ads";
+import { PageHeader } from "@/components/shell/page-header";
 import { todayVnDayStr } from "@/lib/time";
 import { AdsView } from "./ads-view";
 
@@ -20,23 +21,20 @@ export default async function AdsPage() {
   const user = await requireUser();
   if (!canSee(user.role, "ads")) redirect("/khong-co-quyen");
 
-  const [metrics, allSbus, campaigns, disbursementPlan] = await Promise.all([
+  const [metrics, allSbus, campaigns, disbursementPlan, rubric] = await Promise.all([
     listAdsMetrics(db),
     db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.kind, "center")),
     db.select().from(adsCampaigns),
     listDisbursementPlan(db),
+    loadEffectivenessRubric(db),
   ]);
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Ads — Digital Marketing</h1>
-        <p className="text-sm text-muted-foreground">
-          6 mảng thật: B2C Hệ thống · B2C Trung tâm · Ecom · B2B · OSIR · VMP. CPL/CAC/CVR/ROAS/điểm hiệu quả
-          tính tại chỗ. Chu kỳ tuần = Thứ 7 tuần trước → hết Thứ 6 tuần này (báo cáo tuần/tháng tự sinh task
-          cho Khiết/Đạt — xem Cài đặt ▸ Tác vụ định kỳ, mã ADS-01/ADS-02).
-        </p>
-      </div>
+      <PageHeader
+        title="Ads — Digital Marketing"
+        description="Chi tiêu và hiệu quả quảng cáo của 6 mảng: B2C Hệ thống · B2C Trung tâm · Ecom · B2B · OSIR · VMP. Tuần tính từ Thứ 7 đến hết Thứ 6."
+      />
       <AdsView
         metrics={metrics.map((m) => ({
           ...m,
@@ -57,6 +55,7 @@ export default async function AdsPage() {
         disbursementPlan={disbursementPlan}
         canManage={user.role === "admin" || user.role === "manager"}
         currentMonth={todayVnDayStr().slice(0, 7)}
+        rubric={rubric}
         weeks={[...new Set(metrics.filter((m) => m.periodType === "week").map((m) => m.period))].sort().reverse()}
       />
     </div>

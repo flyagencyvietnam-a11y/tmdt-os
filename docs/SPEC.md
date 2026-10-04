@@ -182,7 +182,7 @@ Bảng phụ thuộc task: `task_collaborators`, `task_sbus` (một task liên q
 #### `recurring_rules`: xem mục 6.
 
 #### `content_items` (dòng content calendar)
-`brand_id`, `campaign_id` nullable, `sbu_id` nullable (nếu là nội dung của trung tâm), `publish_date`, `publish_time`, `channel`, `content_pillar`, `topic`, `target_audience`, `key_message`, `format`, `resource_source`, `owner_id`, `cta`, `target_metric`, `support_needed`, `status` (`brief` | `drafting` | `designing` | `in_review` | `approved` | `published` | `cancelled`), `post_url`, `parent_task_id`.
+`brand_id` (brand chính), `brand_ids uuid[]` (1 post có thể gắn NHIỀU brand — luôn chứa brand_id ở vị trí đầu), `campaign_id` nullable, `sbu_id` nullable (nếu là nội dung của trung tâm), `publish_date`, `publish_time`, `channel` (kênh chính), `channels text[]` (đăng chéo nhiều kênh — luôn chứa channel ở vị trí đầu), `content_pillar`, `topic`, `target_audience`, `key_message`, `format`, `resource_source`, `owner_id`, `cta`, `target_metric`, `support_needed`, `status` (`brief` | `drafting` | `designing` | `in_review` | `approved` | `published` | `cancelled`), `post_url`, `parent_task_id`.
 
 #### `media_shoots`, `media_deliverables`
 `media_shoots`: `code`, `shoot_date`, `location`, `sbu_id` nullable, `brand_id` nullable, `purpose`, `crew text`, `equipment text`, `script_url`, `status` (`planned` | `prepared` | `shot` | `editing` | `done` | `cancelled`), `notes`. `media_deliverables`: `shoot_id`, `deliverable_type` (video ngắn, ảnh, reel, phỏng vấn...), `quantity`, `channel`, `brand_id`, `campaign_id`, `editor_id`, `due_date`, `result_url`.

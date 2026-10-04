@@ -34,8 +34,13 @@ const MESSAGES = {
 export interface ContentCalendarRow {
   id: string;
   brandId: string;
+  /** Mọi brand, nối bằng " · " — chỉ để hiển thị. */
   brandCode: string;
+  /** Brand chính — quyết định màu ô. */
+  primaryBrandCode: string;
+  /** Mọi kênh, nối bằng ", ". */
   channel: string;
+  late?: boolean;
   topic: string;
   status: string;
   publishDate: string;
@@ -66,13 +71,13 @@ export function ContentCalendarGrid({
     () =>
       items.map((i) => {
         const d = new Date(`${i.publishDate}T00:00:00`);
-        return { id: i.id, title: `[${i.channel}] ${i.topic}`, start: d, end: d, allDay: true, item: i };
+        return { id: i.id, title: `${i.late ? "⚠ " : ""}${i.topic} · ${i.channel}`, start: d, end: d, allDay: true, item: i };
       }),
     [items],
   );
 
   return (
-    <div className="rounded-md border bg-background p-2" style={{ height: 650 }}>
+    <div className="vmg-cal rounded-xl border bg-card p-3 shadow-xs" style={{ height: 700 }}>
       <Calendar
         localizer={localizer}
         events={events}
@@ -88,12 +93,13 @@ export function ContentCalendarGrid({
         popup
         onSelectEvent={(e: CalEvent) => onSelect(e.id)}
         eventPropGetter={(e: CalEvent) => {
-          const color = TAG_BG[colorForBrand(e.item.brandCode, brandColorIndex[e.item.brandId] ?? 0)];
+          const color = TAG_BG[colorForBrand(e.item.primaryBrandCode, brandColorIndex[e.item.brandId] ?? 0)];
           return {
             style: {
               backgroundColor: color,
               borderRadius: 4,
-              border: "none",
+              border: e.item.late ? "2px solid #dc2626" : "none",
+              fontSize: 12,
               opacity: e.item.status === "published" ? 0.65 : 1,
               textDecoration: e.item.status === "cancelled" ? "line-through" : undefined,
             },

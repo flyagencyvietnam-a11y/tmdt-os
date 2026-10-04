@@ -3,6 +3,7 @@
 import { Download, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { FileInput } from "@/components/file-input";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export function T3Wizard() {
         <a href="/api/import/template/t3" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
           <Download className="mr-1 h-4 w-4" /> Tải template T3
         </a>
-        <input ref={fileRef} type="file" accept=".xlsx,.csv" className="text-sm" />
+        <FileInput ref={fileRef} accept=".xlsx,.csv" />
         <Button size="sm" onClick={onUpload} disabled={pending}>
           <Upload className="mr-1 h-4 w-4" /> Tải lên &amp; kiểm tra
         </Button>
@@ -62,7 +63,7 @@ export function T3Wizard() {
               {errorCount} dòng lỗi
             </Badge>
           </div>
-          <div className="max-h-96 overflow-auto rounded-md border">
+          <div className="max-h-96 overflow-auto rounded-xl border bg-card shadow-xs">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 border-b bg-muted/60 text-xs text-muted-foreground">
                 <tr>

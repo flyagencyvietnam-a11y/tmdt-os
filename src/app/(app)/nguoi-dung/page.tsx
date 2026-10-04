@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { sbus, users } from "@/lib/db/schema";
 import { UsersManager } from "./users-manager";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Người dùng — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -29,13 +30,7 @@ export default async function Page() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Người dùng</h1>
-        <p className="text-sm text-muted-foreground">
-          Quản lý tài khoản &amp; vai trò (SPEC Mục 3) — chỉ admin. Nghỉ việc thì tắt, không
-          xóa.
-        </p>
-      </div>
+      <PageHeader title="Người dùng" description="Quản lý tài khoản và vai trò. Nhân sự nghỉ việc thì tắt tài khoản, không xoá." />
       <UsersManager rows={rows} sbus={sbuRows} currentUserId={me.id} />
     </div>
   );

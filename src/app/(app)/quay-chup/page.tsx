@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { brands, sbus, users } from "@/lib/db/schema";
 import { listDeliverables, listShoots } from "@/lib/services/media";
 import { MediaPlanView } from "./media-view";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Kế hoạch quay chụp — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -24,12 +25,7 @@ export default async function MediaPlanPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Kế hoạch quay chụp</h1>
-        <p className="text-sm text-muted-foreground">
-          SPEC Mục 7.3/9.7 — mỗi đợt quay mặc định 2 tuần/đợt, tự sinh task chuẩn bị + task quay + task hậu kỳ cho mỗi deliverable.
-        </p>
-      </div>
+      <PageHeader title="Kế hoạch quay chụp" description="Lịch các đợt quay (mặc định 2 tuần/đợt). Mỗi deliverable tự sinh task chuẩn bị, quay và hậu kỳ." />
       <MediaPlanView
         shoots={shoots.map((s) => ({ id: s.id, code: s.code, shootDate: s.shootDate, location: s.location, purpose: s.purpose, status: s.status, sbuId: s.sbuId, brandId: s.brandId }))}
         deliverables={deliverables.map((d) => ({ id: d.id, shootId: d.shootId, deliverableType: d.deliverableType, channel: d.channel, editorId: d.editorId, dueDate: d.dueDate, resultUrl: d.resultUrl }))}

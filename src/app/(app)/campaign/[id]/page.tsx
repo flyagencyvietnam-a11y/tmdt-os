@@ -6,6 +6,7 @@ import { campaigns, tasks } from "@/lib/db/schema";
 import { CampaignActionPlan } from "./action-plan";
 import { DuplicateCampaignDialog } from "./duplicate-campaign-dialog";
 import { canSee } from "@/lib/auth/permissions";
+import { todayVnDayStr } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   const total = actionTasks.length;
   const done = actionTasks.filter((t) => t.status === "done" || t.status === "cancelled").length;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayVnDayStr();
   const overdueCount = actionTasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== "done" && t.status !== "cancelled").length;
 
   return (
@@ -31,7 +32,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs text-muted-foreground">{campaign.code}</div>
-          <h1 className="text-xl font-semibold">{campaign.name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{campaign.name}</h1>
           <p className="text-sm text-muted-foreground">
             {campaign.startDate} – {campaign.endDate} · Tiến độ {done}/{total} task xong
             {overdueCount > 0 && <span className="text-crit"> · {overdueCount} trễ hạn</span>}

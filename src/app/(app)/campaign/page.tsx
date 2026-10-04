@@ -5,6 +5,7 @@ import { campaigns, tasks } from "@/lib/db/schema";
 import { overdueSqlFragment } from "@/lib/services/tasks";
 import { todayVnDayStr } from "@/lib/time";
 import { CampaignList } from "./campaign-list";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Campaign — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -30,13 +31,7 @@ export default async function CampaignPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Campaign master</h1>
-        <p className="text-sm text-muted-foreground">
-          Action plan của mỗi campaign chính là các task gắn <code>campaign_id</code> (SPEC Mục 4.1) — mở
-          một campaign để xem/giao task.
-        </p>
-      </div>
+      <PageHeader title="Campaign" description="Danh sách campaign và tiến độ. Mở một campaign để xem action plan và giao task." />
       <CampaignList
         campaigns={rows.map((c) => {
           const s = statsByCampaign.get(c.id);

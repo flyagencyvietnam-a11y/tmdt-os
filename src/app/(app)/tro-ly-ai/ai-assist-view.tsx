@@ -68,7 +68,7 @@ export function AiAssistView({ users, configured }: { users: { id: string; fullN
 
       {rows && (
         <div className="space-y-3">
-          <div className="overflow-auto rounded-md border">
+          <div className="overflow-auto rounded-xl border bg-card shadow-xs">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/60 text-xs text-muted-foreground">
                 <tr>

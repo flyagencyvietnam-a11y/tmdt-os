@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus, RefreshCcw } from "lucide-react";
+import { AlertOctagon, CircleDashed, Clock, Plus, RefreshCcw, ShieldCheck } from "lucide-react";
+import { StatCard } from "@/components/stat-card";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -13,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { fmtDate } from "@/lib/format";
 import { createMonitoringItemAction, markMonitoringRefreshedAction, runMonitoringAlertsNowAction } from "./actions";
+import { todayVnDayStr } from "@/lib/time";
 
 type Alert = "overdue" | "due_soon" | "ok" | "no_data";
 interface MonitoringRow {
@@ -84,8 +86,28 @@ export function MonitoringView({ items, sbus, canManage }: { items: MonitoringRo
     [sbus, canManage, sbuCode],
   );
 
+  const [alertFilter, setAlertFilter] = React.useState<Alert | null>(null);
+  const count = (a: Alert) => items.filter((i) => i.alert === a).length;
+  const shown = alertFilter ? items.filter((i) => i.alert === alertFilter) : items;
+  const pick = (a: Alert) => setAlertFilter((p) => (p === a ? null : a));
+  const ring = (a: Alert) => (alertFilter === a ? "ring-2 ring-brand" : "");
+
   return (
     <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <button type="button" className="text-left" onClick={() => pick("overdue")}>
+          <StatCard className={ring("overdue")} label="Quá hạn thay mới" value={count("overdue")} icon={AlertOctagon} tone={count("overdue") ? "crit" : "muted"} hint="Bấm để lọc" />
+        </button>
+        <button type="button" className="text-left" onClick={() => pick("due_soon")}>
+          <StatCard className={ring("due_soon")} label="Sắp đến hạn (30 ngày)" value={count("due_soon")} icon={Clock} tone={count("due_soon") ? "warn" : "muted"} hint="Bấm để lọc" />
+        </button>
+        <button type="button" className="text-left" onClick={() => pick("ok")}>
+          <StatCard className={ring("ok")} label="Còn hạn" value={count("ok")} icon={ShieldCheck} tone="ok" hint="Bấm để lọc" />
+        </button>
+        <button type="button" className="text-left" onClick={() => pick("no_data")}>
+          <StatCard className={ring("no_data")} label="Chưa có dữ liệu" value={count("no_data")} icon={CircleDashed} tone={count("no_data") ? "info" : "muted"} hint="Thiếu ngày cập nhật" />
+        </button>
+      </div>
       {canManage && (
         <div className="flex justify-end gap-2">
           <Button
@@ -109,7 +131,7 @@ export function MonitoringView({ items, sbus, canManage }: { items: MonitoringRo
           </Button>
         </div>
       )}
-      <DataGrid entity="monitoring_items" columns={columns} rows={items} getRowId={(r) => r.id} emptyText="Chưa có hạng mục giám sát nào." />
+      <DataGrid entity="monitoring_items" columns={columns} rows={shown} getRowId={(r) => r.id} emptyText="Chưa có hạng mục giám sát nào." />
       <CreateMonitoringDialog open={createOpen} onOpenChange={setCreateOpen} sbus={sbus} onDone={() => { setCreateOpen(false); router.refresh(); }} />
       <RefreshDialog item={refreshFor} onOpenChange={(o) => !o && setRefreshFor(null)} onDone={() => { setRefreshFor(null); router.refresh(); }} />
     </div>
@@ -161,7 +183,7 @@ function CreateMonitoringDialog({ open, onOpenChange, sbus, onDone }: { open: bo
 
 function RefreshDialog({ item, onOpenChange, onDone }: { item: MonitoringRow | null; onOpenChange: (o: boolean) => void; onDone: () => void }) {
   const [pending, start] = React.useTransition();
-  const [date, setDate] = React.useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = React.useState(todayVnDayStr());
   const [photoUrl, setPhotoUrl] = React.useState("");
   const [note, setNote] = React.useState("");
   return (

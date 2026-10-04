@@ -92,6 +92,7 @@ export function CampaignsDialog({
                         <button
                           className="text-muted-foreground hover:text-crit"
                           onClick={() =>
+                            window.confirm("Xoá chiến dịch này?") &&
                             start(async () => {
                               const res = await deleteAdsCampaignAction(c.id);
                               if (res.ok) {

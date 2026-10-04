@@ -3,6 +3,7 @@
 import { Download, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { FileInput } from "@/components/file-input";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -42,13 +43,13 @@ export function T4Wizard() {
         <a href="/api/import/template/t4" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
           <Download className="mr-1 h-4 w-4" /> Tải template T4
         </a>
-        <input ref={fileRef} type="file" accept=".xlsx,.csv" className="text-sm" />
+        <FileInput ref={fileRef} accept=".xlsx,.csv" />
         <Button size="sm" onClick={onUpload} disabled={pending}>
           <Upload className="mr-1 h-4 w-4" /> Tải lên &amp; kiểm tra
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Quy tắc lặp chạy ngay đêm tiếp theo (hoặc khi bấm &quot;chạy ngay&quot; ở Cài đặt). Đọc kỹ SPEC Mục 6
+        Quy tắc lặp chạy ngay đêm tiếp theo (hoặc khi bấm &quot;chạy ngay&quot; ở Cài đặt). Kiểm tra kỹ ngày và quy tắc lặp
         trước khi nạp hàng loạt.
       </p>
 
@@ -60,7 +61,7 @@ export function T4Wizard() {
               {errorCount} dòng lỗi
             </Badge>
           </div>
-          <div className="max-h-96 overflow-auto rounded-md border">
+          <div className="max-h-96 overflow-auto rounded-xl border bg-card shadow-xs">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 border-b bg-muted/60 text-xs text-muted-foreground">
                 <tr>

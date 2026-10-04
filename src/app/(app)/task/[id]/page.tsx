@@ -16,6 +16,12 @@ import { TaskDetail } from "./task-detail";
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const [t] = await db.select({ code: tasks.code, title: tasks.title }).from(tasks).where(eq(tasks.id, id)).limit(1);
+  return { title: t ? `${t.code} · ${t.title} — VMG MKT OS` : "Task — VMG MKT OS" };
+}
+
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();

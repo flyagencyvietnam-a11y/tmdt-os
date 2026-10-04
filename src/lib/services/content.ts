@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, like } from "drizzle-orm";
+import { and, arrayContains, desc, eq, isNull, like } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import {
   contentItems,
@@ -69,12 +69,18 @@ async function loadWorkflowSteps(
 }
 
 export interface CreateContentItemInput {
-  brandId: string;
+  /** Brand chính. Có thể bỏ trống nếu truyền brandIds (lấy phần tử đầu). */
+  brandId?: string;
+  /** Nhiều brand cho 1 post (tag). Phần tử đầu = brand chính. */
+  brandIds?: string[];
   campaignId?: string | null;
   sbuId?: string | null;
   publishDate: string;
   publishTime?: string | null;
-  channel: string;
+  /** Kênh chính. Có thể bỏ trống nếu truyền channels (lấy phần tử đầu). */
+  channel?: string;
+  /** Nhiều kênh đăng chéo. Phần tử đầu = kênh chính. */
+  channels?: string[];
   contentPillar?: string | null;
   topic: string;
   targetAudience?: string | null;
@@ -89,23 +95,51 @@ export interface CreateContentItemInput {
   generateSubtasks?: boolean;
 }
 
+/**
+ * Chuẩn hoá brand/kênh: hợp nhất trường đơn (brandId/channel — tương thích
+ * import T6 cũ) với mảng (brandIds/channels), bỏ trùng, giữ thứ tự; phần tử
+ * đầu là brand/kênh CHÍNH. Trả null cho phần không được truyền (khi update).
+ */
+export function normalizeTags(single: string | undefined, many: string[] | undefined): string[] | null {
+  if (single === undefined && many === undefined) return null;
+  const out: string[] = [];
+  for (const v of [...(single ? [single] : []), ...(many ?? [])]) {
+    const t = v.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+/** Tiêu đề task cha — liệt kê mọi kênh (vd. "Đăng: Khai giảng — Fanpage, TikTok"). */
+function parentTitle(topic: string, channels: string[]): string {
+  return `Đăng: ${topic} — ${channels.join(", ")}`;
+}
+
 /** SPEC Mục 7.2 — tạo content_item + task cha "Đăng: {chủ đề} - {kênh}" (+ task con theo workflow). */
 export async function createContentItem(
   db: DB,
   input: CreateContentItemInput,
   actorId: string | null,
 ): Promise<ContentItem> {
+  // brandIds/channels: ưu tiên mảng nếu có (brand chính = phần tử đầu).
+  const brandIds = normalizeTags(input.brandIds?.length ? undefined : input.brandId, input.brandIds) ?? [];
+  const channels = normalizeTags(input.channels?.length ? undefined : input.channel, input.channels) ?? [];
+  if (brandIds.length === 0) throw new ServiceError("Cần chọn ít nhất 1 brand.", "VALIDATION");
+  if (channels.length === 0) throw new ServiceError("Cần chọn ít nhất 1 kênh.", "VALIDATION");
+  const brandId = brandIds[0];
+  const channel = channels[0];
+
   const parentTask = await createTask(
     db,
     {
-      title: `Đăng: ${input.topic} — ${input.channel}`,
+      title: parentTitle(input.topic, channels),
       type: "content",
       assigneeId: input.ownerId ?? null,
       dueDate: input.publishDate,
       dueTime: input.publishTime ?? null,
       campaignId: input.campaignId ?? null,
-      brandId: input.brandId,
-      channel: input.channel,
+      brandId,
+      channel,
       sourceType: "content_item",
     },
     actorId,
@@ -114,12 +148,14 @@ export async function createContentItem(
   const [item] = await db
     .insert(contentItems)
     .values({
-      brandId: input.brandId,
+      brandId,
+      brandIds,
       campaignId: input.campaignId ?? null,
       sbuId: input.sbuId ?? null,
       publishDate: input.publishDate,
       publishTime: input.publishTime ?? null,
-      channel: input.channel,
+      channel,
+      channels,
       contentPillar: input.contentPillar ?? null,
       topic: input.topic,
       targetAudience: input.targetAudience ?? null,
@@ -183,19 +219,34 @@ export async function updateContentItem(
   const [before] = await db.select().from(contentItems).where(eq(contentItems.id, id)).limit(1);
   if (!before) throw new ServiceError("Không tìm thấy content item.", "NOT_FOUND");
 
-  const [after] = await db
-    .update(contentItems)
-    .set({ ...patch, updatedBy: actorId })
-    .where(eq(contentItems.id, id))
-    .returning();
+  // brand/kênh xử lý riêng bên dưới (chuẩn hoá mảng + brand/kênh chính).
+  const rest: Record<string, unknown> = { ...patch };
+  for (const k of ["brandId", "brandIds", "channel", "channels", "generateSubtasks"]) delete rest[k];
+  const set: Partial<typeof contentItems.$inferInsert> = { ...rest, updatedBy: actorId };
+  const brandIds = normalizeTags(patch.brandIds?.length ? undefined : patch.brandId, patch.brandIds);
+  if (brandIds) {
+    if (brandIds.length === 0) throw new ServiceError("Cần chọn ít nhất 1 brand.", "VALIDATION");
+    set.brandIds = brandIds;
+    set.brandId = brandIds[0];
+  }
+  const channels = normalizeTags(patch.channels?.length ? undefined : patch.channel, patch.channels);
+  if (channels) {
+    if (channels.length === 0) throw new ServiceError("Cần chọn ít nhất 1 kênh.", "VALIDATION");
+    set.channels = channels;
+    set.channel = channels[0];
+  }
 
-  if (before.parentTaskId && (patch.publishDate || patch.topic || patch.channel)) {
+  const [after] = await db.update(contentItems).set(set).where(eq(contentItems.id, id)).returning();
+
+  if (before.parentTaskId && (patch.publishDate || patch.topic || channels || brandIds)) {
     await updateTask(
       db,
       before.parentTaskId,
       {
-        title: `Đăng: ${after.topic} — ${after.channel}`,
+        title: parentTitle(after.topic, after.channels.length ? after.channels : [after.channel]),
         dueDate: after.publishDate,
+        brandId: after.brandId,
+        channel: after.channel,
       },
       actorId,
       { trackManualEdit: false },
@@ -237,6 +288,6 @@ export async function listContentItems(db: DB, filters: { brandId?: string } = {
   return db
     .select()
     .from(contentItems)
-    .where(and(isNull(contentItems.deletedAt), filters.brandId ? eq(contentItems.brandId, filters.brandId) : undefined))
+    .where(and(isNull(contentItems.deletedAt), filters.brandId ? arrayContains(contentItems.brandIds, [filters.brandId]) : undefined))
     .orderBy(desc(contentItems.publishDate));
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { Plus } from "lucide-react";
+import { CalendarDays, Columns3, List as ListIcon, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import { createTaskAction, updateTaskAction } from "./actions";
 import { KanbanColumn } from "./kanban-column";
 import { TaskCalendar } from "./task-calendar";
 import { TaskGrid } from "./task-grid";
+import { todayVnDayStr } from "@/lib/time";
 
 export interface TaskItem {
   id: string;
@@ -61,7 +62,7 @@ export function TaskBoard({
   const [createOpen, setCreateOpen] = React.useState(false);
   const [pending, start] = React.useTransition();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayVnDayStr();
 
   const userName = (id: string | null) => users.find((u) => u.id === id)?.fullName ?? "—";
 
@@ -72,6 +73,8 @@ export function TaskBoard({
     if (assigneeFilter !== "all" && assigneeFilter !== "mine" && t.assigneeId !== assigneeFilter) return false;
     return true;
   });
+
+  const overdueCount = visible.filter((t) => t.dueDate && t.dueDate < today && t.status !== "done" && t.status !== "cancelled").length;
 
   function move(id: string, status: string) {
     start(async () => {
@@ -97,28 +100,30 @@ export function TaskBoard({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-md border text-sm">
-          <button
-            className={cn("px-2.5 py-1", view === "list" && "bg-brand/10 font-medium text-brand")}
-            onClick={() => setView("list")}
-          >
-            List
-          </button>
-          <button
-            className={cn("px-2.5 py-1", view === "kanban" && "bg-brand/10 font-medium text-brand")}
-            onClick={() => setView("kanban")}
-          >
-            Kanban
-          </button>
-          <button
-            className={cn("px-2.5 py-1", view === "calendar" && "bg-brand/10 font-medium text-brand")}
-            onClick={() => setView("calendar")}
-          >
-            Lịch
-          </button>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
+        <div className="flex rounded-lg bg-muted p-0.5 text-sm">
+          {(
+            [
+              ["list", "Danh sách", ListIcon],
+              ["kanban", "Kanban", Columns3],
+              ["calendar", "Lịch", CalendarDays],
+            ] as const
+          ).map(([key, label, Icon]) => (
+            <button
+              key={key}
+              type="button"
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors",
+                view === key ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setView(key)}
+            >
+              <Icon className="h-3.5 w-3.5" /> {label}
+            </button>
+          ))}
         </div>
         <SimpleSelect
+          triggerClassName="h-8 w-40"
           value={statusFilter}
           onValueChange={(v) => v && setStatusFilter(v)}
           options={[
@@ -128,6 +133,7 @@ export function TaskBoard({
           ]}
         />
         <SimpleSelect
+          triggerClassName="h-8 w-48"
           value={assigneeFilter}
           onValueChange={(v) => v && setAssigneeFilter(v)}
           options={[
@@ -136,6 +142,9 @@ export function TaskBoard({
             ...users.map((u) => ({ value: u.id, label: u.fullName })),
           ]}
         />
+        <span className="text-xs text-muted-foreground">
+          {visible.length} task{overdueCount > 0 && <span className="ml-1 font-medium text-red-600 dark:text-red-400">· {overdueCount} trễ hạn</span>}
+        </span>
         <Button size="sm" className="ml-auto" onClick={() => setCreateOpen(true)}>
           <Plus className="mr-1 h-4 w-4" /> Task mới
         </Button>

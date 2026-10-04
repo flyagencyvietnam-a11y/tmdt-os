@@ -70,7 +70,7 @@ export function QuickAddTask({ currentUserId }: { currentUserId: string }) {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border p-2">
+    <div className="flex items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
       <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
       <Input
         placeholder='Thêm task nhanh — vd "Gửi báo cáo tuần mai", "Duyệt ảnh t6", "Họp 25/10"'

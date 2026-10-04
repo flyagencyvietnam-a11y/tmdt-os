@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { requests, sbus, taskSbus, tasks } from "@/lib/db/schema";
 import { TaskRow } from "../../task/task-row";
+import { todayVnDayStr } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -26,18 +27,18 @@ export default async function SbuDetailPage({ params }: { params: Promise<{ id: 
     db.select().from(requests).where(and(eq(requests.requesterSbuId, id), isNull(requests.deletedAt))),
   ]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayVnDayStr();
 
   return (
     <div className="space-y-4">
       <div>
         <div className="text-xs text-muted-foreground">{sbu.code}</div>
-        <h1 className="text-xl font-semibold">{sbu.name}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{sbu.name}</h1>
       </div>
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Task liên quan ({sbuTasks.length})</h2>
-        <div className="divide-y rounded-lg border">
+        <div className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
           {sbuTasks.map((r) => (
             <TaskRow key={r.task.id} task={r.task} today={today} />
           ))}
@@ -47,7 +48,7 @@ export default async function SbuDetailPage({ params }: { params: Promise<{ id: 
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Request từ trung tâm ({sbuRequests.length})</h2>
-        <div className="divide-y rounded-lg border text-sm">
+        <div className="divide-y overflow-hidden rounded-xl border bg-card text-sm shadow-xs">
           {sbuRequests.map((r) => (
             <div key={r.id} className="px-3 py-2">
               <span className="font-medium">{r.code}</span> — {r.description}

@@ -1,5 +1,9 @@
 import { asc, eq } from "drizzle-orm";
+import { Grid3x3 } from "lucide-react";
 import Link from "next/link";
+import { PageHeader } from "@/components/shell/page-header";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { sbus, users } from "@/lib/db/schema";
@@ -20,17 +24,17 @@ export default async function SbuPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">SBU</h1>
-          <p className="text-sm text-muted-foreground">12 đầu mối SBU (SPEC Mục 15).</p>
-        </div>
-        {user.role !== "center_contributor" && (
-          <Link href="/sbu/matrix" className="text-sm text-brand hover:underline">
-            Xem ma trận hạng mục × SBU →
-          </Link>
-        )}
-      </div>
+      <PageHeader
+        title="SBU"
+        description="Các trung tâm và đầu mối kinh doanh, kèm người phụ trách phía HO."
+        actions={
+          user.role !== "center_contributor" && (
+            <Link href="/sbu/matrix" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+              <Grid3x3 className="mr-1 h-4 w-4" /> Ma trận hạng mục × SBU
+            </Link>
+          )
+        }
+      />
       <SbuGrid rows={visible} />
     </div>
   );

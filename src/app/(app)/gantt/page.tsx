@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { campaigns, taskDependencies, tasks, users } from "@/lib/db/schema";
 import { GanttChart } from "./gantt-chart";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Gantt — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -24,12 +25,7 @@ export default async function GanttPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Gantt</h1>
-        <p className="text-sm text-muted-foreground">
-          SPEC Mục 8.3 — nhóm theo campaign, mũi tên phụ thuộc, mốc (◆), đường đỏ là hôm nay.
-        </p>
-      </div>
+      <PageHeader title="Gantt" description="Tiến độ theo campaign: thanh = thời gian thực hiện, ◆ = mốc, mũi tên = phụ thuộc, vạch đỏ = hôm nay." />
       <GanttChart
         tasks={rows.map((t) => ({
           id: t.id,

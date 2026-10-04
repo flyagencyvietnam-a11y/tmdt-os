@@ -22,7 +22,9 @@ import {
   Group,
   ArrowUpDown,
   Save,
+  Search,
   Trash2,
+  X,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +51,7 @@ import type {
   SortSpec,
   ViewConfig,
 } from "./types";
+import { todayVnDayStr } from "@/lib/time";
 
 /** Một "dòng nhìn thấy" sau khi phẳng hoá cây nhóm — đơn vị để cuộn ảo. */
 type VisualRow<Row> =
@@ -127,6 +130,7 @@ export function DataGrid<Row>({
   const [editing, setEditing] = React.useState<{ id: string; field: string } | null>(
     null,
   );
+  const [query, setQuery] = React.useState("");
 
   const accessorOf = React.useCallback(
     (field: string) => {
@@ -152,7 +156,8 @@ export function DataGrid<Row>({
         for (const r of rows) {
           const v = col.accessor(r);
           if (v == null || v === "") continue;
-          set.add(String(v));
+          if (Array.isArray(v)) v.forEach((x) => set.add(String(x)));
+          else set.add(String(v));
           if (set.size > 200) break;
         }
       }
@@ -173,9 +178,18 @@ export function DataGrid<Row>({
 
   // --- lọc ---
   const filtered = React.useMemo(() => {
-    if (!view.filters || view.filters.conditions.length === 0) return rows;
-    return rows.filter((r) => evalGroup(r, view.filters, accessorOf));
-  }, [rows, view.filters, accessorOf]);
+    let out = rows;
+    if (view.filters && view.filters.conditions.length > 0) {
+      out = out.filter((r) => evalGroup(r, view.filters, accessorOf));
+    }
+    const q = normalizeSearch(query);
+    if (q) {
+      out = out.filter((r) =>
+        visibleColumns.some((c) => normalizeSearch(searchText(c, r)).includes(q)),
+      );
+    }
+    return out;
+  }, [rows, view.filters, accessorOf, query, visibleColumns]);
 
   // --- sắp xếp nhiều cấp ---
   const sorted = React.useMemo(() => {
@@ -282,6 +296,25 @@ export function DataGrid<Row>({
     <div className="flex flex-col gap-2">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Tìm nhanh…"
+            className="h-8 w-48 bg-background pl-8 pr-7 text-sm"
+          />
+          {query && (
+            <button
+              type="button"
+              aria-label="Xoá tìm kiếm"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted"
+              onClick={() => setQuery("")}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
         <FilterButton
           view={view}
           columns={columns}
@@ -328,7 +361,7 @@ export function DataGrid<Row>({
             size="sm"
             onClick={() => {
               downloadCsv(
-                `${entity.toLowerCase()}-${new Date().toISOString().slice(0, 10)}`,
+                `${entity.toLowerCase()}-${todayVnDayStr()}`,
                 rowsToCsv(sorted, visibleColumns),
               );
               onExportAudit?.(sorted.length);
@@ -341,7 +374,7 @@ export function DataGrid<Row>({
             size="sm"
             onClick={() =>
               downloadXlsx(
-                `${entity.toLowerCase()}-${new Date().toISOString().slice(0, 10)}`,
+                `${entity.toLowerCase()}-${todayVnDayStr()}`,
                 entity,
                 sorted,
                 visibleColumns,
@@ -371,7 +404,7 @@ export function DataGrid<Row>({
 
       <div
         ref={scrollRef}
-        className="overflow-auto rounded-md border"
+        className="overflow-auto rounded-xl border bg-card shadow-xs"
         style={{ maxHeight: GRID_MAX_H }}
       >
         <table
@@ -384,7 +417,7 @@ export function DataGrid<Row>({
               <col key={i} style={{ width: w }} />
             ))}
           </colgroup>
-          <thead className="sticky top-0 z-10 bg-background">
+          <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
             <tr className="border-b">
               <th className="px-2">
                 <Checkbox checked={allChecked} onCheckedChange={toggleAll} />
@@ -422,9 +455,14 @@ export function DataGrid<Row>({
               <tr>
                 <td
                   colSpan={visibleColumns.length + 1}
-                  className="px-3 py-10 text-center text-sm text-muted-foreground"
+                  className="px-3 py-14 text-center text-sm text-muted-foreground"
                 >
-                  {emptyText}
+                  <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                      <Search className="h-4 w-4" />
+                    </span>
+                    <span>{query || rows.length > 0 ? "Không có dòng nào khớp bộ lọc / tìm kiếm." : emptyText}</span>
+                  </div>
                 </td>
               </tr>
             )}
@@ -503,7 +541,7 @@ export function DataGrid<Row>({
         </table>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="px-1 text-xs text-muted-foreground">
         {sorted.length} / {rows.length} dòng
         {visualRows.length !== sorted.length &&
           ` · ${visualRows.length} dòng hiển thị (đã gom nhóm)`}
@@ -513,6 +551,35 @@ export function DataGrid<Row>({
 }
 
 // --------------------------------------------------------------------------
+
+/** Tooltip của ô: hiện đầy đủ chữ bị cắt "…" (+ gợi ý sửa nếu ô sửa được). */
+function cellTitle<Row>(c: GridColumn<Row>, row: Row): string | undefined {
+  if (c.kind === "boolean") return c.editable ? "Nhấp đôi để sửa" : undefined;
+  const text = searchText(c, row);
+  if (!text) return c.editable ? "Nhấp đôi để sửa" : undefined;
+  return c.editable ? `${text}
+(Nhấp đôi để sửa)` : text;
+}
+
+function normalizeSearch(v: string): string {
+  return v
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
+    .trim();
+}
+
+/** Chuỗi để tìm nhanh của 1 ô: ưu tiên nhãn enum (người dùng gõ nhãn, không gõ id). */
+function searchText<Row>(c: GridColumn<Row>, r: Row): string {
+  const v = c.accessor(r);
+  if (v == null) return "";
+  const one = (x: unknown) => {
+    const k = String(x);
+    return c.enumLabels?.[k] ?? c.enumOptions?.find((o) => o.value === k)?.label ?? c.filterOptions?.find((o) => o.value === k)?.label ?? k;
+  };
+  return Array.isArray(v) ? v.map(one).join(" ") : one(v);
+}
 
 function compare(a: unknown, b: unknown): number {
   if (a == null && b == null) return 0;
@@ -584,12 +651,13 @@ function DataRow<Row>({
           <td
             key={c.field}
             className={cn(
-              "px-3",
+              "overflow-hidden px-3",
+              !isEditing && "whitespace-nowrap",
               c.align === "right" && "text-right tabular-nums",
               c.align === "center" && "text-center",
             )}
             style={ci === 0 && indent ? { paddingLeft: 12 + indent * 16 } : undefined}
-            title={c.editable ? "Nhấp đôi để sửa" : undefined}
+            title={cellTitle(c, row)}
             onDoubleClick={() =>
               c.editable && setEditing({ id: rowId, field: c.field })
             }
@@ -637,7 +705,7 @@ function DataRow<Row>({
                 }}
               />
             ) : c.cell ? (
-              c.cell(row)
+              <div className="truncate">{c.cell(row)}</div>
             ) : c.kind === "enum" &&
               c.enumColors &&
               c.accessor(row) != null &&

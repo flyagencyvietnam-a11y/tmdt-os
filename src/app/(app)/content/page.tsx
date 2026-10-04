@@ -5,7 +5,9 @@ import { db } from "@/lib/db";
 import { brands, campaigns, sbus, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { listContentItems } from "@/lib/services/content";
+import { todayVnDayStr } from "@/lib/time";
 import { ContentCalendarView } from "./content-view";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Content calendar — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -24,21 +26,20 @@ export default async function ContentPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Content calendar</h1>
-        <p className="text-sm text-muted-foreground">
-          SPEC Mục 7.2/9.6 — mỗi dòng sinh 1 task cha + task con (Soạn nội dung/Thiết kế/Duyệt/Đăng bài).
-        </p>
-      </div>
+      <PageHeader title="Content calendar" description="Lên lịch bài đăng theo brand & kênh. Mỗi bài tự sinh task Soạn nội dung → Thiết kế → Duyệt → Đăng." />
       <ContentCalendarView
         items={items.map((i) => ({
           id: i.id,
-          brandId: i.brandId,
+          brandIds: i.brandIds.length ? i.brandIds : [i.brandId],
           campaignId: i.campaignId,
           sbuId: i.sbuId,
           publishDate: i.publishDate,
-          channel: i.channel,
+          channels: i.channels.length ? i.channels : [i.channel],
           topic: i.topic,
+          format: i.format,
+          keyMessage: i.keyMessage,
+          targetAudience: i.targetAudience,
+          cta: i.cta,
           ownerId: i.ownerId,
           status: i.status,
           postUrl: i.postUrl,
@@ -48,6 +49,7 @@ export default async function ContentPage() {
         campaigns={allCampaigns}
         sbus={allSbus}
         users={allUsers}
+        today={todayVnDayStr()}
       />
     </div>
   );

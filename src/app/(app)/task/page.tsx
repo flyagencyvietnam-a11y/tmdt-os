@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { campaigns, taskSbus, tasks, users } from "@/lib/db/schema";
 import { calendarToken } from "@/lib/services/ics";
 import { TaskBoard } from "./task-board";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Tất cả task — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -37,12 +38,7 @@ export default async function TaskListPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Tất cả task</h1>
-        <p className="text-sm text-muted-foreground">
-          List, Kanban &amp; Lịch dùng chung bộ lọc (SPEC Mục 8.3). Gantt/Workload để Phase 2.
-        </p>
-      </div>
+      <PageHeader title="Tất cả task" description="Xem toàn bộ công việc của phòng dưới dạng danh sách, Kanban hoặc lịch — dùng chung bộ lọc." />
       <TaskBoard
         tasks={rows.map((t) => ({
           id: t.id,

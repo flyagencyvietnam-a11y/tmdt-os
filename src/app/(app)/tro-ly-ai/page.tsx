@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { isAiAssistConfigured } from "@/lib/services/ai-assist";
 import { AiAssistView } from "./ai-assist-view";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Trợ lý AI — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -15,13 +16,7 @@ export default async function AiAssistPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Trợ lý AI — Tách kế hoạch thành task</h1>
-        <p className="text-sm text-muted-foreground">
-          SPEC Mục 14.4 — dán nội dung tài liệu kế hoạch, AI gợi ý danh sách action. Không có bước nào
-          tự ghi dữ liệu: bạn xem, sửa, chọn người phụ trách rồi mới bấm tạo task.
-        </p>
-      </div>
+      <PageHeader title="Trợ lý AI" description="Dán tài liệu kế hoạch, AI gợi ý danh sách việc. Bạn xem, sửa, chọn người phụ trách rồi mới tạo task." />
       {!isAiAssistConfigured() && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
           Chưa cấu hình <code>ANTHROPIC_API_KEY</code> trong biến môi trường — tính năng này chưa dùng

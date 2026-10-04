@@ -50,7 +50,10 @@ export async function validateT6(db: DB, rows: ParsedRow[]): Promise<T6Row[]> {
     else if (seen.has(contentKey)) errors.push("content_key trùng trong file");
     else seen.add(contentKey);
     if (!brandCode) errors.push("Thiếu brand_code");
-    else if (!brandCodes.has(brandCode)) errors.push(`brand_code không tồn tại: ${brandCode}`);
+    else {
+      const unknown = splitMulti(brandCode).filter((c) => !brandCodes.has(c));
+      if (unknown.length) errors.push(`brand_code không tồn tại: ${unknown.join(", ")}`);
+    }
     if (!r.data.publish_date) errors.push("Thiếu publish_date");
     else if (!publishDate) errors.push(`publish_date sai định dạng: ${r.data.publish_date}`);
     if (!channel) errors.push("Thiếu channel");
@@ -112,18 +115,18 @@ export async function confirmT6Import(db: DB, batchId: string, actorId: string) 
   let updated = 0;
   for (const row of rows.filter((r) => r.result !== "error")) {
     const raw = row.rawData as Record<string, string>;
-    const brand = allBrands.find((b) => b.code === raw.brand_code.trim());
+    const brandIds = splitMulti(raw.brand_code).map((code) => allBrands.find((b) => b.code === code)!.id);
     const sbu = raw.sbu_code ? allSbus.find((s) => s.code === raw.sbu_code.trim()) : undefined;
     const campaign = raw.campaign_code ? allCampaigns.find((c) => c.code === raw.campaign_code.trim()) : undefined;
     const owner = allUsers.find((u) => u.email.toLowerCase() === raw.owner_email.trim().toLowerCase());
 
     const input = {
-      brandId: brand!.id,
+      brandIds,
       campaignId: campaign?.id ?? null,
       sbuId: sbu?.id ?? null,
       publishDate: parseDate(raw.publish_date) as string,
       publishTime: raw.publish_time || null,
-      channel: raw.channel.trim(),
+      channels: splitMulti(raw.channel),
       contentPillar: raw.content_pillar || null,
       topic: raw.topic.trim(),
       targetAudience: raw.target_audience || null,
@@ -156,4 +159,9 @@ export async function confirmT6Import(db: DB, batchId: string, actorId: string) 
   }
   await db.update(importBatches).set({ summary: { created, updated } }).where(eq(importBatches.id, batchId));
   return { created, updated };
+}
+
+/** 1 ô có thể chứa nhiều brand/kênh: "VMG, VMP" hoặc "Fanpage; TikTok" hoặc "A|B". */
+function splitMulti(v: string | undefined): string[] {
+  return [...new Set((v ?? "").split(/[,;|]/).map((x) => x.trim()).filter(Boolean))];
 }

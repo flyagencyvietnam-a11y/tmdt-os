@@ -150,10 +150,10 @@ export function TaskGrid({
         kind: "text",
         accessor: (r) => r.title,
         editable: canEdit,
-        defaultWidth: 280,
+        defaultWidth: 360,
         groupable: false,
         cell: (r) => (
-          <a href={`/task/${r.id}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+          <a href={`/task/${r.id}`} className="font-medium hover:text-brand hover:underline" onClick={(e) => e.stopPropagation()}>
             {r.title}
           </a>
         ),

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TaskRow } from "../../task/task-row";
 import { createTaskAction } from "../../task/actions";
+import { todayVnDayStr } from "@/lib/time";
 
 interface ActionTask {
   id: string;
@@ -31,7 +32,7 @@ export function CampaignActionPlan({
   const router = useRouter();
   const [pending, start] = React.useTransition();
   const [newTitle, setNewTitle] = React.useState("");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayVnDayStr();
 
   const groups = new Map<string, ActionTask[]>();
   for (const t of tasks) {
@@ -72,7 +73,7 @@ export function CampaignActionPlan({
       {[...groups.entries()].map(([workstream, items]) => (
         <div key={workstream} className="space-y-1">
           <div className="text-xs font-semibold uppercase text-muted-foreground">{workstream}</div>
-          <div className="divide-y rounded-lg border">
+          <div className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
             {items.map((t) => (
               <TaskRow key={t.id} task={{ id: t.id, code: "", title: t.title, status: t.status, priority: t.priority, dueDate: t.dueDate }} today={today} />
             ))}

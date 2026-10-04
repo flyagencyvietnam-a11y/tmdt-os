@@ -3,7 +3,7 @@ import { ROLE_LABELS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { listNotifications, unreadCount } from "@/lib/services/notifications";
 import { NotificationBell } from "@/components/shell/notification-bell";
-import { SidebarNav } from "@/components/shell/sidebar-nav";
+import { BrandMark, MobileNav, SidebarNav } from "@/components/shell/sidebar-nav";
 import { UserMenu } from "@/components/shell/user-menu";
 
 export default async function AppLayout({
@@ -25,27 +25,25 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-full flex-1">
-      <aside className="hidden w-60 shrink-0 flex-col border-r bg-sidebar md:flex">
-        <div className="flex h-14 items-center gap-2 border-b px-4">
-          <span className="rounded bg-brand px-1.5 py-0.5 text-xs font-bold text-brand-foreground">
-            VMG
-          </span>
-          <span className="text-sm font-semibold">MKT OS</span>
+    <div className="flex min-h-full flex-1 bg-muted/40">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-sidebar md:flex">
+        <div className="flex h-14 items-center border-b px-4">
+          <BrandMark />
         </div>
         <SidebarNav role={user.role} />
-        <div className="border-t p-3">
+        <div className="border-t px-4 py-3">
           <div className="truncate text-sm font-medium">{user.fullName}</div>
-          <div className="truncate text-xs text-muted-foreground">
-            {ROLE_LABELS[user.role]}
-          </div>
+          <div className="truncate text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</div>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b px-4">
-          <div className="text-sm text-muted-foreground md:hidden">VMG MKT OS</div>
-          <div className="ml-auto flex items-center gap-2">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-4 backdrop-blur supports-backdrop-filter:bg-background/70 md:px-6">
+          <MobileNav role={user.role} />
+          <div className="md:hidden">
+            <BrandMark />
+          </div>
+          <div className="ml-auto flex items-center gap-1.5">
             <NotificationBell
               unread={unread}
               items={notifItems.map((n) => ({
@@ -61,7 +59,7 @@ export default async function AppLayout({
             <UserMenu fullName={user.fullName} email={user.email} />
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { AppSettingsPanel } from "./app-settings-panel";
 import { ContentWorkflowPanel } from "./content-workflow-panel";
 import { JobsPanel } from "./jobs-panel";
 import { RequestRoutingPanel } from "./request-routing-panel";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Cài đặt — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -29,31 +30,29 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Cài đặt hệ thống</h1>
-        <p className="text-sm text-muted-foreground">SPEC Mục 13.4 — chỉ admin. Ngày lễ còn sửa trực tiếp trong DB (bảng <code>holidays</code>).</p>
-      </div>
+      <PageHeader title="Cài đặt hệ thống" description="Cấu hình chung, quy trình content, phân luồng request và tác vụ định kỳ." />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Tác vụ định kỳ — chạy ngay</h2>
         <p className="mb-2 text-xs text-muted-foreground">
-          Bình thường chạy tự động theo lịch (Mục 11.2). Dùng nút dưới khi cần chạy ngay không chờ lịch đêm.
+          Bình thường chạy tự động theo lịch. Dùng nút dưới khi cần chạy ngay không chờ lịch đêm.
         </p>
         <JobsPanel />
       </div>
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Cấu hình chung</h2>
-        <AppSettingsPanel settings={settings.map((s) => ({ key: s.key, description: s.description, value: s.value }))} />
+        {/* Khoá VAPID do hệ thống tự sinh — KHÔNG gửi xuống trình duyệt (private key là bí mật). */}
+        <AppSettingsPanel settings={settings.filter((s) => !s.key.startsWith("vapid_")).map((s) => ({ key: s.key, description: s.description, value: s.value }))} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border p-3 text-sm">
-          <div className="font-medium">Web push (Mục 11.1)</div>
+          <div className="font-medium">Web push</div>
           <div className="text-muted-foreground">{distinctPushUsers} người dùng đã đăng ký nhận thông báo đẩy trên ít nhất 1 trình duyệt.</div>
         </div>
         <div className="rounded-lg border p-3 text-sm">
-          <div className="font-medium">Trợ lý AI (Mục 14.4)</div>
+          <div className="font-medium">Trợ lý AI</div>
           <div className="text-muted-foreground">
             {isAiAssistConfigured() ? "Đã cấu hình ANTHROPIC_API_KEY — tính năng đang hoạt động." : "Chưa cấu hình ANTHROPIC_API_KEY — xem trang Trợ lý AI."}
           </div>
@@ -62,7 +61,7 @@ export default async function SettingsPage() {
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Định tuyến request ({routing.length})</h2>
-        <p className="mb-2 text-xs text-muted-foreground">SPEC Mục 7.4 — (loại request, SBU tuỳ chọn) → người tiếp nhận.</p>
+        <p className="mb-2 text-xs text-muted-foreground">(loại request, SBU tuỳ chọn) → người tiếp nhận.</p>
         <RequestRoutingPanel
           routing={routing.map((r) => ({ id: r.id, requestType: r.requestType, sbuId: r.sbuId, assigneeId: r.assigneeId, defaultSlaDays: r.defaultSlaDays }))}
           sbus={allSbus}
@@ -72,7 +71,7 @@ export default async function SettingsPage() {
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Quy trình content ({workflowTemplates.length})</h2>
-        <p className="mb-2 text-xs text-muted-foreground">SPEC Mục 7.2/13.4 — chưa cấu hình riêng thì dùng mặc định: Soạn nội dung (-3 NLV), Thiết kế (-2 NLV), Duyệt (-1 NLV), Đăng bài (đúng ngày).</p>
+        <p className="mb-2 text-xs text-muted-foreground">chưa cấu hình riêng thì dùng mặc định: Soạn nội dung (-3 NLV), Thiết kế (-2 NLV), Duyệt (-1 NLV), Đăng bài (đúng ngày).</p>
         <ContentWorkflowPanel
           templates={workflowTemplates.map((w) => ({ id: w.id, brandId: w.brandId, channel: w.channel, steps: w.steps as never }))}
           brands={allBrands}

@@ -14,6 +14,7 @@ import { DataGrid, type GridColumn } from "@/components/data-grid";
 import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
 import { acceptRequestAction, createRequestAction, updateRequestStatusAction } from "./actions";
+import { todayVnDayStr } from "@/lib/time";
 
 interface RequestItem {
   id: string;
@@ -274,7 +275,7 @@ function CreateRequestDialog({
             <Input type="date" value={f.desiredDate} onChange={(e) => set("desiredDate", e.target.value)} />
           </Fld>
           <p className="text-xs text-muted-foreground">
-            Không nhập thông tin cá nhân học viên/phụ huynh (SPEC Mục 1.3).
+            Không nhập thông tin cá nhân học viên/phụ huynh.
           </p>
           <Button
             className="w-full"
@@ -282,7 +283,7 @@ function CreateRequestDialog({
             onClick={() =>
               start(async () => {
                 const res = await createRequestAction({
-                  receivedDate: new Date().toISOString().slice(0, 10),
+                  receivedDate: todayVnDayStr(),
                   requesterName: f.requesterName,
                   requesterSbuId: f.requesterSbuId || null,
                   requestType: f.requestType as never,

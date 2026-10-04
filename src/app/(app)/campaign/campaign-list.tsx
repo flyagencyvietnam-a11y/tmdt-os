@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -138,7 +139,17 @@ export function CampaignList({ campaigns, canEdit }: { campaigns: CampaignRow[];
         header: "Tiến độ",
         kind: "number",
         accessor: (r) => r.progressPct,
-        cell: (r) => (r.progressPct === null ? <span className="text-muted-foreground">—</span> : `${r.taskDone}/${r.taskTotal} (${r.progressPct}%)`),
+        cell: (r) =>
+          r.progressPct === null ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <span className="flex items-center gap-2" title={`${r.taskDone}/${r.taskTotal} task xong`}>
+              <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                <span className={cn("block h-full rounded-full", r.progressPct >= 80 ? "bg-emerald-500" : r.progressPct >= 40 ? "bg-sky-500" : "bg-amber-500")} style={{ width: `${r.progressPct}%` }} />
+              </span>
+              <span className="tabular-nums">{r.progressPct}%</span>
+            </span>
+          ),
         align: "right",
         groupable: false,
       },

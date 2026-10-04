@@ -15,7 +15,7 @@ export async function parseSheet(buf: Buffer, filename: string): Promise<ParsedR
     return lines.slice(1).map((line, i) => {
       const cells = splitCsvLine(line);
       const data: Record<string, string> = {};
-      headers.forEach((h, idx) => (data[h.trim()] = (cells[idx] ?? "").trim()));
+      headers.forEach((h, idx) => (data[headerKey(h)] = (cells[idx] ?? "").trim()));
       return { rowNumber: i + 2, data };
     });
   }
@@ -43,7 +43,7 @@ export async function parseWorkbookSheets(
 
 function parseWorksheet(ws: ExcelJS.Worksheet): ParsedRow[] {
   const headerRow = ws.getRow(1).values as unknown[];
-  const headers = headerRow.map((v) => (v == null ? "" : String(v).trim()));
+  const headers = headerRow.map((v) => (v == null ? "" : headerKey(String(v))));
   const out: ParsedRow[] = [];
   ws.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
@@ -85,4 +85,12 @@ function splitCsvLine(line: string): string[] {
   }
   out.push(cur);
   return out;
+}
+
+/**
+ * Header template có dấu bắt buộc + gợi ý, vd. "brand_code* (nhiều: VMG, VMP)" →
+ * khoá "brand_code". Không chuẩn hoá thì cột bắt buộc (có *) không bao giờ đọc được.
+ */
+export function headerKey(h: string): string {
+  return h.trim().split(/[s*(]/)[0].trim();
 }

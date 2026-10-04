@@ -43,6 +43,13 @@
       "when": 1791027385196,
       "tag": "0005_slim_lady_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791040296558,
+      "tag": "0006_content_multi_brand_channel",
+      "breakpoints": true
     }
   ]
 }

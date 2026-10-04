@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { listFoundationGrid } from "@/lib/services/foundation";
 import { FoundationGrid } from "./foundation-grid";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Nền tảng — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -17,13 +18,7 @@ export default async function FoundationPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Nền tảng brand/sản phẩm</h1>
-        <p className="text-sm text-muted-foreground">
-          SPEC Mục 9.2 — lưới cột brand, dòng cấu phần (A1..I2). Nội dung ít thay đổi; nhập
-          bằng form bên dưới hoặc import T8. Mỗi lần sửa lưu bản lịch sử.
-        </p>
-      </div>
+      <PageHeader title="Nền tảng brand" description="Các cấu phần nền tảng của từng brand/sản phẩm. Mỗi lần sửa đều được lưu lịch sử." />
       <FoundationGrid
         brands={brands.map((b) => ({ id: b.id, code: b.code, name: b.name }))}
         entries={entries.map((e) => ({

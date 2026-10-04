@@ -29,7 +29,7 @@ export function DuplicateCampaignDialog({ campaignId, sourceCode }: { campaignId
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              Tạo campaign mới kèm toàn bộ task con, dời ngày theo số ngày lệch bên dưới (SPEC Mục 5.3).
+              Tạo campaign mới kèm toàn bộ task con, dời ngày theo số ngày lệch bên dưới.
             </p>
             <div className="space-y-1">
               <Label className="text-xs">Mã campaign mới</Label>

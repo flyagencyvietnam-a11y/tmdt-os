@@ -43,7 +43,7 @@ export function ContentWorkflowPanel({
 
   return (
     <div className="space-y-2">
-      <div className="divide-y rounded-lg border text-sm">
+      <div className="divide-y overflow-hidden rounded-xl border bg-card text-sm shadow-xs">
         {templates.map((w) => (
           <div key={w.id} className="px-3 py-2">
             <div className="flex items-center justify-between">
@@ -55,6 +55,7 @@ export function ContentWorkflowPanel({
                 disabled={pending}
                 className="text-muted-foreground hover:text-crit"
                 onClick={() =>
+                  window.confirm("Xoá quy trình content này?") &&
                   start(async () => {
                     const res = await deleteContentWorkflowTemplateAction(w.id);
                     if (res.ok) {

@@ -3,6 +3,9 @@ import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { requests, sbus } from "@/lib/db/schema";
 import { RequestBoard } from "./request-board";
+import { CheckCircle2, Inbox, Loader, Sparkles } from "lucide-react";
+import { StatCard } from "@/components/stat-card";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Request — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -26,15 +29,12 @@ export default async function RequestPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Request</h1>
-        <p className="text-sm text-muted-foreground">Yêu cầu từ phòng ban, trung tâm (SPEC Mục 9.8).</p>
-      </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Kpi label="Tổng" value={stats.total} />
-        <Kpi label="Mới" value={stats.new} />
-        <Kpi label="Đang xử lý" value={stats.inProgress} />
-        <Kpi label="Đã xong" value={stats.done} />
+      <PageHeader title="Request" description="Yêu cầu gửi tới phòng Marketing từ phòng ban và trung tâm." />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Tổng request" value={stats.total} icon={Inbox} />
+        <StatCard label="Mới — chờ tiếp nhận" value={stats.new} icon={Sparkles} tone={stats.new ? "warn" : "muted"} />
+        <StatCard label="Đang xử lý" value={stats.inProgress} icon={Loader} tone="info" />
+        <StatCard label="Đã xong" value={stats.done} icon={CheckCircle2} tone="ok" hint={stats.total ? `${Math.round((stats.done / stats.total) * 100)}% tổng số` : undefined} />
       </div>
       <RequestBoard
         requests={rows.map((r) => ({
@@ -56,11 +56,3 @@ export default async function RequestPage() {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-2xl font-semibold tabular-nums">{value}</div>
-    </div>
-  );
-}

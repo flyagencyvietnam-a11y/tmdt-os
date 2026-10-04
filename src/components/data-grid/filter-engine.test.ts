@@ -104,3 +104,25 @@ describe("buildGroups", () => {
     expect(open?.children?.length).toBe(3); // MQL, SQL, NEW
   });
 });
+
+describe("enum với giá trị mảng (cột nhiều tag)", () => {
+  type R = { brands: string[] };
+  const acc = (f: string) => (r: R) => (r as unknown as Record<string, unknown>)[f];
+  const row: R = { brands: ["VMG", "VMP"] };
+  const g = (operator: string, value: unknown): FilterGroup => ({
+    conjunction: "and",
+    conditions: [{ field: "brands", operator: operator as never, value }],
+  });
+
+  it("is / any_of khớp nếu MỘT phần tử khớp", () => {
+    expect(evalGroup(row, g("is", "VMP"), acc)).toBe(true);
+    expect(evalGroup(row, g("any_of", ["UPLEARN", "VMG"]), acc)).toBe(true);
+    expect(evalGroup(row, g("any_of", ["UPLEARN"]), acc)).toBe(false);
+  });
+
+  it("is_not / none_of loại nếu có phần tử khớp", () => {
+    expect(evalGroup(row, g("is_not", "VMP"), acc)).toBe(false);
+    expect(evalGroup(row, g("none_of", ["UPLEARN"]), acc)).toBe(true);
+    expect(evalGroup(row, g("none_of", ["VMG"]), acc)).toBe(false);
+  });
+});

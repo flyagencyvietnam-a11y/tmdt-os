@@ -48,7 +48,7 @@ export function RequestRoutingPanel({
 
   return (
     <div className="space-y-2">
-      <div className="divide-y rounded-lg border text-sm">
+      <div className="divide-y overflow-hidden rounded-xl border bg-card text-sm shadow-xs">
         {routing.map((r) => (
           <div key={r.id} className="flex items-center justify-between px-3 py-2">
             <span>
@@ -62,6 +62,7 @@ export function RequestRoutingPanel({
                 disabled={pending}
                 className="text-muted-foreground hover:text-crit"
                 onClick={() =>
+                  window.confirm("Xoá quy tắc phân luồng này?") &&
                   start(async () => {
                     const res = await deleteRequestRoutingAction(r.id);
                     if (res.ok) {

@@ -88,7 +88,7 @@ export function TaskCalendar({ tasks, icsUrl }: { tasks: TaskItem[]; icsUrl?: st
           </Button>
         </div>
       )}
-      <div className="rounded-md border bg-background p-2" style={{ height: 650 }}>
+      <div className="vmg-cal rounded-xl border bg-card p-3 shadow-xs" style={{ height: 700 }}>
         <Calendar
         localizer={localizer}
         events={events}

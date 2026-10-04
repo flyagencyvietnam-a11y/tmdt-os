@@ -150,6 +150,25 @@ là một app hoàn toàn mới về nghiệp vụ.
   Trung tâm" (nguồn gốc nhất) để xác nhận: nt=TPU, lkh=NTI, lth=LDN, xlc=HVG,
   bpc=BPH, ptn=PTA — nếu nạp thêm dữ liệu từ các file này sau này, dùng lại
   đúng bảng quy đổi này, đừng suy đoán lại từ đầu.
+- **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
+  `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
+  dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`
+  (thẻ KPI + `DeltaBadge` % so kỳ trước, `deltaGoodWhen="down"` cho chi phí),
+  `components/tag-multi-select.tsx` (chọn nhiều tag màu), `components/file-input.tsx`
+  (ô chọn file cho mọi wizard import). Nền trang là `bg-muted/40` → khung nội
+  dung phải là thẻ `rounded-xl border bg-card shadow-xs`. Màu biểu đồ dùng biến
+  `--series-1..8` (globals.css, có bản dark), không hardcode hex. Lịch
+  react-big-calendar phải bọc class `vmg-cal` để nhận style theo theme. Có
+  công tắc Sáng/Tối (next-themes, mặc định Sáng) — class `dark:` phải đúng.
+  "Hôm nay" phía client: luôn `todayVnDayStr()`, KHÔNG `new Date().toISOString().slice(0,10)` (lệch ngày trước 7h sáng).
+- **Content nhiều brand/kênh**: `content_items.brand_ids[]` + `channels[]`
+  (phần tử đầu = brand/kênh chính, luôn trùng `brand_id`/`channel` — 2 cột đơn
+  giữ lại cho workflow template + task). Chuẩn hoá qua `normalizeTags` trong
+  `lib/services/content.ts`; import T6 nhận nhiều giá trị/ô ("VMG, VMP").
+- **Ads**: công thức thuần ở `lib/ads-metrics.ts` (client-safe, services/ads.ts
+  re-export); tổng hợp/định dạng ở `ads/shared.ts` (`aggregate`/`derive`/`fmtMoney`);
+  cảnh báo tự động ở `ads/alerts.ts` (ngưỡng `ALERT_THRESHOLDS` — chủ sản phẩm
+  chưa xác nhận con số, đang là mặc định hợp lý).
 - **Bẫy đã gặp 1 lần, đừng lặp lại**: `next.config.ts` từng có khối
   `redirects()` sót lại từ TMĐT OS cũ trỏ `/bao-cao → /` — route `/bao-cao`
   (Dashboard quản lý) mới tạo bị nuốt silently (307 về "/", KHÔNG log ở Next

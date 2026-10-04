@@ -16,14 +16,20 @@ export const contentItems = pgTable(
   "content_items",
   {
     id: pkUuid(),
+    /** Brand CHÍNH (= brandIds[0]) — dùng tra workflow template + gắn task. */
     brandId: uuid("brand_id")
       .notNull()
       .references(() => brands.id),
+    /** Mọi brand mà bài đăng thuộc về (1 post có thể chung nhiều brand). Luôn chứa brandId. */
+    brandIds: uuid("brand_ids").array().notNull().default(sql`'{}'::uuid[]`),
     campaignId: uuid("campaign_id").references(() => campaigns.id),
     sbuId: uuid("sbu_id").references(() => sbus.id),
     publishDate: date("publish_date").notNull(),
     publishTime: time("publish_time"),
+    /** Kênh CHÍNH (= channels[0]). */
     channel: text("channel").notNull(),
+    /** Mọi kênh đăng của bài (đăng chéo Fanpage + TikTok...). Luôn chứa channel. */
+    channels: text("channels").array().notNull().default(sql`'{}'::text[]`),
     contentPillar: text("content_pillar"),
     topic: text("topic").notNull(),
     targetAudience: text("target_audience"),

@@ -9,12 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { deleteAdsCampaignAction, rollupCampaignsAction, upsertAdsCampaignAction } from "./actions";
-import type { CampaignRow, SbuLite } from "./shared";
-
-function fmt(v: string | number | null | undefined): string {
-  if (v == null || v === "") return "—";
-  return Number(v).toLocaleString("vi-VN");
-}
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { StatCard } from "@/components/stat-card";
+import { Coins, ListChecks, MessageCircle, Target } from "lucide-react";
+import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle } from "./charts";
+import { fmt, fmtMoney, monthLabel, num, type CampaignRow, type SbuLite } from "./shared";
 
 /**
  * Report THEO REQUEST — mỗi dòng là 1 chiến dịch Facebook ứng với 1 request
@@ -39,12 +38,47 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
     .sort((a, b) => (a.period === b.period ? sbuName(a.sbuId).localeCompare(sbuName(b.sbuId)) : b.period.localeCompare(a.period)));
 
   const totalSpend = filtered.reduce((s, c) => s + Number(c.spend || 0), 0);
+  const totalMess = filtered.reduce((s, c) => s + (num(c.messages as string) ?? 0), 0);
+  const cpmOf = (c: CampaignRow) => (num(c.messages as string) ? Number(c.spend) / num(c.messages as string)! : null);
+  const cpms = filtered.map(cpmOf).filter((v): v is number => v != null);
+  const cpmMin = Math.min(...cpms);
+  const cpmMax = Math.max(...cpms);
+  const bySbu = sbus
+    .map((s) => {
+      const rows = filtered.filter((c) => c.sbuId === s.id);
+      const spend = rows.reduce((a, c) => a + Number(c.spend || 0), 0);
+      return { code: s.code, spend, count: rows.length };
+    })
+    .filter((x) => x.spend > 0)
+    .sort((a, b) => b.spend - a.spend);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard label="Số request" value={filtered.length} icon={ListChecks} tone="info" hint={periodFilter ? monthLabel(periodFilter) : "Mọi kỳ"} />
+        <StatCard label="Tổng chi tiêu" value={fmtMoney(totalSpend)} icon={Coins} tone="brand" />
+        <StatCard label="Tổng mess" value={fmt(totalMess)} icon={MessageCircle} tone="info" />
+        <StatCard label="Chi phí / mess" value={fmtMoney(totalMess ? totalSpend / totalMess : null)} icon={Target} hint="bình quân theo bộ lọc" />
+      </div>
+
+      {bySbu.length > 0 && (
+        <ChartCard title="Chi tiêu request theo trung tâm" description="Theo bộ lọc đang chọn, cao → thấp.">
+          <div className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={bySbu} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="30%">
+                <CartesianGrid {...gridProps} />
+                <XAxis dataKey="code" {...axisProps} />
+                <YAxis {...axisProps} width={52} tickFormatter={(v) => fmtMoney(v)} />
+                <Tooltip cursor={{ fill: "var(--muted)", opacity: 0.6 }} content={<ChartTooltip fmtValue={(v) => fmtMoney(v)} />} />
+                <Bar dataKey="spend" name="Chi tiêu" fill="var(--series-2)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </ChartCard>
+      )}
+
       <p className="text-xs text-muted-foreground">
-        Mỗi dòng = 1 request ads riêng theo trung tâm (file gốc &quot;ads tt.xlsx&quot;), độc lập với chu kỳ tuần/tháng. Dùng
-        &quot;Cộng dồn vào tháng&quot; khi cần đưa tổng chi tiêu các request của 1 SBU+kỳ vào report Theo tháng.
+        Mỗi dòng = 1 request ads riêng của trung tâm, độc lập chu kỳ tuần/tháng. Nút ⟳ “Cộng dồn” đưa tổng chi tiêu các request của 1 SBU + kỳ vào báo cáo Theo tháng.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <SimpleSelect
@@ -59,7 +93,7 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
           value={periodFilter}
           onValueChange={(v) => setPeriodFilter(v ?? "")}
           placeholder="Tất cả kỳ"
-          options={[{ value: "", label: "Tất cả kỳ" }, ...periods.map((p) => ({ value: p, label: p }))]}
+          options={[{ value: "", label: "Tất cả kỳ" }, ...periods.map((p) => ({ value: p, label: monthLabel(p) }))]}
         />
         {canManage && (
           <Button size="sm" className="ml-auto" onClick={() => setAdding(true)}>
@@ -69,7 +103,7 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
       </div>
 
       {adding && (
-        <div className="space-y-2 rounded-md border p-3">
+        <div className="space-y-2 rounded-xl border bg-card p-3 shadow-xs">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <F label="SBU">
               <SimpleSelect triggerClassName="h-8" value={f.sbuId} onValueChange={(v) => setF((p) => ({ ...p, sbuId: v ?? "" }))} placeholder="Chọn SBU" options={sbus.map((s) => ({ value: s.id, label: s.code }))} />
@@ -126,9 +160,9 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
         </div>
       )}
 
-      <div className="overflow-auto rounded-md border">
+      <div className="overflow-auto rounded-xl border bg-card shadow-xs">
         <table className="w-full border-collapse text-left text-sm">
-          <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
+          <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground">
             <tr>
               <th className="px-2 py-2">Kỳ</th>
               <th className="px-2 py-2">SBU</th>
@@ -136,13 +170,14 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
               <th className="px-2 py-2 text-right">Mess</th>
               <th className="px-2 py-2 text-right">Impression</th>
               <th className="px-2 py-2 text-right">Chi tiêu</th>
+              <th className="px-2 py-2 text-right">Chi phí / mess</th>
               <th className="px-2 py-2" />
             </tr>
           </thead>
           <tbody>
             {filtered.map((c) => (
               <tr key={c.id} className="border-b hover:bg-muted/30">
-                <td className="px-2 py-1.5 tabular-nums">{c.period}</td>
+                <td className="px-2 py-1.5 tabular-nums">{monthLabel(c.period)}</td>
                 <td className="px-2 py-1.5 font-medium">{sbuName(c.sbuId)}</td>
                 <td className="px-2 py-1.5">
                   {c.misaRequestUrl ? (
@@ -155,7 +190,10 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.messages as string)}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.impressions as string)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(c.spend)}</td>
+                <td className="px-2 py-1.5 text-right font-medium tabular-nums">{fmt(c.spend)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums" style={heatStyle(cpmOf(c), cpmMin, cpmMax, true)}>
+                  {fmtMoney(cpmOf(c))}
+                </td>
                 <td className="px-2 py-1.5">
                   <div className="flex items-center gap-2">
                     {canManage && (
@@ -178,7 +216,9 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
                     {canManage && (
                       <button
                         className="text-muted-foreground hover:text-crit"
+                        title="Xoá request"
                         onClick={() =>
+                          window.confirm(`Xoá request "${c.campaignName}" (${sbuName(c.sbuId)}, ${monthLabel(c.period)})?`) &&
                           start(async () => {
                             const res = await deleteAdsCampaignAction(c.id);
                             if (res.ok) {
@@ -197,7 +237,7 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-2 py-10 text-center text-muted-foreground">
+                <td colSpan={8} className="px-2 py-10 text-center text-muted-foreground">
                   Chưa có request nào khớp bộ lọc.
                 </td>
               </tr>
@@ -210,6 +250,7 @@ export function RequestsView({ campaigns, sbus, canManage }: { campaigns: Campai
                   Tổng ({filtered.length} request)
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{totalSpend.toLocaleString("vi-VN")}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(totalMess ? totalSpend / totalMess : null)}</td>
                 <td />
               </tr>
             </tfoot>

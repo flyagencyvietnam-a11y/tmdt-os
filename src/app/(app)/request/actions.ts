@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { acceptRequest, createRequest, updateRequestStatus, type CreateRequestInput } from "@/lib/services/requests";
+import { todayVnDayStr } from "@/lib/time";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -40,7 +41,7 @@ export async function updateRequestStatusAction(
   try {
     const user = await getCurrentUser();
     if (!user) return { ok: false, error: "Phiên đăng nhập đã hết hạn." };
-    await updateRequestStatus(db, id, status, user.id, { rejectReason, completedDate: status === "done" ? new Date().toISOString().slice(0, 10) : undefined });
+    await updateRequestStatus(db, id, status, user.id, { rejectReason, completedDate: status === "done" ? todayVnDayStr() : undefined });
     revalidatePath("/request");
     return { ok: true };
   } catch (e) {

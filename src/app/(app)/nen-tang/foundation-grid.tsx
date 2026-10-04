@@ -85,11 +85,11 @@ export function FoundationGrid({ brands, entries, canEdit }: { brands: BrandLite
       </div>
 
       {components.length === 0 ? (
-        <p className="rounded-md border p-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground">
           Chưa có dữ liệu Foundation. Thêm ô thủ công hoặc nạp bằng Import → T8.
         </p>
       ) : (
-        <div className="overflow-auto rounded-md border">
+        <div className="overflow-auto rounded-xl border bg-card shadow-xs">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="sticky top-0 bg-muted/60">
               <tr>

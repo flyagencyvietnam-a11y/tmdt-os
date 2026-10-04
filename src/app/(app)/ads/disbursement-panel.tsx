@@ -1,18 +1,21 @@
 "use client";
 
+import { AlertOctagon, AlertTriangle, CheckCircle2, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { upsertDisbursementPlanAction } from "./actions";
+import { ALERT_THRESHOLDS } from "./alerts";
+import { fmt, fmtMoney, LINE_COLORS, monthLabel, num, spendOf, type MetricRow } from "./shared";
 
 type DisbursementLine = "b2c_system" | "ecom" | "osir";
-const LINES: DisbursementLine[] = ["b2c_system", "ecom", "osir"];
-const LINE_LABELS: Record<DisbursementLine, string> = { b2c_system: "Mục 1 — B2C Hệ thống", ecom: "Mục 3 — Ecom", osir: "Mục 5 — OSIR" };
+const DLINES: DisbursementLine[] = ["b2c_system", "ecom", "osir"];
+const DLABELS: Record<DisbursementLine, string> = { b2c_system: "Mục 1 — B2C Hệ thống", ecom: "Mục 3 — Ecom", osir: "Mục 5 — OSIR" };
 
 interface PlanRow {
   id: string;
@@ -21,87 +24,146 @@ interface PlanRow {
   plannedAmount: string;
   notes: string | null;
 }
-interface MetricRow {
-  line: string;
-  periodType: string;
-  period: string;
-  budget: string | null;
-  centerOrderBudget: string | null;
-  hoTopupBudget: string | null;
-}
 
 function actualFor(metrics: MetricRow[], line: string, period: string): number {
-  return metrics
-    .filter((m) => m.line === line && m.periodType === "month" && m.period === period)
-    .reduce((s, m) => s + (m.line === "b2c_center" ? Number(m.centerOrderBudget || 0) + Number(m.hoTopupBudget || 0) : Number(m.budget || 0)), 0);
+  return metrics.filter((m) => m.line === line && m.periodType === "month" && m.period === period).reduce((s, m) => s + (spendOf(m) ?? 0), 0);
 }
 
+/** Trạng thái giải ngân — luôn kèm icon + chữ, không chỉ màu. */
+function statusOf(planned: number, actual: number, period: string, currentMonth: string) {
+  if (!planned) return null;
+  const r = actual / planned;
+  if (r > ALERT_THRESHOLDS.overPlan) return { label: "Vượt KH", icon: AlertOctagon, cls: "text-red-600 dark:text-red-400", bar: "bg-red-500" };
+  if (period < currentMonth && r < ALERT_THRESHOLDS.underPlan) return { label: "Chậm", icon: AlertTriangle, cls: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500" };
+  return { label: period < currentMonth ? "Đạt" : "Đang chạy", icon: CheckCircle2, cls: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500" };
+}
+
+/**
+ * Kế hoạch giải ngân vs thực tế — phạm vi Mục 1 (B2C Hệ thống) + Mục 3 (Ecom)
+ * + Mục 5 (OSIR), không gồm NS Trung tâm order/B2B/VMP (đúng sheet "Giải ngân Digital").
+ */
 export function DisbursementPanel({ plan, metrics, canManage, currentMonth }: { plan: PlanRow[]; metrics: MetricRow[]; canManage: boolean; currentMonth: string }) {
   const router = useRouter();
   const [editing, setEditing] = React.useState<{ line: DisbursementLine; period: string; row: PlanRow | null } | null>(null);
 
-  const periods = [...new Set([...plan.map((p) => p.period), currentMonth])].sort().reverse();
+  const metricMonths = metrics.filter((m) => m.periodType === "month" && DLINES.includes(m.line as DisbursementLine)).map((m) => m.period);
+  const periods = [...new Set([...plan.map((p) => p.period), ...metricMonths, currentMonth])].sort().reverse();
+
+  const ytd = DLINES.map((l) => {
+    const planned = plan.filter((p) => p.line === l).reduce((s, p) => s + (num(p.plannedAmount) ?? 0), 0);
+    const actual = [...new Set(plan.filter((p) => p.line === l).map((p) => p.period))].reduce((s, p) => s + actualFor(metrics, l, p), 0);
+    return { l, planned, actual };
+  });
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        SPEC Mục 10.5 — phạm vi Mục 1 (B2C Hệ thống) + Mục 3 (Ecom) + Mục 5 (OSIR), không gồm NS Trung tâm order/B2B/VMP
-        (đúng phạm vi sheet &quot;Giải ngân Digital&quot; gốc).
-      </p>
-      <div className="overflow-auto rounded-md border">
-        <table className="w-full border-collapse text-left text-sm">
-          <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-2 py-2">Tháng</th>
-              {LINES.map((l) => (
-                <th key={l} className="px-2 py-2 text-right" colSpan={3}>
-                  {LINE_LABELS[l]}
-                </th>
-              ))}
-            </tr>
-            <tr>
-              <th className="px-2 py-1" />
-              {LINES.map((l) => (
-                <React.Fragment key={l}>
-                  <th className="px-2 py-1 text-right font-normal">KH</th>
-                  <th className="px-2 py-1 text-right font-normal">TT</th>
-                  <th className="px-2 py-1 text-right font-normal">%</th>
-                </React.Fragment>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {periods.map((period) => (
-              <tr key={period} className="border-b">
-                <td className="px-2 py-1.5 font-medium">{period}</td>
-                {LINES.map((l) => {
-                  const row = plan.find((p) => p.line === l && p.period === period) ?? null;
-                  const planned = row ? Number(row.plannedAmount) : 0;
-                  const actual = actualFor(metrics, l, period);
-                  const pct = planned ? Math.round((actual / planned) * 100) : null;
-                  return (
-                    <React.Fragment key={l}>
-                      <td className="cursor-pointer px-2 py-1.5 text-right tabular-nums hover:bg-muted/40" onClick={() => canManage && setEditing({ line: l, period, row })}>
-                        {planned ? planned.toLocaleString("vi-VN") : "—"}
-                      </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{actual ? actual.toLocaleString("vi-VN") : "—"}</td>
-                      <td className={cn("px-2 py-1.5 text-right tabular-nums", pct != null && pct > 110 && "text-crit")}>{pct != null ? `${pct}%` : "—"}</td>
-                    </React.Fragment>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        {ytd.map(({ l, planned, actual }) => {
+          const ratio = planned ? actual / planned : null;
+          return (
+            <div key={l} className="rounded-xl border bg-card p-4 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: LINE_COLORS[l] }} />
+                {DLABELS[l]} · lũy kế các tháng có KH
+              </div>
+              {planned ? (
+                <>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-2xl font-semibold tabular-nums">{Math.round((ratio ?? 0) * 100)}%</span>
+                    <span className="text-xs text-muted-foreground">
+                      {fmtMoney(actual)} / {fmtMoney(planned)}
+                    </span>
+                  </div>
+                  <Progress ratio={ratio ?? 0} className="mt-2" />
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">Chưa có kế hoạch — bấm ô KH trong bảng để nhập.</p>
+              )}
+            </div>
+          );
+        })}
       </div>
+
+      <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+        <header className="border-b px-4 py-3">
+          <h3 className="text-sm font-semibold">Kế hoạch vs thực tế theo tháng</h3>
+          <p className="text-xs text-muted-foreground">
+            Chỉ gồm Mục 1, 3, 5 (không gồm NS Trung tâm order / B2B / VMP). Vượt {Math.round(ALERT_THRESHOLDS.overPlan * 100)}% = đỏ · tháng đã qua dưới {Math.round(ALERT_THRESHOLDS.underPlan * 100)}% = vàng.
+            {canManage && " Bấm ô KH để sửa kế hoạch."}
+          </p>
+        </header>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Tháng</th>
+                {DLINES.map((l) => (
+                  <th key={l} className="min-w-56 px-3 py-2 text-left font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: LINE_COLORS[l] }} />
+                      {DLABELS[l]}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {periods.map((period) => (
+                <tr key={period} className={cn(period === currentMonth && "bg-brand/[0.03]")}>
+                  <td className="px-3 py-2.5 font-medium">
+                    {monthLabel(period)}
+                    {period === currentMonth && <span className="ml-1.5 rounded bg-brand/10 px-1 py-0.5 text-[10px] font-semibold text-brand">Hiện tại</span>}
+                  </td>
+                  {DLINES.map((l) => {
+                    const row = plan.find((p) => p.line === l && p.period === period) ?? null;
+                    const planned = row ? Number(row.plannedAmount) : 0;
+                    const actual = actualFor(metrics, l, period);
+                    const st = statusOf(planned, actual, period, currentMonth);
+                    const Icon = st?.icon;
+                    return (
+                      <td key={l} className="px-3 py-2.5 align-top">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <button
+                            type="button"
+                            disabled={!canManage}
+                            onClick={() => setEditing({ line: l, period, row })}
+                            className={cn("group inline-flex items-center gap-1 rounded px-1 -mx-1 tabular-nums", canManage && "hover:bg-muted")}
+                            title={row?.notes ?? undefined}
+                          >
+                            <span className="text-muted-foreground">KH</span> <b>{planned ? fmtMoney(planned) : "—"}</b>
+                            {canManage && <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60" />}
+                          </button>
+                          <span className="tabular-nums">
+                            <span className="text-muted-foreground">TT</span> <b>{actual ? fmtMoney(actual) : "—"}</b>
+                          </span>
+                        </div>
+                        {st && Icon && (
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <Progress ratio={actual / planned} barClass={st.bar} className="flex-1" />
+                            <span className={cn("inline-flex items-center gap-0.5 whitespace-nowrap text-[11px] font-semibold tabular-nums", st.cls)}>
+                              <Icon className="h-3 w-3" />
+                              {Math.round((actual / planned) * 100)}% · {st.label}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {editing && (
         <Dialog open onOpenChange={(o) => !o && setEditing(null)}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-sm">
             <DialogHeader>
-              <DialogTitle>
-                Kế hoạch giải ngân — {LINE_LABELS[editing.line]} · {editing.period}
-              </DialogTitle>
+              <DialogTitle>Kế hoạch giải ngân</DialogTitle>
+              <DialogDescription>
+                {DLABELS[editing.line]} · {monthLabel(editing.period)}
+              </DialogDescription>
             </DialogHeader>
             <PlanForm
               initial={editing.row}
@@ -121,18 +183,28 @@ export function DisbursementPanel({ plan, metrics, canManage, currentMonth }: { 
   );
 }
 
+function Progress({ ratio, barClass, className }: { ratio: number; barClass?: string; className?: string }) {
+  const over = ratio > 1;
+  return (
+    <div className={cn("relative h-1.5 overflow-hidden rounded-full bg-muted", className)}>
+      <div className={cn("h-full rounded-full", barClass ?? (over ? "bg-red-500" : "bg-emerald-500"))} style={{ width: `${Math.min(ratio, 1) * 100}%` }} />
+    </div>
+  );
+}
+
 function PlanForm({ initial, onSave }: { initial: PlanRow | null; onSave: (plannedAmount: string, notes: string | null) => void }) {
   const [pending, start] = React.useTransition();
   const [amount, setAmount] = React.useState(initial?.plannedAmount ?? "");
   const [notes, setNotes] = React.useState(initial?.notes ?? "");
   return (
-    <div className="space-y-2">
-      <div className="space-y-1">
-        <Label className="text-xs">Kế hoạch phân bổ (VND)</Label>
-        <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Kế hoạch phân bổ (VND)</Label>
+        <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+        {num(amount) != null && <p className="text-xs text-muted-foreground">= {fmt(amount)} đ</p>}
       </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Ghi chú</Label>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Ghi chú</Label>
         <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
       <Button className="w-full" disabled={pending || !amount} onClick={() => start(() => onSave(amount, notes || null))}>

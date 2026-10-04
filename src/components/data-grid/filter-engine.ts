@@ -156,18 +156,20 @@ export function evalCondition(
       return !!a && a >= today && a <= addDaysStr(today, x);
     }
 
-    // ---- enum ----
+    // ---- enum (giá trị có thể là MẢNG — cột nhiều tag, vd. brand/kênh của content) ----
     case "is":
-      return sameVal(value, fv);
+      return Array.isArray(value) ? value.some((v) => sameVal(v, fv)) : sameVal(value, fv);
     case "is_not":
-      return !sameVal(value, fv);
+      return Array.isArray(value) ? !value.some((v) => sameVal(v, fv)) : !sameVal(value, fv);
     case "any_of": {
       const arr = toArr(fv);
-      return arr.some((x) => sameVal(x, value));
+      const vals = Array.isArray(value) ? value : [value];
+      return arr.some((x) => vals.some((v) => sameVal(x, v)));
     }
     case "none_of": {
       const arr = toArr(fv);
-      return arr.length > 0 && !arr.some((x) => sameVal(x, value));
+      const vals = Array.isArray(value) ? value : [value];
+      return arr.length > 0 && !arr.some((x) => vals.some((v) => sameVal(x, v)));
     }
 
     // ---- boolean ----

@@ -84,14 +84,14 @@ export function MediaPlanView({
       </div>
 
       <div className="space-y-3">
-        {shoots.length === 0 && <p className="rounded-md border p-6 text-center text-sm text-muted-foreground">Chưa có đợt quay nào.</p>}
+        {shoots.length === 0 && <p className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground">Chưa có đợt quay nào.</p>}
         {shoots
           .slice()
           .sort((a, b) => a.shootDate.localeCompare(b.shootDate))
           .map((s) => {
             const myDeliverables = deliverables.filter((d) => d.shootId === s.id);
             return (
-              <div key={s.id} className="rounded-lg border p-3">
+              <div key={s.id} className="rounded-xl border bg-card p-4 shadow-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="font-medium">
@@ -250,7 +250,7 @@ function RecurringShootsDialog({
           <DialogTitle>Tạo lịch quay định kỳ</DialogTitle>
         </DialogHeader>
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">SPEC Mục 7.3 — nhập ngày đợt 1 và số đợt, hệ thống tạo các đợt cách nhau 14 ngày (có thể đổi).</p>
+          <p className="text-xs text-muted-foreground">nhập ngày đợt 1 và số đợt, hệ thống tạo các đợt cách nhau 14 ngày (có thể đổi).</p>
           <div className="grid grid-cols-2 gap-2">
             <F label="Ngày đợt 1">
               <Input type="date" value={f.firstDate} onChange={(e) => set("firstDate", e.target.value)} />

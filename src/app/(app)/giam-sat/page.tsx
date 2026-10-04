@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { sbus } from "@/lib/db/schema";
 import { computeAlert, listMonitoringItems, nextDueDate } from "@/lib/services/monitoring";
 import { MonitoringView } from "./monitoring-view";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Giám sát hạng mục — VMG MKT OS" };
 export const dynamic = "force-dynamic";
@@ -21,13 +22,7 @@ export default async function MonitoringPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Giám sát hạng mục thay mới định kỳ</h1>
-        <p className="text-sm text-muted-foreground">
-          SPEC Mục 9.5 — POSM, bảng hiệu, OOH, Google Maps, quầy tư vấn VMP, phòng thi. Cảnh báo suy ra
-          từ ngày cập nhật gần nhất + chu kỳ, quá hạn/sắp đến hạn tự sinh task cho HO phụ trách SBU.
-        </p>
-      </div>
+      <PageHeader title="Giám sát thay mới định kỳ" description="POSM, bảng hiệu, OOH, Google Maps, quầy tư vấn, phòng thi — cảnh báo khi quá hạn/sắp đến hạn và tự giao việc." />
       <MonitoringView
         items={items.map((i) => ({
           id: i.id,
