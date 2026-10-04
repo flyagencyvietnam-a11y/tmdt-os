@@ -193,6 +193,13 @@ là một app hoàn toàn mới về nghiệp vụ.
   `content_items` (không sinh task con, ngày đăng = hạn hạng mục vì Lịch Content chỉ ghi tuần). Map tên: Khiết/Trân → `*@vmg.local`, Nghiêm →
   `admin@vmg.local`. "Giám đốc Khu vực"/"R&D" không có tài khoản nên chỉ nằm trong mô tả task. Link Canva + thư mục media ở `campaigns.notes`;
   Sale Kit chưa có link (`[CẦN BỔ SUNG]`). Hạng mục #11 (Action Plan: Chưa bắt đầu) lệch Lịch Content (Hoàn thành) → đang theo Lịch Content (published).
+- **Đã nạp plan UpLearn Q4/2026** từ file "VMG_UpLearn_Ke_Hoach_Trien_Khai_Q4_2026": campaign `UPLEARN-Q4-2026` (product_gtm, brand UPLEARN,
+  01/10–31/12/2026, status preparing, owner Nghiêm = `admin@vmg.local`; mục tiêu go/no-go, KPI lead/CPL, ngân sách, RACI, danh mục sản phẩm, pháp lý ở các
+  trường/ghi chú campaign) + 42 task (`importScope=T1:UPLEARN-Q4-2026`, key U01..U35 = Kế hoạch hành động, L01..L07 = Pháp lý & Tuân thủ) + 40 content
+  Fanpage (`importScope=T6:UPLEARN-Q4-2026`, key UL-01..40, 1 task/bài không sinh task con). **Plan gốc KHÔNG có ngày bắt đầu/kết thúc cho đầu việc** nên
+  task để trống ngày (không bịa). Long/BA/PA/"TMĐT/Vận hành" chưa có tài khoản → 21 task chưa giao, ghi người phụ trách trong mô tả + nhãn. Có 10
+  phụ thuộc suy từ ghi chú plan (#28←#6; #26←#7,#24; mốc ra mắt #27←#3,4,5,6,7,9,10). **Bẫy ngày**: cột NGÀY sheet Monthly Execution Plan bị Excel đọc
+  nhầm mm/dd (01/10 → "10/01") nên khi đọc lại file phải hoán đổi tháng↔ngày với ô kiểu Date.
 - **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
   `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
   dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`
