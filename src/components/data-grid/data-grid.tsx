@@ -1179,7 +1179,9 @@ function GroupHeaderRow<Row>({
   const raw =
     node.value == null || node.value === "" ? null : String(node.value);
   const label =
-    raw == null ? "(trống)" : (column?.enumLabels?.[raw] ?? raw);
+    raw == null
+      ? "(trống)"
+      : (column?.enumLabels?.[raw] ?? column?.enumOptions?.find((o) => o.value === raw)?.label ?? column?.filterOptions?.find((o) => o.value === raw)?.label ?? raw);
   const color = raw != null ? column?.enumColors?.[raw] : undefined;
   return (
     <tr className="border-b bg-muted/50" style={{ height: rowPx }}>

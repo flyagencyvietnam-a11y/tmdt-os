@@ -31,6 +31,11 @@ export interface GroupNode<Row> {
 }
 
 /** Gom nhóm nhiều cấp (tối đa 3 — SPEC Mục 16.1). */
+/** Cột nhiều giá trị (brand, kênh…) gom theo giá trị ĐẦU TIÊN = giá trị chính, không nối các giá trị thành 1 khoá. */
+function groupValue(v: unknown): unknown {
+  return Array.isArray(v) ? v[0] : v;
+}
+
 export function buildGroups<Row>(
   rows: Row[],
   fields: string[],
@@ -42,7 +47,7 @@ export function buildGroups<Row>(
   const acc = accessorOf(field);
   const buckets = new Map<string, Row[]>();
   for (const row of rows) {
-    const raw = acc(row);
+    const raw = groupValue(acc(row));
     const key = raw == null || raw === "" ? "∅" : String(raw);
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key)!.push(row);
@@ -50,7 +55,7 @@ export function buildGroups<Row>(
   return [...buckets.entries()].map(([key, groupRows]) => ({
     key: `${depth}:${field}:${key}`,
     field,
-    value: key === "∅" ? null : acc(groupRows[0]),
+    value: key === "∅" ? null : groupValue(acc(groupRows[0])),
     rows: groupRows,
     depth,
     children: rest.length

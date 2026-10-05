@@ -3,7 +3,7 @@ import { isStaff } from "@/lib/auth/permissions";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { campaigns, tasks, users } from "@/lib/db/schema";
+import { brands, campaignBrands, campaignSbus, campaigns, sbus, tasks, users } from "@/lib/db/schema";
 import { fmtDate } from "@/lib/format";
 import { CampaignActionPlan } from "./action-plan";
 import { DeleteCampaignButton } from "./delete-campaign-button";
@@ -20,6 +20,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   if (!campaign) notFound();
 
   const [owner] = campaign.ownerId ? await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, campaign.ownerId)).limit(1) : [];
+
+  const [brandRows, sbuRows] = await Promise.all([
+    db.select({ code: brands.code }).from(campaignBrands).innerJoin(brands, eq(brands.id, campaignBrands.brandId)).where(eq(campaignBrands.campaignId, id)),
+    db.select({ code: sbus.code }).from(campaignSbus).innerJoin(sbus, eq(sbus.id, campaignSbus.sbuId)).where(eq(campaignSbus.campaignId, id)),
+  ]);
 
   const actionTasks = await db
     .select()
@@ -49,6 +54,17 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <DeleteCampaignButton campaignId={campaign.id} name={campaign.name} taskCount={total} />
           </div>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <span className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">Brand / sản phẩm:</span>
+          {brandRows.length ? brandRows.map((b) => <span key={b.code} className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">{b.code}</span>) : <span className="text-muted-foreground/70">chưa gắn</span>}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">Trung tâm:</span>
+          {sbuRows.length ? sbuRows.map((x) => <span key={x.code} className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">{x.code}</span>) : <span className="text-muted-foreground/70">toàn hệ thống</span>}
+        </span>
       </div>
 
       {(campaign.objective || campaign.heroActivity || campaign.cta || campaign.channels) && (

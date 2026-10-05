@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { campaignBrands, campaigns, contentItems, tasks, type Campaign } from "@/lib/db/schema";
+import { campaignBrands, campaignSbus, campaigns, contentItems, tasks, type Campaign } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { createTask, softDeleteTasks } from "./tasks";
 import { ServiceError } from "./errors";
@@ -51,6 +51,11 @@ export async function duplicateCampaign(
   const srcBrandLinks = await db.select().from(campaignBrands).where(eq(campaignBrands.campaignId, campaignId));
   if (srcBrandLinks.length) {
     await db.insert(campaignBrands).values(srcBrandLinks.map((b) => ({ campaignId: created.id, brandId: b.brandId })));
+  }
+
+  const srcSbuLinks = await db.select().from(campaignSbus).where(eq(campaignSbus.campaignId, campaignId));
+  if (srcSbuLinks.length) {
+    await db.insert(campaignSbus).values(srcSbuLinks.map((l) => ({ campaignId: created.id, sbuId: l.sbuId })));
   }
 
   const srcTasks = await db
@@ -157,4 +162,19 @@ export async function deleteCampaigns(db: DB, ids: string[], actorId: string | n
     await writeAudit(db, { actorId, entity: "campaigns", entityId: r.id, action: "DELETE" });
   }
   return { campaigns: rows.length, tasks: res.deleted + res.archivedRecurring };
+}
+
+/** Đặt lại danh sách brand/sản phẩm và/hoặc trung tâm mà campaign phục vụ (thay thế toàn bộ; truyền undefined = giữ nguyên). */
+export async function setCampaignLinks(db: DB, campaignId: string, links: { brandIds?: string[]; sbuIds?: string[] }, actorId: string | null) {
+  if (links.brandIds) {
+    const ids = [...new Set(links.brandIds)];
+    await db.delete(campaignBrands).where(eq(campaignBrands.campaignId, campaignId));
+    if (ids.length) await db.insert(campaignBrands).values(ids.map((brandId) => ({ campaignId, brandId })));
+  }
+  if (links.sbuIds) {
+    const ids = [...new Set(links.sbuIds)];
+    await db.delete(campaignSbus).where(eq(campaignSbus.campaignId, campaignId));
+    if (ids.length) await db.insert(campaignSbus).values(ids.map((sbuId) => ({ campaignId, sbuId })));
+  }
+  await writeAudit(db, { actorId, entity: "campaigns", entityId: campaignId, action: "UPDATE", changes: links as Record<string, unknown> });
 }

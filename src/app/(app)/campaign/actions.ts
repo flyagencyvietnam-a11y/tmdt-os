@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { campaigns } from "@/lib/db/schema";
-import { deleteCampaigns, duplicateCampaign } from "@/lib/services/campaigns";
+import { deleteCampaigns, duplicateCampaign, setCampaignLinks } from "@/lib/services/campaigns";
 import { todayVnDayStr } from "@/lib/time";
 
 const schema = z.object({
@@ -25,6 +25,9 @@ const schema = z.object({
   cta: z.string().optional(),
   channels: z.string().optional(),
   notes: z.string().optional(),
+  /** Brand/sản phẩm và trung tâm mà campaign phục vụ (tuỳ chọn, nhiều giá trị). */
+  brandIds: z.array(z.string().uuid()).optional(),
+  sbuIds: z.array(z.string().uuid()).optional(),
 });
 
 async function requireManagerLike() {
@@ -37,11 +40,12 @@ export async function createCampaignAction(input: z.infer<typeof schema>) {
   const user = await requireManagerLike();
   if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được tạo campaign." };
   try {
-    const d = schema.parse(input);
+    const { brandIds, sbuIds, ...d } = schema.parse(input);
     const [row] = await db
       .insert(campaigns)
       .values({ ...d, createdBy: user.id })
       .returning();
+    if (brandIds?.length || sbuIds?.length) await setCampaignLinks(db, row.id, { brandIds: brandIds ?? [], sbuIds: sbuIds ?? [] }, user.id);
     await writeAudit(db, { actorId: user.id, entity: "campaigns", entityId: row.id, action: "CREATE" });
     revalidatePath("/campaign");
     return { ok: true as const, id: row.id };
@@ -62,7 +66,8 @@ export async function updateCampaignAction(input: z.infer<typeof updateSchema>) 
   if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được sửa campaign." };
   try {
     const d = updateSchema.parse(input);
-    const { id, ...patch } = d;
+    const { id, brandIds, sbuIds, ...patch } = d;
+    if (brandIds || sbuIds) await setCampaignLinks(db, id, { brandIds, sbuIds }, user.id);
     await db
       .update(campaigns)
       .set({ ...patch, status: patch.status as never, updatedBy: user.id })

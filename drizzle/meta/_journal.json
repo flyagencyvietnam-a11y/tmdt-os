@@ -78,6 +78,13 @@
       "when": 1791189992022,
       "tag": "0010_monitoring_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791193229513,
+      "tag": "0011_campaign_sbus",
+      "breakpoints": true
     }
   ]
 }

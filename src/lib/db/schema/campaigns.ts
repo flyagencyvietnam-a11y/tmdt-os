@@ -2,6 +2,7 @@ import { date, index, pgTable, primaryKey, text, uuid } from "drizzle-orm/pg-cor
 import { auditColumns, pkUuid, softDeleteColumn } from "./_shared";
 import { campaignStatusEnum, campaignTypeEnum } from "./enums";
 import { brands } from "./brands";
+import { sbus } from "./sbus";
 import { users } from "./users";
 
 /** SPEC Mục 4.2 `campaigns`. "Action plan" = các `tasks` có `campaign_id` (Mục 4.1). */
@@ -49,6 +50,20 @@ export const campaignBrands = pgTable(
       .references(() => brands.id),
   },
   (t) => [primaryKey({ columns: [t.campaignId, t.brandId] })],
+);
+
+/** Campaign phục vụ trung tâm/chi nhánh nào (nhiều-nhiều). Không có dòng nào = campaign toàn hệ thống. */
+export const campaignSbus = pgTable(
+  "campaign_sbus",
+  {
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => campaigns.id),
+    sbuId: uuid("sbu_id")
+      .notNull()
+      .references(() => sbus.id),
+  },
+  (t) => [primaryKey({ columns: [t.campaignId, t.sbuId] })],
 );
 
 export type Campaign = typeof campaigns.$inferSelect;
