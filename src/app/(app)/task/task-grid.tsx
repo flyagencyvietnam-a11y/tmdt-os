@@ -11,7 +11,8 @@ import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
 import { todayVnDayStr } from "@/lib/time";
 import { isTaskRecurring, ROW_TONE_CLASS, taskTone } from "./task-style";
-import { bulkUpdateTasksAction, deleteTasksAction, updateTaskAction } from "./actions";
+import { bulkUpdateTasksAction, deleteTasksAction, setTaskSbusAction, updateTaskAction } from "./actions";
+import { LinksCell, sbuTagOptions } from "@/components/sbu-links";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 
@@ -27,6 +28,7 @@ export interface TaskGridRow {
   dueDate: string | null;
   channel: string | null;
   sourceType: string;
+  sbuIds?: string[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -72,12 +74,14 @@ export function TaskGrid({
   rows,
   users,
   campaigns,
+  sbus,
   canEdit,
   canAssignOthers,
 }: {
   rows: TaskGridRow[];
   users: { id: string; fullName: string }[];
   campaigns: { id: string; code: string; name: string }[];
+  sbus: { id: string; code: string; name: string; kind: string }[];
   canEdit: boolean;
   canAssignOthers: boolean;
 }) {
@@ -95,6 +99,7 @@ export function TaskGrid({
       .catch(() => {});
   }, []);
 
+  const sbuOpts = React.useMemo(() => sbuTagOptions(sbus), [sbus]);
   const userName = React.useCallback((id: string | null) => users.find((u) => u.id === id)?.fullName ?? "", [users]);
   const campaignLabel = React.useCallback(
     (id: string | null) => {
@@ -237,6 +242,29 @@ export function TaskGrid({
         defaultWidth: 180,
       },
       {
+        field: "sbuIds",
+        header: "SBU",
+        kind: "enum",
+        accessor: (r) => r.sbuIds ?? [],
+        cell: (r) => (
+          <LinksCell
+            key={(r.sbuIds ?? []).join(",")}
+            value={r.sbuIds ?? []}
+            options={sbuOpts}
+            canEdit={canEdit}
+            empty="Chưa gắn SBU"
+            onSave={async (v) => {
+              const res = await setTaskSbusAction(r.id, v);
+              if (res.ok) router.refresh();
+              else toast.error(res.error);
+            }}
+          />
+        ),
+        enumOptions: sbuOpts,
+        filterOptions: sbuOpts,
+        defaultWidth: 200,
+      },
+      {
         field: "channel",
         header: "Kênh",
         kind: "text",
@@ -253,7 +281,7 @@ export function TaskGrid({
         defaultWidth: 110,
       },
     ],
-    [users, campaigns, canEdit, canAssignOthers, userName, campaignLabel],
+    [users, campaigns, canEdit, canAssignOthers, userName, campaignLabel, sbuOpts, router],
   );
 
   const initialView: ViewConfig = {

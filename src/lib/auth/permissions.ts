@@ -23,7 +23,8 @@ export type Resource =
   | "content" // Content calendar (Mục 9.6)
   | "media" // Media production plan (Mục 9.7)
   | "monitoring" // Monitoring hạng mục thay mới (Mục 9.5)
-  | "ads" // Ads hàng tháng theo SBU (Mục 9.4)
+  | "ads" // Growth Performance (trước đây là Ads) — Mục 9.4
+  | "brandPerformance" // Brand Performance — chỉ số thương hiệu hằng tháng theo brand × kênh
   | "managementDashboard" // Dashboard quản lý (Mục 12.2)
   | "aiAssist"; // Trợ lý AI (Mục 14.4)
 
@@ -53,6 +54,7 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     media: ALL,
     monitoring: ALL,
     ads: ALL,
+    brandPerformance: ALL,
     managementDashboard: { read: "all" },
     aiAssist: { read: "all", create: "all" },
   },
@@ -72,6 +74,7 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     media: ALL,
     monitoring: ALL,
     ads: ALL,
+    brandPerformance: ALL,
     managementDashboard: { read: "all" },
     aiAssist: { read: "all", create: "all" },
     // không userManagement, không xóa dữ liệu gốc (Mục 3.1)
@@ -94,6 +97,7 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     media: ALL,
     monitoring: ALL,
     ads: ALL,
+    brandPerformance: ALL,
     managementDashboard: { read: "all" },
     aiAssist: { read: "all", create: "all" },
   },
@@ -108,6 +112,8 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
 
   viewer: {
     campaign: { read: "all" },
+    brandPerformance: { read: "all" },
+    ads: { read: "all" },
     sbu: { read: "all" },
     workloadReport: { read: "all" },
     managementDashboard: { read: "all" },

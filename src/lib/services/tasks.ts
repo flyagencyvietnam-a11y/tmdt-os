@@ -12,6 +12,7 @@ import {
   taskDependencies,
   taskLabels,
   taskSbus,
+  sbus,
   taskWatchers,
   tasks,
   users,
@@ -582,4 +583,17 @@ export async function listOverdueForUser(db: DB, userId: string, today = todayVn
     .select()
     .from(tasks)
     .where(and(eq(tasks.assigneeId, userId), isNull(tasks.deletedAt), overdueSqlFragment(today)));
+}
+
+/** Đặt lại SBU (brand/sản phẩm và/hoặc trung tâm) của task. Chọn SBU brand mà task chưa có brand → gán brand tương ứng. */
+export async function setTaskSbus(db: DB, taskId: string, sbuIds: string[], actorId: string | null) {
+  const ids = [...new Set(sbuIds)];
+  await db.delete(taskSbus).where(eq(taskSbus.taskId, taskId));
+  if (ids.length) await db.insert(taskSbus).values(ids.map((sbuId) => ({ taskId, sbuId })));
+  const [t] = await db.select({ brandId: tasks.brandId }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (t && !t.brandId && ids.length) {
+    const [b] = await db.select({ brandId: sbus.brandId }).from(sbus).where(and(inArray(sbus.id, ids), sql`${sbus.brandId} is not null`)).limit(1);
+    if (b?.brandId) await db.update(tasks).set({ brandId: b.brandId, updatedBy: actorId }).where(eq(tasks.id, taskId));
+  }
+  await writeAudit(db, { actorId, entity: "tasks", entityId: taskId, action: "UPDATE", changes: { sbuIds: ids } });
 }

@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { isFanOutSbu } from "@/lib/sbu-kinds";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { sbuCatalogItems, sbuItemStatus, sbus } from "@/lib/db/schema";
@@ -14,12 +15,13 @@ export default async function SbuMatrixPage({ searchParams }: { searchParams: Pr
   const { period: periodParam } = await searchParams;
   const period = periodParam || todayVnDayStr().slice(0, 7);
 
-  const [catalogItems, sbuRows, statusRows] = await Promise.all([
+  const [catalogItems, allSbuRows, statusRows] = await Promise.all([
     db.select().from(sbuCatalogItems).orderBy(asc(sbuCatalogItems.code)),
-    db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, kind: sbus.kind, hoOwnerId: sbus.hoOwnerId }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
     db.select().from(sbuItemStatus).where(eq(sbuItemStatus.period, period)),
   ]);
 
+  const sbuRows = allSbuRows.filter(isFanOutSbu).map(({ id, code, name }) => ({ id, code, name }));
   const statusMap = new Map(statusRows.map((s) => [`${s.catalogItemId}::${s.sbuId}`, s]));
 
   return (

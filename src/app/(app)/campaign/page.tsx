@@ -2,7 +2,7 @@ import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
 import { isStaff } from "@/lib/auth/permissions";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { brands, campaignBrands, campaignSbus, campaigns, sbus, tasks, users } from "@/lib/db/schema";
+import { campaignSbus, campaigns, sbus, tasks, users } from "@/lib/db/schema";
 import { overdueSqlFragment } from "@/lib/services/tasks";
 import { todayVnDayStr } from "@/lib/time";
 import { CampaignList } from "./campaign-list";
@@ -18,7 +18,7 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
   // Mặc định ẩn campaign đã xong/huỷ để danh sách chỉ còn những gì đang cần theo dõi.
   const scope = scopeParam === "all" ? "all" : "current";
   const today = todayVnDayStr();
-  const [rows, [{ all, closed }], taskStats, allUsers, allBrands, allSbus, brandLinks, sbuLinks] = await Promise.all([
+  const [rows, [{ all, closed }], taskStats, allUsers, allSbus, sbuLinks] = await Promise.all([
     // Mặc định theo thời gian diễn ra: campaign bắt đầu sớm nhất lên trước.
     scope === "all"
       ? db.select().from(campaigns).where(isNull(campaigns.deletedAt)).orderBy(asc(campaigns.startDate), asc(campaigns.endDate))
@@ -35,13 +35,9 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
       .where(isNull(tasks.deletedAt))
       .groupBy(tasks.campaignId),
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
-    db.select({ id: brands.id, code: brands.code, name: brands.name }).from(brands).orderBy(asc(brands.code)),
-    db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
-    db.select().from(campaignBrands),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, kind: sbus.kind }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
     db.select().from(campaignSbus),
   ]);
-  const brandsOf = new Map<string, string[]>();
-  for (const l of brandLinks) (brandsOf.get(l.campaignId) ?? brandsOf.set(l.campaignId, []).get(l.campaignId)!).push(l.brandId);
   const sbusOf = new Map<string, string[]>();
   for (const l of sbuLinks) (sbusOf.get(l.campaignId) ?? sbusOf.set(l.campaignId, []).get(l.campaignId)!).push(l.sbuId);
 
@@ -73,7 +69,6 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
             endDate: c.endDate,
             status: c.status,
             ownerId: c.ownerId,
-            brandIds: brandsOf.get(c.id) ?? [],
             sbuIds: sbusOf.get(c.id) ?? [],
             taskTotal: total,
             taskDone: done,
@@ -82,7 +77,6 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
           };
         })}
         users={allUsers}
-        brands={allBrands}
         sbus={allSbus}
         currentUserId={user.id}
         today={today}

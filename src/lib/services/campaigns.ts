@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { campaignBrands, campaignSbus, campaigns, contentItems, tasks, type Campaign } from "@/lib/db/schema";
+import { campaignBrands, campaignSbus, campaigns, contentItems, sbus, tasks, type Campaign } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { createTask, softDeleteTasks } from "./tasks";
 import { ServiceError } from "./errors";
@@ -175,6 +175,11 @@ export async function setCampaignLinks(db: DB, campaignId: string, links: { bran
     const ids = [...new Set(links.sbuIds)];
     await db.delete(campaignSbus).where(eq(campaignSbus.campaignId, campaignId));
     if (ids.length) await db.insert(campaignSbus).values(ids.map((sbuId) => ({ campaignId, sbuId })));
+    // SBU kiểu brand/sản phẩm ⇄ brand: giữ campaign_brands đồng bộ để content calendar/báo cáo theo brand vẫn đúng.
+    const brandSbus = ids.length ? await db.select({ brandId: sbus.brandId }).from(sbus).where(inArray(sbus.id, ids)) : [];
+    const brandIds = [...new Set(brandSbus.map((b) => b.brandId).filter((x): x is string => !!x))];
+    await db.delete(campaignBrands).where(eq(campaignBrands.campaignId, campaignId));
+    if (brandIds.length) await db.insert(campaignBrands).values(brandIds.map((brandId) => ({ campaignId, brandId })));
   }
   await writeAudit(db, { actorId, entity: "campaigns", entityId: campaignId, action: "UPDATE", changes: links as Record<string, unknown> });
 }

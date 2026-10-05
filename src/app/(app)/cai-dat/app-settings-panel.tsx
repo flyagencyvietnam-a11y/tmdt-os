@@ -49,7 +49,7 @@ const KNOWN: Record<string, { label: string; desc?: string; show: (v: unknown) =
     example: "[1,2,3,4,5,6]  (1 = Thứ 2 … 6 = Thứ 7, 0 = CN)",
   },
   ads_effectiveness_rubric: {
-    label: "Ngưỡng điểm hiệu quả Ads",
+    label: "Ngưỡng điểm hiệu quả Growth Performance (Ads)",
     desc: "CPL/CAC tối đa để đạt 5, 4, 3, 2 điểm (vượt mức cuối = 1 điểm). Đổi khi phòng đổi chuẩn đánh giá.",
     show: (v) => {
       const x = v as { cplTiers?: number[]; cacTiers?: number[] };

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExportMenu } from "@/components/report/export-menu";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
 import { todayVnDayStr } from "@/lib/time";
 import { useSessionState } from "@/lib/use-session-state";
@@ -97,6 +98,9 @@ export function AdsView({
           <TabsTrigger value="request">Theo request</TabsTrigger>
           <TabsTrigger value="disbursement">Giải ngân</TabsTrigger>
         </TabsList>
+        <div className={canManage && (tab === "week" || tab === "month" || tab === "request") ? "" : "ml-auto"}>
+          <ExportMenu kind="growth" period={tab === "overview" && mode === "quarter" ? undefined : month} />
+        </div>
         {canManage && (tab === "week" || tab === "month" || tab === "request") && (
           <div className="ml-auto">
             <AdsImportButton

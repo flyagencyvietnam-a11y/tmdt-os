@@ -17,7 +17,8 @@ import { fmtDate, fmtDateTime } from "@/lib/format";
 import { todayVnDayStr } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useInRouteModal } from "@/components/shell/route-modal";
-import { addCommentAction, deleteTasksAction, toggleChecklistItemAction, updateTaskAction } from "../actions";
+import { LinksCell, sbuTagOptions } from "@/components/sbu-links";
+import { addCommentAction, deleteTasksAction, setTaskSbusAction, toggleChecklistItemAction, updateTaskAction } from "../actions";
 
 interface TaskFull {
   id: string;
@@ -96,6 +97,8 @@ export function TaskDetail({
   brand,
   recurringRuleName,
   contentItem,
+  sbus,
+  sbuIds,
   currentUserId,
   canAssignOthers,
 }: {
@@ -109,6 +112,9 @@ export function TaskDetail({
   recurringRuleName: string | null;
   /** Bài content gắn với task này (task cha đăng bài hoặc bước con của nó). */
   contentItem: { id: string; topic: string; status: string; publishDate: string; parentTaskId: string | null } | null;
+  sbus: { id: string; code: string; name: string; kind: string }[];
+  /** SBU hiện gắn với task (brand/sản phẩm và/hoặc trung tâm). */
+  sbuIds: string[];
   currentUserId: string;
   canAssignOthers: boolean;
 }) {
@@ -370,6 +376,22 @@ export function TaskDetail({
           </div>
 
           <div className="space-y-3 border-t pt-4">
+            <Field label="SBU (brand / sản phẩm / trung tâm)">
+              <LinksCell
+                key={sbuIds.join(",")}
+                value={sbuIds}
+                options={sbuTagOptions(sbus)}
+                canEdit
+                empty="Chọn SBU"
+                onSave={async (v) => {
+                  const res = await setTaskSbusAction(task.id, v);
+                  if (res.ok) {
+                    toast.success("Đã lưu SBU.");
+                    router.refresh();
+                  } else toast.error(res.error);
+                }}
+              />
+            </Field>
             {campaign && (
               <Field label="Campaign">
                 <Link href={`/campaign/${campaign.id}`} className="text-sm font-medium text-brand hover:underline">

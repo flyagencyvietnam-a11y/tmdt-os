@@ -10,6 +10,7 @@ import {
   bulkUpdateTasks,
   createTask,
   duplicateTask,
+  setTaskSbus,
   softDeleteTasks,
   toggleChecklistItem,
   updateTask,
@@ -126,6 +127,20 @@ export async function addCommentAction(input: z.infer<typeof commentSchema>): Pr
     const d = commentSchema.parse(input);
     await addComment(db, d.taskId, user.id, d.body, d.mentionedUserIds);
     revalidatePath(`/task/${d.taskId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+/** Đặt SBU (brand/sản phẩm, trung tâm) cho task. */
+export async function setTaskSbusAction(taskId: string, sbuIds: string[]): Promise<ActionResult> {
+  try {
+    const user = await requireSessionUser();
+    if (!isStaff(user.role)) return { ok: false, error: "Không có quyền sửa task." };
+    await setTaskSbus(db, taskId, sbuIds, user.id);
+    revalidatePath("/task");
+    revalidatePath(`/task/${taskId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };

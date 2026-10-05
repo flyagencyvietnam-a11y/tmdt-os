@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { isFanOutSbu } from "@/lib/sbu-kinds";
 import type { DB } from "@/lib/db";
 import {
   campaigns,
@@ -44,7 +45,7 @@ export async function computeManagementMetrics(db: DB, period: string) {
     campaignProgress.push({ code: c.code, name: c.name, status: c.status, total, done, overdue, pctDone: total ? Math.round((done / total) * 100) : 0 });
   }
 
-  const allSbus = await db.select().from(sbus).where(eq(sbus.active, true));
+  const allSbus = (await db.select().from(sbus).where(eq(sbus.active, true))).filter(isFanOutSbu);
   const allCatalog = await db.select({ id: sbuCatalogItems.id }).from(sbuCatalogItems);
   const statuses = await db.select().from(sbuItemStatus).where(eq(sbuItemStatus.period, period));
   const sbuRows: { code: string; name: string; totalCatalogItems: number; done: number; pctDone: number }[] = [];

@@ -25,8 +25,7 @@ const schema = z.object({
   cta: z.string().optional(),
   channels: z.string().optional(),
   notes: z.string().optional(),
-  /** Brand/sản phẩm và trung tâm mà campaign phục vụ (tuỳ chọn, nhiều giá trị). */
-  brandIds: z.array(z.string().uuid()).optional(),
+  /** SBU mà campaign phục vụ: trung tâm và/hoặc brand/sản phẩm (tuỳ chọn, nhiều giá trị). */
   sbuIds: z.array(z.string().uuid()).optional(),
 });
 
@@ -40,12 +39,12 @@ export async function createCampaignAction(input: z.infer<typeof schema>) {
   const user = await requireManagerLike();
   if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được tạo campaign." };
   try {
-    const { brandIds, sbuIds, ...d } = schema.parse(input);
+    const { sbuIds, ...d } = schema.parse(input);
     const [row] = await db
       .insert(campaigns)
       .values({ ...d, createdBy: user.id })
       .returning();
-    if (brandIds?.length || sbuIds?.length) await setCampaignLinks(db, row.id, { brandIds: brandIds ?? [], sbuIds: sbuIds ?? [] }, user.id);
+    if (sbuIds?.length) await setCampaignLinks(db, row.id, { sbuIds }, user.id);
     await writeAudit(db, { actorId: user.id, entity: "campaigns", entityId: row.id, action: "CREATE" });
     revalidatePath("/campaign");
     return { ok: true as const, id: row.id };
@@ -66,8 +65,8 @@ export async function updateCampaignAction(input: z.infer<typeof updateSchema>) 
   if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được sửa campaign." };
   try {
     const d = updateSchema.parse(input);
-    const { id, brandIds, sbuIds, ...patch } = d;
-    if (brandIds || sbuIds) await setCampaignLinks(db, id, { brandIds, sbuIds }, user.id);
+    const { id, sbuIds, ...patch } = d;
+    if (sbuIds) await setCampaignLinks(db, id, { sbuIds }, user.id);
     await db
       .update(campaigns)
       .set({ ...patch, status: patch.status as never, updatedBy: user.id })

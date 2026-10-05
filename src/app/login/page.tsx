@@ -44,7 +44,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               <CalendarCheck className="h-4 w-4 shrink-0" /> Content calendar, quay chụp, campaign
             </li>
             <li className="flex items-center gap-3">
-              <BarChart3 className="h-4 w-4 shrink-0" /> Số liệu Ads & báo cáo quản lý
+              <BarChart3 className="h-4 w-4 shrink-0" /> Growth & Brand Performance, báo cáo quản lý
             </li>
           </ul>
         </div>

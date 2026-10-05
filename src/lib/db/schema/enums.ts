@@ -14,7 +14,8 @@ export const roleEnum = pgEnum("role", [
 
 export const teamEnum = pgEnum("team", ["ho_marketing", "center", "bod", "other"]);
 
-export const sbuKindEnum = pgEnum("sbu_kind", ["center", "online_center", "group"]);
+/** center = trung tâm offline, online_center = trung tâm online, brand = brand/sản phẩm (VMG IELTS, UpLearn, VMP, VMT…), group = giá trị cũ (không dùng nữa). */
+export const sbuKindEnum = pgEnum("sbu_kind", ["center", "online_center", "group", "brand"]);
 export const sbuRegionEnum = pgEnum("sbu_region", [
   "KV1",
   "KV2",
@@ -22,6 +23,7 @@ export const sbuRegionEnum = pgEnum("sbu_region", [
   "KV2_KV3",
   "ONLINE",
   "RND",
+  "BRAND",
 ]);
 
 export const brandKindEnum = pgEnum("brand_kind", ["product", "group"]);

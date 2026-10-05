@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { isFanOutSbu } from "@/lib/sbu-kinds";
 import type { DB } from "@/lib/db";
 import {
   checklistItems,
@@ -239,7 +240,7 @@ export async function generateTasksForRule(
     const dueDate = addDaysStr(occurrenceDate, rule.dueOffsetDays);
 
     if (rule.scopeMode === "per_sbu") {
-      const allActiveSbus = await db.select().from(sbus).where(eq(sbus.active, true));
+      const allActiveSbus = (await db.select().from(sbus).where(eq(sbus.active, true))).filter(isFanOutSbu);
       const scopedSbus = rule.scopeSbuIds?.length
         ? targetSbusAll(allActiveSbus, rule.scopeSbuIds)
         : allActiveSbus;

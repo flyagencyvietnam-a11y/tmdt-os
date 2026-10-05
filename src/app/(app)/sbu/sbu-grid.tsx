@@ -4,7 +4,7 @@ import { AlertTriangle, Building2, ClipboardCheck, Inbox, ShieldAlert } from "lu
 import Link from "next/link";
 import * as React from "react";
 import { DataGrid, type GridColumn } from "@/components/data-grid";
-import type { TagColor } from "@/components/data-grid/tag";
+import { SBU_KIND_LABEL, SBU_REGION_COLOR, SBU_REGION_LABEL } from "@/lib/sbu-kinds";
 import { StatCard } from "@/components/stat-card";
 import { cn } from "@/lib/utils";
 import type { SbuStats } from "@/lib/services/sbu-overview";
@@ -18,24 +18,6 @@ export interface SbuRow extends SbuStats {
   active: boolean;
   ownerName: string | null;
 }
-
-const REGION_LABEL: Record<string, string> = {
-  KV1: "Khu vực 1",
-  KV2: "Khu vực 2",
-  KV3: "Khu vực 3",
-  KV2_KV3: "Khu vực 2/3",
-  ONLINE: "Online",
-  RND: "Nhóm nội bộ",
-};
-const REGION_COLORS: Record<string, TagColor> = {
-  KV1: "blue",
-  KV2: "violet",
-  KV3: "purple",
-  KV2_KV3: "indigo",
-  ONLINE: "emerald",
-  RND: "slate",
-};
-const KIND_LABEL: Record<string, string> = { center: "Trung tâm", online_center: "Trung tâm online", group: "Nhóm nội bộ" };
 
 const pct = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : null);
 
@@ -52,7 +34,7 @@ function Bar({ value, label, title }: { value: number | null; label?: React.Reac
   );
 }
 
-const INITIAL_VIEW = { sorts: [{ field: "code", direction: "asc" as const }] };
+const INITIAL_VIEW = { groupBy: [{ field: "kind" }], sorts: [{ field: "code", direction: "asc" as const }] };
 
 export function SbuGrid({ rows, period }: { rows: SbuRow[]; period: string }) {
   const totals = React.useMemo(() => {
@@ -83,8 +65,8 @@ export function SbuGrid({ rows, period }: { rows: SbuRow[]; period: string }) {
         ),
       },
       { field: "name", header: "Tên", kind: "text", accessor: (r) => r.name, defaultWidth: 200, groupable: false },
-      { field: "kind", header: "Loại", kind: "enum", accessor: (r) => r.kind, enumLabels: KIND_LABEL, defaultWidth: 140 },
-      { field: "region", header: "Khu vực", kind: "enum", accessor: (r) => r.region, enumLabels: REGION_LABEL, enumColors: REGION_COLORS, defaultWidth: 120 },
+      { field: "kind", header: "Loại", kind: "enum", accessor: (r) => r.kind, enumLabels: SBU_KIND_LABEL, defaultWidth: 140 },
+      { field: "region", header: "Khu vực", kind: "enum", accessor: (r) => r.region, enumLabels: SBU_REGION_LABEL, enumColors: SBU_REGION_COLOR, defaultWidth: 120 },
       {
         field: "ownerName",
         header: "HO phụ trách",
@@ -165,6 +147,45 @@ export function SbuGrid({ rows, period }: { rows: SbuRow[]; period: string }) {
               {r.monitoringOverdue === 0 && r.monitoringDueSoon === 0 && <span className="text-muted-foreground">{r.monitoringTotal} hạng mục · ổn</span>}
             </span>
           ),
+      },
+      {
+        field: "brandImpressions",
+        header: "Brand: Impression",
+        kind: "number",
+        accessor: (r) => r.brandImpressions,
+        align: "right",
+        defaultWidth: 150,
+        groupable: false,
+        cell: (r) =>
+          r.kind !== "brand" ? (
+            <span className="text-muted-foreground/50">—</span>
+          ) : r.brandImpressions == null ? (
+            <span className="text-muted-foreground/70">Chưa có số</span>
+          ) : (
+            <span className="tabular-nums" title={`Tháng ${r.brandPeriod?.slice(5)}/${r.brandPeriod?.slice(0, 4)}`}>
+              {r.brandImpressions.toLocaleString("vi-VN")}
+            </span>
+          ),
+      },
+      {
+        field: "brandEngagementRate",
+        header: "Brand: ER",
+        kind: "number",
+        accessor: (r) => (r.brandImpressions ? Math.round(((r.brandEngagements ?? 0) / r.brandImpressions) * 1000) / 10 : null),
+        align: "right",
+        defaultWidth: 90,
+        groupable: false,
+        cell: (r) => (r.kind === "brand" && r.brandImpressions ? `${(Math.round(((r.brandEngagements ?? 0) / r.brandImpressions) * 1000) / 10).toLocaleString("vi-VN")}%` : <span className="text-muted-foreground/50">—</span>),
+      },
+      {
+        field: "brandFollowers",
+        header: "Brand: Follower",
+        kind: "number",
+        accessor: (r) => r.brandFollowers,
+        align: "right",
+        defaultWidth: 130,
+        groupable: false,
+        cell: (r) => (r.kind === "brand" && r.brandFollowers != null ? <span className="tabular-nums">{r.brandFollowers.toLocaleString("vi-VN")}</span> : <span className="text-muted-foreground/50">—</span>),
       },
       {
         field: "active",

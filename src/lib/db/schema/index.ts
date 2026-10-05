@@ -12,5 +12,6 @@ export * from "./sbu-catalog";
 export * from "./ads";
 export * from "./monitoring";
 export * from "./grid";
+export * from "./brand-perf";
 export * from "./system";
 export * from "./relations";

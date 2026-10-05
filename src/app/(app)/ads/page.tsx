@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { todayVnDayStr } from "@/lib/time";
 import { AdsView } from "./ads-view";
 
-export const metadata = { title: "Ads — VMG MKT OS" };
+export const metadata = { title: "Growth Performance — VMG MKT OS" };
 export const dynamic = "force-dynamic";
 
 /**
@@ -35,8 +35,8 @@ export default async function AdsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Ads — Digital Marketing"
-        description="Chi tiêu và hiệu quả quảng cáo của 5 mảng: B2C Offline (Hệ thống + Trung tâm) · Ecom · B2B · OSIR · VMP. Tuần tính từ Thứ 7 đến hết Thứ 6; số tháng/quý nhập riêng, không cộng từ các tuần."
+        title="Growth Performance"
+        description="Hiệu quả tăng trưởng (quảng cáo/Ads) — chi tiêu, lead, học viên mới, CPL, CAC của 5 mảng: B2C Offline (Hệ thống + Trung tâm) · Ecom · B2B · OSIR · VMP. Tuần tính từ Thứ 7 đến hết Thứ 6; số tháng/quý nhập riêng, không cộng từ các tuần."
       />
       <AdsView
         metrics={metrics.map((m) => ({

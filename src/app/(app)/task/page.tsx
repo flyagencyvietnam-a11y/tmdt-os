@@ -1,9 +1,9 @@
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, asc, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { campaigns, users } from "@/lib/db/schema";
+import { campaigns, sbus, taskSbus, users } from "@/lib/db/schema";
 import { calendarToken } from "@/lib/services/ics";
 import { clampLimit, defaultTaskView, listTasksScoped, PAGE_SIZE, parseTaskView, taskViewCounts, type TaskScope } from "@/lib/services/task-lists";
 import { todayVnDayStr } from "@/lib/time";
@@ -33,12 +33,16 @@ export default async function TaskListPage({ searchParams }: { searchParams: Pro
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const assigneeId = view === "mine" ? null : sp.assignee && UUID.test(sp.assignee) ? sp.assignee : null;
 
-  const [{ rows, total }, counts, allUsers, allCampaigns] = await Promise.all([
+  const [{ rows, total }, counts, allUsers, allCampaigns, allSbus] = await Promise.all([
     listTasksScoped(db, scope, { view, assigneeId, limit }),
     taskViewCounts(db, scope),
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
     db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns).where(isNull(campaigns.deletedAt)),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, kind: sbus.kind }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
   ]);
+  const links = rows.length ? await db.select().from(taskSbus).where(inArray(taskSbus.taskId, rows.map((r) => r.id))) : [];
+  const sbusOf = new Map<string, string[]>();
+  for (const l of links) (sbusOf.get(l.taskId) ?? sbusOf.set(l.taskId, []).get(l.taskId)!).push(l.sbuId);
 
   return (
     <div className="space-y-4">
@@ -57,6 +61,7 @@ export default async function TaskListPage({ searchParams }: { searchParams: Pro
           blockedReason: t.blockedReason,
           sourceType: t.sourceType,
           channel: t.channel,
+          sbuIds: sbusOf.get(t.id) ?? [],
         }))}
         total={total}
         counts={counts}
@@ -66,6 +71,7 @@ export default async function TaskListPage({ searchParams }: { searchParams: Pro
         pageSize={PAGE_SIZE}
         users={allUsers}
         campaigns={allCampaigns}
+        sbus={allSbus}
         currentUserId={user.id}
         canAssignOthers={user.canAssign || user.role === "admin" || user.role === "manager"}
         icsUrl={`/api/export/ics?user=${user.id}&token=${calendarToken(user.id)}`}

@@ -16,6 +16,7 @@ import {
   Menu,
   Newspaper,
   Settings,
+  Sparkles,
   ShieldAlert,
   Upload,
   Users,
@@ -66,7 +67,8 @@ const GROUPS: NavGroup[] = [
   {
     label: "Vận hành & số liệu",
     items: [
-      { href: "/ads", label: "Ads", icon: LineChart, roles: STAFF },
+      { href: "/brand-performance", label: "Brand Performance", icon: Sparkles, roles: [...STAFF, "viewer"] },
+      { href: "/ads", label: "Growth Performance", icon: LineChart, roles: [...STAFF, "viewer"] },
       { href: "/bao-cao", label: "Báo cáo", icon: BarChart3, roles: ["admin", "manager", "member", "viewer"] },
       { href: "/sbu", label: "SBU", icon: Building2, roles: ALL },
       { href: "/giam-sat", label: "Giám sát", icon: ShieldAlert, roles: STAFF },

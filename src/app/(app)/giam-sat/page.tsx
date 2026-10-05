@@ -17,10 +17,14 @@ export default async function MonitoringPage() {
 
   const [items, allSbus, photos, checks] = await Promise.all([
     listMonitoringItems(db),
-    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, region: sbus.region }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, region: sbus.region, kind: sbus.kind }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
     listPhotoMeta(db),
     lastCheckNotes(db),
   ]);
+
+  // Brand/sản phẩm chỉ hiện ở Giám sát khi thật sự có hạng mục (vd. quầy tư vấn VMP).
+  const withItems = new Set(items.map((i) => i.sbuId));
+  const sbuList = allSbus.filter((s) => s.kind !== "brand" || withItems.has(s.id));
 
   const photosByItem = new Map<string, typeof photos>();
   for (const p of photos) (photosByItem.get(p.itemId) ?? photosByItem.set(p.itemId, []).get(p.itemId)!).push(p);
@@ -46,7 +50,7 @@ export default async function MonitoringPage() {
           sizeText: i.sizeText,
           photos: (photosByItem.get(i.id) ?? []).map((p) => ({ id: p.id, caption: p.caption, bytes: p.bytes, width: p.width, height: p.height, createdAt: p.createdAt.toISOString() })),
         }))}
-        sbus={allSbus}
+        sbus={sbuList.map(({ id, code, name, region }) => ({ id, code, name, region }))}
         canEdit={user.role === "admin" || user.role === "manager" || user.role === "member"}
         canManage={user.role === "admin" || user.role === "manager" || user.role === "member"}
       />

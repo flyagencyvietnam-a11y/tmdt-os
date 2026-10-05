@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { LoadMore, ScopeChips, useUrlParam } from "@/components/scope-chips";
 import { TASK_VIEW_LABEL, type TaskView } from "@/lib/task-view";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { sbuTagOptions } from "@/components/sbu-links";
+import { TagMultiSelect } from "@/components/tag-multi-select";
 import { cn } from "@/lib/utils";
 import { createTaskAction } from "./actions";
 import { TaskKanban } from "./task-kanban";
@@ -34,6 +36,7 @@ export interface TaskItem {
   blockedReason: string | null;
   sourceType: string;
   channel: string | null;
+  sbuIds?: string[];
 }
 
 export function TaskBoard({
@@ -46,6 +49,7 @@ export function TaskBoard({
   pageSize,
   users,
   campaigns,
+  sbus,
   currentUserId,
   canAssignOthers,
   icsUrl,
@@ -60,6 +64,7 @@ export function TaskBoard({
   pageSize: number;
   users: { id: string; fullName: string }[];
   campaigns: { id: string; code: string; name: string }[];
+  sbus: { id: string; code: string; name: string; kind: string }[];
   currentUserId: string;
   canAssignOthers: boolean;
   icsUrl?: string;
@@ -136,7 +141,7 @@ export function TaskBoard({
         </Button>
       </div>
 
-      {view === "list" && <TaskGrid rows={visible} users={users} campaigns={campaigns} canEdit canAssignOthers={canAssignOthers} />}
+      {view === "list" && <TaskGrid rows={visible} users={users} campaigns={campaigns} sbus={sbus} canEdit canAssignOthers={canAssignOthers} />}
       {view === "kanban" && <TaskKanban tasks={visible} userName={userName} today={today} />}
       {view === "calendar" && <TaskCalendar tasks={visible} icsUrl={icsUrl} />}
 
@@ -147,6 +152,7 @@ export function TaskBoard({
         onOpenChange={setCreateOpen}
         users={users}
         campaigns={campaigns}
+        sbus={sbus}
         currentUserId={currentUserId}
         canAssignOthers={canAssignOthers}
         onDone={() => {
@@ -163,6 +169,7 @@ function CreateTaskDialog({
   onOpenChange,
   users,
   campaigns,
+  sbus,
   currentUserId,
   canAssignOthers,
   onDone,
@@ -171,6 +178,7 @@ function CreateTaskDialog({
   onOpenChange: (o: boolean) => void;
   users: { id: string; fullName: string }[];
   campaigns: { id: string; code: string; name: string }[];
+  sbus: { id: string; code: string; name: string; kind: string }[];
   currentUserId: string;
   canAssignOthers: boolean;
   onDone: () => void;
@@ -186,6 +194,8 @@ function CreateTaskDialog({
     campaignId: "",
   });
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const [sbuIds, setSbuIds] = React.useState<string[]>([]);
+  const sbuOpts = React.useMemo(() => sbuTagOptions(sbus), [sbus]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -239,6 +249,11 @@ function CreateTaskDialog({
             <F label="Hạn">
               <DateInput value={f.dueDate} onChange={(v) => set("dueDate", v)} />
             </F>
+            <div className="col-span-2">
+              <F label="SBU — brand/sản phẩm hoặc trung tâm (tuỳ chọn)">
+                <TagMultiSelect value={sbuIds} onChange={setSbuIds} options={sbuOpts} placeholder="Chọn SBU" />
+              </F>
+            </div>
             <F label="Campaign (tuỳ chọn)">
               <SimpleSelect
                 value={f.campaignId}
@@ -260,6 +275,7 @@ function CreateTaskDialog({
                   assigneeId: f.assigneeId || null,
                   dueDate: f.dueDate || null,
                   campaignId: f.campaignId || null,
+                  sbuIds,
                 });
                 if (res.ok) {
                   toast.success("Đã tạo task.");

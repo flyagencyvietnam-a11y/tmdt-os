@@ -95,12 +95,19 @@ async function seedSbus(khietId: string, datId: string) {
     { code: "HVG", name: "HVG", kind: "center", region: "KV2", hoOwnerId: datId },
     { code: "BPH", name: "BPH", kind: "center", region: "KV3", hoOwnerId: datId },
     { code: "TMDT", name: "Trung tâm Kinh doanh TMĐT", kind: "online_center", region: "ONLINE", hoOwnerId: khietId },
-    { code: "VMP_VMT", name: "VMP_VMT", kind: "group", region: "RND", hoOwnerId: datId },
+    // Brand/sản phẩm cũng là SBU (kind=brand). VMP giữ người phụ trách HO (Đạt); các brand còn lại chưa có.
+    { code: "VMP", name: "VMP by VMG", kind: "brand", region: "BRAND", hoOwnerId: datId },
+    { code: "VMT", name: "VMT", kind: "brand", region: "BRAND" },
+    { code: "VMG", name: "VMG", kind: "brand", region: "BRAND" },
+    { code: "VMG_IELTS", name: "VMG IELTS", kind: "brand", region: "BRAND" },
+    { code: "VMG_TESOL", name: "VMG TESOL", kind: "brand", region: "BRAND" },
+    { code: "VMG_TRUNG", name: "VMG Tiếng Trung", kind: "brand", region: "BRAND" },
+    { code: "UPLEARN", name: "UpLearn by VMG", kind: "brand", region: "BRAND" },
   ];
   for (const r of rows) {
     await db.insert(schema.sbus).values(r).onConflictDoNothing({ target: schema.sbus.code });
   }
-  console.log(`sbus: ${rows.length} (Khiết phụ trách 5: VTS,PVT,NKN,TBM,TMDT — Đạt phụ trách 7: LDN,TPU,PTA,NTI,HVG,BPH,VMP_VMT)`);
+  console.log(`sbus: ${rows.length} (Khiết phụ trách 5: VTS,PVT,NKN,TBM,TMDT — Đạt phụ trách 7: LDN,TPU,PTA,NTI,HVG,BPH,VMP — kèm 7 SBU brand)`);
 }
 
 /** SPEC Mục 1.1 / 2 — 7 brand. VMT: public_name_allowed=false cho tới khi có quyết định rebrand. */
@@ -116,6 +123,11 @@ async function seedBrands() {
   ];
   for (const r of rows) {
     await db.insert(schema.brands).values(r).onConflictDoNothing({ target: schema.brands.code });
+  }
+  // Gắn SBU kiểu brand với brand tương ứng (cùng mã).
+  for (const r of rows) {
+    const [b] = await db.select({ id: schema.brands.id }).from(schema.brands).where(eq(schema.brands.code, r.code)).limit(1);
+    if (b) await db.update(schema.sbus).set({ brandId: b.id }).where(eq(schema.sbus.code, r.code));
   }
   console.log(`brands: ${rows.length}`);
 }

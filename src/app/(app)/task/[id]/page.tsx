@@ -10,6 +10,8 @@ import {
   comments,
   contentItems,
   recurringRules,
+  sbus,
+  taskSbus,
   tasks,
   users,
 } from "@/lib/db/schema";
@@ -33,7 +35,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   // Content liên kết: task này là task cha của 1 content_item, hoặc 1 bước con (Soạn/Thiết kế/Duyệt/Đăng bài) của nó.
   const contentParentId = task.sourceType === "content_item" ? (task.parentId ?? task.id) : null;
 
-  const [allUsers, checklist, taskComments, activity, campaign, brand, rule, contentItem] = await Promise.all([
+  const [allUsers, checklist, taskComments, activity, campaign, brand, rule, contentItem, allSbus, myLinks] = await Promise.all([
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
     db.select().from(checklistItems).where(eq(checklistItems.taskId, id)).orderBy(asc(checklistItems.sortOrder)),
     db
@@ -59,6 +61,8 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           .limit(1)
           .then((r) => r[0] ?? null)
       : null,
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, kind: sbus.kind }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
+    db.select({ sbuId: taskSbus.sbuId }).from(taskSbus).where(eq(taskSbus.taskId, id)),
   ]);
 
   return (
@@ -72,6 +76,8 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
       brand={brand ?? null}
       recurringRuleName={rule?.name ?? null}
       contentItem={contentItem ?? null}
+      sbus={allSbus}
+      sbuIds={myLinks.map((l) => l.sbuId)}
       currentUserId={user.id}
       canAssignOthers={user.canAssign || user.role === "admin" || user.role === "manager"}
     />

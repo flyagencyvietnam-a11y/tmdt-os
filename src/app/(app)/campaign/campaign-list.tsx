@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 import { DataGrid, type GridColumn } from "@/components/data-grid";
+import { LinksCell, sbuTagOptions } from "@/components/sbu-links";
 import { TagMultiSelect, type TagOption } from "@/components/tag-multi-select";
 import type { TagColor } from "@/components/data-grid/tag";
 import { StatCard } from "@/components/stat-card";
@@ -96,7 +97,6 @@ interface CampaignRow {
   endDate: string;
   status: string;
   ownerId: string | null;
-  brandIds: string[];
   sbuIds: string[];
   taskTotal: number;
   taskDone: number;
@@ -110,7 +110,6 @@ const INITIAL_VIEW = { sorts: [{ field: "startDate", direction: "asc" as const }
 export function CampaignList({
   campaigns,
   users,
-  brands,
   sbus,
   currentUserId,
   today,
@@ -118,8 +117,7 @@ export function CampaignList({
 }: {
   campaigns: CampaignRow[];
   users: { id: string; fullName: string }[];
-  brands: { id: string; code: string; name: string }[];
-  sbus: { id: string; code: string; name: string }[];
+  sbus: { id: string; code: string; name: string; kind: string }[];
   currentUserId: string;
   today: string;
   canEdit: boolean;
@@ -128,12 +126,11 @@ export function CampaignList({
   const [open, setOpen] = React.useState(false);
   const [pending, start] = React.useTransition();
   const [f, setF] = React.useState({ code: "", name: "", type: "other", startDate: "", endDate: "", ownerId: currentUserId });
-  const [linkBrands, setLinkBrands] = React.useState<string[]>([]);
   const [linkSbus, setLinkSbus] = React.useState<string[]>([]);
-  const brandOpts = React.useMemo<TagOption[]>(() => brands.map((b) => ({ value: b.id, label: b.code, hint: b.name })), [brands]);
-  const sbuOpts = React.useMemo<TagOption[]>(() => sbus.map((x) => ({ value: x.id, label: x.code, hint: x.name })), [sbus]);
+  // SBU = brand/sản phẩm HOẶC trung tâm; brand tô màu hổ phách, trung tâm màu xanh để phân biệt.
+  const sbuOpts = React.useMemo<TagOption[]>(() => sbuTagOptions(sbus), [sbus]);
   const saveLinks = React.useCallback(
-    async (id: string, patch: { brandIds?: string[]; sbuIds?: string[] }) => {
+    async (id: string, patch: { sbuIds?: string[] }) => {
       const res = await updateCampaignAction({ id, ...patch } as never);
       if (res.ok) router.refresh();
       else toast.error(res.error);
@@ -220,28 +217,8 @@ export function CampaignList({
         defaultWidth: 160,
       },
       {
-        field: "brandIds",
-        header: "Brand / sản phẩm",
-        kind: "enum",
-        accessor: (r) => r.brandIds,
-        cell: (r) => (
-          <LinksCell
-            key={r.brandIds.join(",")}
-            value={r.brandIds}
-            options={brandOpts}
-            canEdit={canEdit}
-            empty="Chưa gắn brand"
-            onSave={(v) => saveLinks(r.id, { brandIds: v })}
-          />
-        ),
-        enumOptions: brandOpts,
-        filterOptions: brandOpts,
-        groupable: true,
-        defaultWidth: 220,
-      },
-      {
         field: "sbuIds",
-        header: "Trung tâm",
+        header: "SBU (brand / trung tâm)",
         kind: "enum",
         accessor: (r) => r.sbuIds,
         cell: (r) => (
@@ -250,7 +227,7 @@ export function CampaignList({
             value={r.sbuIds}
             options={sbuOpts}
             canEdit={canEdit}
-            empty="Toàn hệ thống"
+            empty="Toàn hệ thống / chưa gắn"
             onSave={(v) => saveLinks(r.id, { sbuIds: v })}
           />
         ),
@@ -355,7 +332,7 @@ export function CampaignList({
         groupable: false,
       },
     ],
-    [canEdit, users, userName, today, brandOpts, sbuOpts, saveLinks],
+    [canEdit, users, userName, today, sbuOpts, saveLinks],
   );
 
   return (
@@ -439,11 +416,8 @@ export function CampaignList({
                 <DateInput value={f.endDate} onChange={(v) => set("endDate", v)} />
               </Fld>
             </div>
-            <Fld label="Brand / sản phẩm phục vụ (tuỳ chọn)">
-              <TagMultiSelect value={linkBrands} onChange={setLinkBrands} options={brandOpts} placeholder="Chọn 1 hoặc nhiều brand/sản phẩm" />
-            </Fld>
-            <Fld label="Trung tâm / chi nhánh phục vụ (để trống = toàn hệ thống)">
-              <TagMultiSelect value={linkSbus} onChange={setLinkSbus} options={sbuOpts} placeholder="Chọn 1 hoặc nhiều trung tâm" />
+            <Fld label="SBU phục vụ — brand/sản phẩm và/hoặc trung tâm (tuỳ chọn)">
+              <TagMultiSelect value={linkSbus} onChange={setLinkSbus} options={sbuOpts} placeholder="Chọn brand/sản phẩm hoặc trung tâm (để trống = toàn hệ thống)" />
             </Fld>
             {f.startDate && f.endDate && f.endDate < f.startDate && <p className="text-xs text-red-600">Ngày kết thúc phải sau ngày bắt đầu.</p>}
             <Button
@@ -451,11 +425,10 @@ export function CampaignList({
               disabled={pending || !f.code.trim() || !f.name.trim() || !f.startDate || !f.endDate || !f.ownerId || f.endDate < f.startDate}
               onClick={() =>
                 start(async () => {
-                  const res = await createCampaignAction({ ...f, brandIds: linkBrands, sbuIds: linkSbus } as never);
+                  const res = await createCampaignAction({ ...f, sbuIds: linkSbus } as never);
                   if (res.ok) {
                     toast.success("Đã tạo campaign.");
                     setOpen(false);
-                    setLinkBrands([]);
                     setLinkSbus([]);
                     router.refresh();
                   } else toast.error(res.error);
@@ -530,47 +503,6 @@ function Fld({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
       {children}
-    </div>
-  );
-}
-
-/** Ô gắn nhiều brand/trung tâm: bấm để chọn ngay trên bảng; lưu sau khi dừng chọn ~0,7 giây. */
-function LinksCell({ value, options, canEdit, empty, onSave }: { value: string[]; options: TagOption[]; canEdit: boolean; empty: string; onSave: (v: string[]) => void }) {
-  const [local, setLocal] = React.useState(value);
-  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const label = (id: string) => options.find((o) => o.value === id)?.label ?? "?";
-  React.useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
-  if (!canEdit) {
-    return value.length ? (
-      <span className="flex gap-1 overflow-hidden">
-        {value.map((id) => (
-          <span key={id} className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">
-            {label(id)}
-          </span>
-        ))}
-      </span>
-    ) : (
-      <span className="text-muted-foreground/70">{empty}</span>
-    );
-  }
-  return (
-    <div onClick={(e) => e.stopPropagation()}>
-      <TagMultiSelect
-        value={local}
-        onChange={(v) => {
-          setLocal(v);
-          if (timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(() => onSave(v), 700);
-        }}
-        options={options}
-        placeholder={empty}
-        className="min-h-7 border-transparent bg-transparent py-0.5 hover:border-input"
-      />
     </div>
   );
 }
