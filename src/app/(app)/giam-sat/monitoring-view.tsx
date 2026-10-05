@@ -16,6 +16,7 @@ import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
 import { bulkCreateMonitoringItemsAction, runMonitoringAlertsNowAction } from "./actions";
 import { MonitoringItem } from "./monitoring-item";
+import { buildTypeGroups, ByTypeView } from "./monitoring-by-type";
 import { SystemSummary } from "./monitoring-summary";
 import { areaRank, KIND_LABELS, KIND_ORDER, type Alert, type MonitoringRow, type SbuLite } from "./monitoring-shared";
 
@@ -31,6 +32,9 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
   const [open, setOpen] = useSessionState<string[]>("monitoring:open", []);
   const [alertFilter, setAlertFilter] = useSessionState<Alert | null>("monitoring:alert", null);
   const [query, setQuery] = useSessionState<string>("monitoring:q", "");
+  // Cách nhóm: theo trung tâm (mặc định) hoặc theo loại hạng mục (so sánh giữa các trung tâm).
+  const [groupMode, setGroupMode] = useSessionState<"sbu" | "type">("monitoring:group", "sbu");
+  const [typeOpen, setTypeOpen] = useSessionState<string[]>("monitoring:typeOpen", []);
   const [showSummary, setShowSummary] = useSessionState<boolean>("monitoring:summary", false);
   const [adding, setAdding] = React.useState<SbuLite | null>(null);
 
@@ -58,7 +62,11 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
     return list.sort((a, b) => b.overdue - a.overdue || b.dueSoon - a.dueSoon || a.sbu.code.localeCompare(b.sbu.code));
   }, [sbus, items, matches]);
 
+  const typeGroups = React.useMemo(() => buildTypeGroups(items, matches), [items, matches]);
   const filtering = !!alertFilter || !!q;
+  const visibleTypeGroups = filtering ? typeGroups.filter((g) => g.shown.length > 0) : typeGroups;
+  const isTypeOpen = (key: string) => typeOpen.includes(key) || (filtering && visibleTypeGroups.some((g) => g.key === key));
+  const toggleType = (key: string) => setTypeOpen((p) => (p.includes(key) ? p.filter((x) => x !== key) : [...p, key]));
   const visibleGroups = filtering ? groups.filter((g) => g.shown.length > 0) : groups;
   const isOpen = (id: string) => open.includes(id) || (filtering && visibleGroups.some((g) => g.sbu.id === id));
   const toggle = (id: string) => setOpen((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -96,13 +104,25 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <div className="flex rounded-lg bg-muted p-0.5 text-xs" role="group" aria-label="Nhóm theo">
+            {(
+              [
+                ["sbu", "Theo trung tâm"],
+                ["type", "Theo loại hạng mục"],
+              ] as const
+            ).map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setGroupMode(k)} className={cn("whitespace-nowrap rounded-md px-2.5 py-1 transition-colors", groupMode === k ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                {label}
+              </button>
+            ))}
+          </div>
           <Button variant={showSummary ? "default" : "outline"} size="sm" onClick={() => setShowSummary((v) => !v)}>
             <Table2 className="mr-1 h-4 w-4" /> Tổng hợp toàn hệ thống
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(groups.map((g) => g.sbu.id))}>
+          <Button variant="ghost" size="sm" onClick={() => (groupMode === "sbu" ? setOpen(groups.map((g) => g.sbu.id)) : setTypeOpen(typeGroups.map((g) => g.key)))}>
             Mở tất cả
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setOpen([])}>
+          <Button variant="ghost" size="sm" onClick={() => (groupMode === "sbu" ? setOpen([]) : setTypeOpen([]))}>
             Thu gọn
           </Button>
           {canManage && (
@@ -128,7 +148,9 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
 
       {showSummary && <SystemSummary items={items} sbus={sbus} />}
 
-      <div className="space-y-2">
+      {groupMode === "type" && <ByTypeView groups={visibleTypeGroups} sbus={sbus} isOpen={isTypeOpen} toggle={toggleType} canEdit={canEdit} canManage={canManage} />}
+
+      <div className={cn("space-y-2", groupMode === "type" && "hidden")}>
         {visibleGroups.map((g) => {
           const expanded = isOpen(g.sbu.id);
           return (

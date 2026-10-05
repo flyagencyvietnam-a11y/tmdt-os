@@ -29,7 +29,7 @@ const ALERT_ROW: Record<Alert, string> = {
 };
 
 /** 1 hạng mục giám sát: tên, hiện trạng, ảnh thực tế, ngày rà soát/chu kỳ và cảnh báo — sửa ngay tại chỗ. */
-export function MonitoringItem({ item, canEdit, canManage }: { item: MonitoringRow; canEdit: boolean; canManage: boolean }) {
+export function MonitoringItem({ item, canEdit, canManage, sbuLabel }: { item: MonitoringRow; canEdit: boolean; canManage: boolean; /** Hiện mã trung tâm ở đầu thẻ (khi xem nhóm theo loại hạng mục). */ sbuLabel?: string }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
   const [checkOpen, setCheckOpen] = React.useState(false);
@@ -49,6 +49,7 @@ export function MonitoringItem({ item, canEdit, canManage }: { item: MonitoringR
       {/* Cột 1: tên + cảnh báo + lịch rà soát */}
       <div className="min-w-0 space-y-2">
         <div className="flex items-start gap-2">
+          {sbuLabel && <span className="mt-0.5 shrink-0 rounded bg-foreground px-1.5 py-0.5 text-xs font-bold text-background">{sbuLabel}</span>}
           <InlineText
             value={item.title}
             disabled={!canEdit}
