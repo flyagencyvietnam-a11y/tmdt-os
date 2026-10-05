@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isManagerLike, isStaff } from "@/lib/auth/permissions";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -9,7 +10,7 @@ import {
   bulkUpdateTasks,
   createTask,
   duplicateTask,
-  softDeleteTask,
+  softDeleteTasks,
   toggleChecklistItem,
   updateTask,
   type CreateTaskInput,
@@ -61,8 +62,8 @@ export async function updateTaskAction(id: string, patch: UpdateTaskInput): Prom
 export async function bulkUpdateTasksAction(ids: string[], patch: UpdateTaskInput): Promise<ActionResult> {
   try {
     const user = await requireSessionUser();
-    if (!["admin", "manager"].includes(user.role) && patch.assigneeId) {
-      return { ok: false, error: "Chỉ admin/manager được giao hàng loạt cho người khác." };
+    if (!isManagerLike(user.role) && !user.canAssign && patch.assigneeId) {
+      return { ok: false, error: "Bạn chưa được cấp quyền giao task cho người khác (can_assign)." };
     }
     await bulkUpdateTasks(db, ids, patch, user.id);
     revalidatePath("/task");
@@ -73,12 +74,19 @@ export async function bulkUpdateTasksAction(ids: string[], patch: UpdateTaskInpu
 }
 
 export async function deleteTaskAction(id: string): Promise<ActionResult> {
+  return deleteTasksAction([id]);
+}
+
+/** Xoá (mềm) nhiều task. Việc lặp được chuyển sang Lưu trữ thay vì xoá hẳn (xem softDeleteTasks). */
+export async function deleteTasksAction(ids: string[]): Promise<ActionResult & { deleted?: number; archivedRecurring?: number }> {
   try {
     const user = await requireSessionUser();
-    if (!["admin", "manager"].includes(user.role)) return { ok: false, error: "Chỉ admin/manager được xoá task." };
-    await softDeleteTask(db, id, user.id);
+    if (!isStaff(user.role)) return { ok: false, error: "Không có quyền xoá task." };
+    const r = await softDeleteTasks(db, ids, user.id);
     revalidatePath("/task");
-    return { ok: true };
+    revalidatePath("/");
+    revalidatePath("/content");
+    return { ok: true, ...r };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }

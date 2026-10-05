@@ -20,7 +20,7 @@ export default async function GanttPage() {
     .where(and(isNull(tasks.deletedAt), or(isNotNull(tasks.dueDate), isNotNull(tasks.startDate))));
 
   const deps = await db.select().from(taskDependencies);
-  const allCampaigns = await db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns);
+  const allCampaigns = await db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns).where(isNull(campaigns.deletedAt));
   const allUsers = await db.select({ id: users.id, fullName: users.fullName }).from(users);
 
   return (

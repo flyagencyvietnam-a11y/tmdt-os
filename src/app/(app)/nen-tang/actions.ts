@@ -1,6 +1,7 @@
 "use server";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { isStaff } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import {
   createTaskFromFoundationCell,
@@ -13,7 +14,7 @@ type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string 
 
 async function requireManagerLike() {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
+  if (!user || !isStaff(user.role)) return null;
   return user;
 }
 

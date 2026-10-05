@@ -44,8 +44,8 @@ export function ImportWizard({ isAdmin }: { isAdmin: boolean }) {
         <TabsTrigger value="t6">T6 — Content calendar</TabsTrigger>
         <TabsTrigger value="t7">T7 — Media plan</TabsTrigger>
         {isAdmin && <TabsTrigger value="t2">T2 — Người dùng &amp; SBU</TabsTrigger>}
-        {isAdmin && <TabsTrigger value="t8">T8 — Foundation</TabsTrigger>}
-        {isAdmin && <TabsTrigger value="t9">T9 — Danh mục SBU</TabsTrigger>}
+        <TabsTrigger value="t8">T8 — Foundation</TabsTrigger>
+        <TabsTrigger value="t9">T9 — Danh mục SBU</TabsTrigger>
       </TabsList>
       <TabsContent value="t1" className="pt-4">
         <T1Wizard />
@@ -70,16 +70,12 @@ export function ImportWizard({ isAdmin }: { isAdmin: boolean }) {
           <T2Wizard />
         </TabsContent>
       )}
-      {isAdmin && (
-        <TabsContent value="t8" className="pt-4">
-          <T8Wizard />
-        </TabsContent>
-      )}
-      {isAdmin && (
-        <TabsContent value="t9" className="pt-4">
-          <T9Wizard />
-        </TabsContent>
-      )}
+      <TabsContent value="t8" className="pt-4">
+        <T8Wizard />
+      </TabsContent>
+      <TabsContent value="t9" className="pt-4">
+        <T9Wizard />
+      </TabsContent>
     </Tabs>
   );
 }

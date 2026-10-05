@@ -45,7 +45,7 @@ export default async function MonitoringPage() {
         }))}
         sbus={allSbus}
         canEdit={user.role === "admin" || user.role === "manager" || user.role === "member"}
-        canManage={user.role === "admin" || user.role === "manager"}
+        canManage={user.role === "admin" || user.role === "manager" || user.role === "member"}
       />
     </div>
   );

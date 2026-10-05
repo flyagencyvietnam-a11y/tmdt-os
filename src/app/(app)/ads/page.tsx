@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { isStaff } from "@/lib/auth/permissions";
 import { requireUser } from "@/lib/auth/session";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
@@ -57,7 +58,7 @@ export default async function AdsPage() {
         users={allUsers}
         ecomProducts={ecomProducts}
         disbursementPlan={disbursementPlan}
-        canManage={user.role === "admin" || user.role === "manager"}
+        canManage={isStaff(user.role)}
         currentMonth={todayVnDayStr().slice(0, 7)}
         rubric={rubric}
         weeks={[...new Set(metrics.filter((m) => m.periodType === "week").map((m) => m.period))].sort().reverse()}

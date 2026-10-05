@@ -2,7 +2,8 @@
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { createContentItem, updateContentItem, type CreateContentItemInput } from "@/lib/services/content";
+import { revalidatePath } from "next/cache";
+import { createContentItem, deleteContentItems, updateContentItem, type CreateContentItemInput } from "@/lib/services/content";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -33,6 +34,20 @@ export async function updateContentItemAction(
   try {
     await updateContentItem(db, id, patch as never, user.id);
     return { ok: true, data: undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+/** Xoá (mềm) bài content kèm task đăng bài + các bước con. */
+export async function deleteContentItemsAction(ids: string[]): Promise<Result<{ deleted: number }>> {
+  const user = await requireContentEditor();
+  if (!user) return { ok: false, error: "Không có quyền xoá content." };
+  try {
+    const deleted = await deleteContentItems(db, ids, user.id);
+    revalidatePath("/content");
+    revalidatePath("/task");
+    return { ok: true, data: { deleted } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }

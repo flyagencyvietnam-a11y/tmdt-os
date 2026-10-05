@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStaff } from "@/lib/auth/permissions";
 import { getCurrentUser } from "@/lib/auth/session";
 import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
@@ -7,7 +8,7 @@ import { buildBodWeeklyWorkbook } from "@/lib/services/bod-export";
 /** SPEC Mục 10.5 (P2) — xuất lịch tuần gửi BOD: GET /api/export/bod-schedule?monday=YYYY-MM-DD */
 export async function GET(req: Request) {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
+  if (!user || !isStaff(user.role)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const monday = new URL(req.url).searchParams.get("monday");

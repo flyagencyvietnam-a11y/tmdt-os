@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
@@ -37,7 +37,7 @@ export default async function TaskListPage({ searchParams }: { searchParams: Pro
     listTasksScoped(db, scope, { view, assigneeId, limit }),
     taskViewCounts(db, scope),
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
-    db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns),
+    db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns).where(isNull(campaigns.deletedAt)),
   ]);
 
   return (

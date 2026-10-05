@@ -1,10 +1,12 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
+import { isStaff } from "@/lib/auth/permissions";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { campaigns, tasks, users } from "@/lib/db/schema";
 import { fmtDate } from "@/lib/format";
 import { CampaignActionPlan } from "./action-plan";
+import { DeleteCampaignButton } from "./delete-campaign-button";
 import { DuplicateCampaignDialog } from "./duplicate-campaign-dialog";
 import { canSee } from "@/lib/auth/permissions";
 import { todayVnDayStr } from "@/lib/time";
@@ -14,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
-  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+  const [campaign] = await db.select().from(campaigns).where(and(eq(campaigns.id, id), isNull(campaigns.deletedAt))).limit(1);
   if (!campaign) notFound();
 
   const [owner] = campaign.ownerId ? await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, campaign.ownerId)).limit(1) : [];
@@ -41,8 +43,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             {overdueCount > 0 && <span className="text-crit"> · {overdueCount} trễ hạn</span>}
           </p>
         </div>
-        {canSee(user.role, "campaign") && (user.role === "admin" || user.role === "manager") && (
-          <DuplicateCampaignDialog campaignId={campaign.id} sourceCode={campaign.code} />
+        {canSee(user.role, "campaign") && isStaff(user.role) && (
+          <div className="flex items-center gap-2">
+            <DuplicateCampaignDialog campaignId={campaign.id} sourceCode={campaign.code} />
+            <DeleteCampaignButton campaignId={campaign.id} name={campaign.name} taskCount={total} />
+          </div>
         )}
       </div>
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { isStaff } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { applyAdsImport, planAdsImport, type AdsImportKind, type AdsImportPreviewRow } from "@/lib/services/import/ads-import";
 import {
@@ -22,13 +23,13 @@ type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string 
 
 async function requireManagerLike() {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
+  if (!user || !isStaff(user.role)) return null;
   return user;
 }
 
 export async function upsertAdsMetricAction(input: UpsertAdsMetricInput): Promise<Result<{ id: string }>> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa." };
   try {
     const row = await upsertAdsMetric(db, input, user.id);
     return { ok: true, data: { id: row.id } };
@@ -39,7 +40,7 @@ export async function upsertAdsMetricAction(input: UpsertAdsMetricInput): Promis
 
 export async function deleteAdsMetricAction(id: string): Promise<Result> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được xoá." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được xoá." };
   try {
     await deleteAdsMetric(db, id, user.id);
     return { ok: true, data: undefined };
@@ -50,7 +51,7 @@ export async function deleteAdsMetricAction(id: string): Promise<Result> {
 
 export async function upsertAdsCampaignAction(input: UpsertAdsCampaignInput): Promise<Result<{ id: string }>> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa." };
   try {
     const row = await upsertAdsCampaign(db, input, user.id);
     return { ok: true, data: { id: row.id } };
@@ -62,7 +63,7 @@ export async function upsertAdsCampaignAction(input: UpsertAdsCampaignInput): Pr
 /** Sửa 1 ô của request ngay trên bảng. */
 export async function patchAdsCampaignAction(id: string, patch: Partial<UpsertAdsCampaignInput>): Promise<Result> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa." };
   try {
     if (patch.campaignName !== undefined && !patch.campaignName.trim()) return { ok: false, error: "Tên request không được để trống." };
     if (patch.spend !== undefined && patch.spend !== "" && !Number.isFinite(Number(patch.spend))) return { ok: false, error: "Chi tiêu phải là số." };
@@ -76,7 +77,7 @@ export async function patchAdsCampaignAction(id: string, patch: Partial<UpsertAd
 
 export async function deleteAdsCampaignAction(id: string): Promise<Result> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được xoá." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được xoá." };
   try {
     await deleteAdsCampaign(db, id, user.id);
     return { ok: true, data: undefined };
@@ -87,7 +88,7 @@ export async function deleteAdsCampaignAction(id: string): Promise<Result> {
 
 export async function rollupCampaignsAction(sbuId: string, period: string): Promise<Result<{ id: string }>> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được cộng dồn." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được cộng dồn." };
   try {
     const row = await rollupCampaignsToMetric(db, sbuId, period, user.id);
     return { ok: true, data: { id: row.id } };
@@ -104,7 +105,7 @@ export async function upsertDisbursementPlanAction(input: {
   notes?: string | null;
 }): Promise<Result<{ id: string }>> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa." };
   try {
     const row = await upsertDisbursementPlan(db, input, user.id);
     return { ok: true, data: { id: row.id } };
@@ -115,7 +116,7 @@ export async function upsertDisbursementPlanAction(input: {
 
 export async function saveEcomProductPeriodAction(input: { period: string; periodEnd?: string | null; rows: EcomProductRowInput[] }): Promise<Result> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa." };
   if (!/^d{4}-d{2}$/.test(input.period)) return { ok: false, error: "Kỳ không hợp lệ." };
   if (input.periodEnd && (!/^d{4}-d{2}$/.test(input.periodEnd) || input.periodEnd < input.period)) return { ok: false, error: "Tháng kết thúc phải sau hoặc bằng tháng bắt đầu." };
   try {
@@ -128,7 +129,7 @@ export async function saveEcomProductPeriodAction(input: { period: string; perio
 
 export async function deleteEcomProductPeriodAction(period: string): Promise<Result> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được xoá." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được xoá." };
   try {
     await deleteEcomProductPeriod(db, period, user.id);
     return { ok: true, data: undefined };
@@ -154,7 +155,7 @@ async function readImportForm(formData: FormData) {
 /** Bước 1: đọc + kiểm tra, KHÔNG ghi gì — trả về từng dòng sẽ tạo/cập nhật/bỏ qua/lỗi. */
 export async function previewAdsImportAction(formData: FormData): Promise<Result<{ rows: AdsImportPreviewRow[] }>> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được nạp file." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được nạp file." };
   const f = await readImportForm(formData);
   if (!f.ok) return { ok: false, error: f.error };
   try {
@@ -168,7 +169,7 @@ export async function previewAdsImportAction(formData: FormData): Promise<Result
 /** Bước 2: kiểm tra lại file rồi ghi các dòng hợp lệ (dòng lỗi/bỏ qua không ghi). */
 export async function commitAdsImportAction(formData: FormData): Promise<Result<{ created: number; updated: number; skipped: number; errors: number }>> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được nạp file." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được nạp file." };
   const f = await readImportForm(formData);
   if (!f.ok) return { ok: false, error: f.error };
   try {

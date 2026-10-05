@@ -1,13 +1,15 @@
 "use server";
 
 import { eq } from "drizzle-orm";
+import { isStaff } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { campaigns } from "@/lib/db/schema";
-import { duplicateCampaign } from "@/lib/services/campaigns";
+import { deleteCampaigns, duplicateCampaign } from "@/lib/services/campaigns";
+import { todayVnDayStr } from "@/lib/time";
 
 const schema = z.object({
   code: z.string().min(1),
@@ -27,13 +29,13 @@ const schema = z.object({
 
 async function requireManagerLike() {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
+  if (!user || !isStaff(user.role)) return null;
   return user;
 }
 
 export async function createCampaignAction(input: z.infer<typeof schema>) {
   const user = await requireManagerLike();
-  if (!user) return { ok: false as const, error: "Chỉ admin/manager được tạo campaign." };
+  if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được tạo campaign." };
   try {
     const d = schema.parse(input);
     const [row] = await db
@@ -57,7 +59,7 @@ function firstIssue(e: unknown): string {
 
 export async function updateCampaignAction(input: z.infer<typeof updateSchema>) {
   const user = await requireManagerLike();
-  if (!user) return { ok: false as const, error: "Chỉ admin/manager được sửa campaign." };
+  if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được sửa campaign." };
   try {
     const d = updateSchema.parse(input);
     const { id, ...patch } = d;
@@ -84,12 +86,27 @@ const duplicateSchema = z.object({
 /** SPEC Mục 5.3 / 14.3 — nhân bản campaign (bao gồm task con, dời ngày theo khoảng lệch). */
 export async function duplicateCampaignAction(input: z.infer<typeof duplicateSchema>) {
   const user = await requireManagerLike();
-  if (!user) return { ok: false as const, error: "Chỉ admin/manager được nhân bản campaign." };
+  if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được nhân bản campaign." };
   try {
     const d = duplicateSchema.parse(input);
     const created = await duplicateCampaign(db, d.campaignId, { newCode: d.newCode, dayOffset: d.dayOffset, newName: d.newName }, user.id);
     revalidatePath("/campaign");
     return { ok: true as const, id: created.id };
+  } catch (e) {
+    return { ok: false as const, error: firstIssue(e) };
+  }
+}
+
+/** Xoá (mềm) campaign: gỡ mã, xoá task action plan; task/bài content gắn campaign chỉ gỡ liên kết. */
+export async function deleteCampaignsAction(ids: string[]) {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false as const, error: "Chỉ nhân sự Marketing được xoá campaign." };
+  try {
+    const r = await deleteCampaigns(db, ids, user.id, todayVnDayStr());
+    revalidatePath("/campaign");
+    revalidatePath("/task");
+    revalidatePath("/content");
+    return { ok: true as const, ...r };
   } catch (e) {
     return { ok: false as const, error: firstIssue(e) };
   }

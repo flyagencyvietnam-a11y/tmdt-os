@@ -29,6 +29,10 @@ async function requireManager() {
   const user = await getCurrentUser();
   return user && (user.role === "admin" || user.role === "manager") ? user : null;
 }
+async function requireStaffUser() {
+  const user = await getCurrentUser();
+  return user && (user.role === "admin" || user.role === "manager" || user.role === "member") ? user : null;
+}
 
 function fail(e: unknown): { ok: false; error: string } {
   return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
@@ -73,8 +77,8 @@ export async function updateMonitoringItemAction(id: string, patch: UpdateMonito
 }
 
 export async function deleteMonitoringItemAction(id: string): Promise<Result> {
-  const user = await requireManager();
-  if (!user) return { ok: false, error: "Chỉ admin/manager được xoá hạng mục." };
+  const user = await requireStaffUser();
+  if (!user) return { ok: false, error: "Không có quyền xoá hạng mục." };
   try {
     await deleteMonitoringItem(db, id, user.id);
     revalidatePath("/giam-sat");

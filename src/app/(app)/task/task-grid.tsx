@@ -1,6 +1,7 @@
 "use client";
 
 import { Repeat } from "lucide-react";
+import { BulkDeleteButton } from "@/components/data-grid/bulk-delete";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -10,7 +11,7 @@ import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
 import { todayVnDayStr } from "@/lib/time";
 import { isTaskRecurring, ROW_TONE_CLASS, taskTone } from "./task-style";
-import { bulkUpdateTasksAction, updateTaskAction } from "./actions";
+import { bulkUpdateTasksAction, deleteTasksAction, updateTaskAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 
@@ -286,26 +287,43 @@ export function TaskGrid({
         setSavedViews((s) => s.filter((v) => v.id !== id));
       }}
       bulkActions={
-        canAssignOthers
+        canEdit
           ? (selected, clear) => (
-              <BulkAssign
-                ids={selected.map((r) => r.id)}
-                users={users}
-                pending={pending}
-                onRun={(assigneeId) =>
-                  start(async () => {
-                    const res = await bulkUpdateTasksAction(
-                      selected.map((r) => r.id),
-                      { assigneeId },
-                    );
+              <>
+                {canAssignOthers && (
+                  <BulkAssign
+                    ids={selected.map((r) => r.id)}
+                    users={users}
+                    pending={pending}
+                    onRun={(assigneeId) =>
+                      start(async () => {
+                        const res = await bulkUpdateTasksAction(
+                          selected.map((r) => r.id),
+                          { assigneeId },
+                        );
+                        if (res.ok) {
+                          toast.success(`Đã giao ${selected.length} task.`);
+                          clear();
+                          router.refresh();
+                        } else toast.error(res.error);
+                      })
+                    }
+                  />
+                )}
+                <BulkDeleteButton
+                  count={selected.length}
+                  noun="task"
+                  warning="Task con sẽ bị xoá theo. Việc lặp lại không bị xoá hẳn mà chuyển sang Lưu trữ (huỷ) để không bị sinh lại — muốn dừng hẳn thì tắt quy tắc lặp."
+                  onRun={async () => {
+                    const res = await deleteTasksAction(selected.map((r) => r.id));
                     if (res.ok) {
-                      toast.success(`Đã giao ${selected.length} task.`);
+                      toast.success(`Đã xoá ${res.deleted ?? 0} task${res.archivedRecurring ? ` · ${res.archivedRecurring} việc lặp chuyển sang Lưu trữ` : ""}.`);
                       clear();
                       router.refresh();
                     } else toast.error(res.error);
-                  })
-                }
-              />
+                  }}
+                />
+              </>
             )
           : undefined
       }

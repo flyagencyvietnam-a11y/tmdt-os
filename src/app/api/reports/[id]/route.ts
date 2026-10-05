@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { isStaff } from "@/lib/auth/permissions";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -6,7 +7,7 @@ import { reportExports } from "@/lib/db/schema";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "admin" && user.role !== "manager" && user.role !== "viewer")) {
+  if (!user || (!isStaff(user.role) && user.role !== "viewer")) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { id } = await params;

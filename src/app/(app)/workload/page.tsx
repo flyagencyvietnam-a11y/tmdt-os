@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** SPEC Mục 8.3/12.2/12.3 — ma trận người x tuần, tô màu quá tải. */
 export default async function WorkloadPage() {
-  await requireRole("admin", "manager");
+  await requireRole("admin", "manager", "member");
   const [{ weeks, rows }, thresholds] = await Promise.all([computeWorkloadMatrix(db), loadOverloadThresholds(db)]);
 
   return (

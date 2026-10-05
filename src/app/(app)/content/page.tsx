@@ -3,7 +3,7 @@ import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { brands, campaigns, sbus, tasks, users } from "@/lib/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, isNull } from "drizzle-orm";
 import { listContentItemsScoped } from "@/lib/services/content";
 import { clampLimit, PAGE_SIZE } from "@/lib/services/task-lists";
 import { todayVnDayStr } from "@/lib/time";
@@ -24,7 +24,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
   const [{ rows: items, total, allCount }, allBrands, allCampaigns, allSbus, allUsers] = await Promise.all([
     listContentItemsScoped(db, { scope, today, limit: clampLimit(limitParam) }),
     db.select().from(brands),
-    db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns),
+    db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns).where(isNull(campaigns.deletedAt)),
     db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus),
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
   ]);

@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth/session";
+import { isStaff } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { computeManagementMetrics, listReportExports } from "@/lib/services/reports";
 import { todayVnDayStr } from "@/lib/time";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /** SPEC Mục 12.2 — Dashboard quản lý (admin/manager/viewer). */
 export default async function DashboardPage() {
-  const user = await requireRole("admin", "manager", "viewer");
+  const user = await requireRole("admin", "manager", "member", "viewer");
   const period = todayVnDayStr().slice(0, 7);
   const [metrics, exports] = await Promise.all([computeManagementMetrics(db, period), listReportExports(db)]);
 
@@ -20,7 +21,7 @@ export default async function DashboardPage() {
       <DashboardView
         metrics={metrics}
         exports={exports.map((e) => ({ id: e.id, kind: e.kind, period: e.period, fileName: e.fileName, createdAt: e.createdAt.toISOString() }))}
-        canManage={user.role === "admin" || user.role === "manager"}
+        canManage={isStaff(user.role)}
         currentPeriod={period}
       />
     </div>

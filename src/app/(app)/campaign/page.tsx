@@ -1,4 +1,5 @@
 import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { isStaff } from "@/lib/auth/permissions";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { campaigns, tasks, users } from "@/lib/db/schema";
@@ -73,7 +74,7 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
         users={allUsers}
         currentUserId={user.id}
         today={today}
-        canEdit={user.role === "admin" || user.role === "manager"}
+        canEdit={isStaff(user.role)}
       />
     </div>
   );

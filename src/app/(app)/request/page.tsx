@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, isNull, notInArray, or, sql } from "drizzle-orm";
+import { isStaff } from "@/lib/auth/permissions";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { requests, sbus, tasks, users } from "@/lib/db/schema";
@@ -87,7 +88,7 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
         }))}
         sbus={allSbus}
         users={allUsers}
-        canManage={user.role === "admin" || user.role === "manager"}
+        canManage={isStaff(user.role)}
       />
       <LoadMore shown={rows.length} total={total} step={PAGE_SIZE} />
     </div>

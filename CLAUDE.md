@@ -257,6 +257,7 @@ là một app hoàn toàn mới về nghiệp vụ.
   - **SBU**: chỉ số tổng quan ở `lib/services/sbu-overview.ts` (suy ra tại truy vấn). **Campaign**: `owner_id` bắt buộc khi tạo; 24 campaign nạp từ file gốc chưa có owner → chờ chủ sản phẩm chỉ định (dùng thao tác chọn nhiều → "Gán owner").
   - **Ads Theo request**: là DataGrid (`entity="ads_requests"`), có `planned_budget` + `runner_id`; `patchAdsCampaign` chỉ ghi các trường được truyền.
   - **Tài khoản nhân sự**: Khiết/Đạt/Trân đăng nhập bằng `khiet`/`dat`/`tran` (mật khẩu trùng tên — yếu, chỉ nội bộ; xem `scripts/seed.ts`).
+  - **Phân quyền & xoá (10/2026, SPEC Phụ lục D mục 14–15):** `member` = nhân sự vận hành đầy đủ (xem SPEC); mọi kiểm tra ở server action/trang dùng `isStaff()` / `isManagerLike()` từ `lib/auth/permissions.ts` — đừng viết lại `role === "admin" || role === "manager"`. Chỉ Người dùng/Cài đặt/T2 là admin-only. Xoá mềm đi qua `softDeleteTasks` (task.ts — việc lặp → Lưu trữ, không xoá thật), `deleteContentItems`, `deleteCampaigns` (đổi `code` để giải phóng unique); nút dùng chung `components/data-grid/bulk-delete.tsx`. Danh sách campaign dùng cho dropdown phải lọc `deletedAt`.
 - Stack: Next.js 16 (App Router) + React 19 + Tailwind v4 + shadcn/ui (Base UI)
   + Drizzle + postgres-js + Auth.js v5 (Credentials) + `rrule` + `@dnd-kit` +
   `react-big-calendar` + `recharts` (Dashboard) + `web-push` (VAPID tự sinh,

@@ -1,8 +1,8 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { campaignBrands, campaigns, tasks, type Campaign } from "@/lib/db/schema";
+import { campaignBrands, campaigns, contentItems, tasks, type Campaign } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { createTask } from "./tasks";
+import { createTask, softDeleteTasks } from "./tasks";
 import { ServiceError } from "./errors";
 import { addDaysStr } from "@/lib/time";
 
@@ -125,4 +125,36 @@ export async function duplicateCampaign(
   });
 
   return created;
+}
+
+/**
+ * Xoá (mềm) campaign: đổi mã thành `<mã>~xoa-<yyyymmdd>` (cột `code` unique — giải phóng mã để tạo/nạp lại),
+ * xoá mềm các task action plan của campaign (qua `softDeleteTasks`), còn task/bài content gắn campaign
+ * thì chỉ gỡ liên kết (nội dung đăng bài vẫn giữ). Trả về số campaign và số task đã xử lý.
+ */
+export async function deleteCampaigns(db: DB, ids: string[], actorId: string | null, today: string): Promise<{ campaigns: number; tasks: number }> {
+  if (ids.length === 0) return { campaigns: 0, tasks: 0 };
+  const rows = await db.select({ id: campaigns.id, code: campaigns.code }).from(campaigns).where(and(inArray(campaigns.id, ids), isNull(campaigns.deletedAt)));
+  if (rows.length === 0) return { campaigns: 0, tasks: 0 };
+  const rowIds = rows.map((r) => r.id);
+
+  const own = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(inArray(tasks.campaignId, rowIds), isNull(tasks.deletedAt), ne(tasks.sourceType, "content_item"), isNull(tasks.parentId)));
+  const res = await softDeleteTasks(db, own.map((t) => t.id), actorId);
+
+  // Task/bài content còn lại: gỡ khỏi campaign đã xoá.
+  await db.update(tasks).set({ campaignId: null, updatedBy: actorId }).where(and(inArray(tasks.campaignId, rowIds), isNull(tasks.deletedAt)));
+  await db.update(contentItems).set({ campaignId: null, updatedBy: actorId }).where(inArray(contentItems.campaignId, rowIds));
+
+  const stamp = today.replaceAll("-", "");
+  for (const r of rows) {
+    await db
+      .update(campaigns)
+      .set({ code: `${r.code}~xoa-${stamp}-${r.id.slice(0, 4)}`, deletedAt: new Date(), updatedBy: actorId })
+      .where(eq(campaigns.id, r.id));
+    await writeAudit(db, { actorId, entity: "campaigns", entityId: r.id, action: "DELETE" });
+  }
+  return { campaigns: rows.length, tasks: res.deleted + res.archivedRecurring };
 }

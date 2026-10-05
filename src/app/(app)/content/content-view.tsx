@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ExternalLink, List as ListIcon, Newspaper, Pencil, Plus, Upload, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ExternalLink, List as ListIcon, Newspaper, Pencil, Plus, Upload, X, Trash2 } from "lucide-react";
+import { BulkDeleteButton } from "@/components/data-grid/bulk-delete";
 import { useSessionState } from "@/lib/use-session-state";
 import { DateInput } from "@/components/ui/date-input";
 import Link from "next/link";
@@ -21,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
 import { LoadMore, ScopeChips } from "@/components/scope-chips";
-import { createContentItemAction, updateContentItemAction } from "./actions";
+import { createContentItemAction, deleteContentItemsAction, updateContentItemAction } from "./actions";
 import { CHANNEL_OPTIONS, colorForBrand, colorForChannel } from "./content-colors";
 import { ContentCalendarGrid } from "./content-calendar-grid";
 
@@ -372,6 +373,21 @@ export function ContentCalendarView({
           rows={visible}
           getRowId={(r) => r.id}
           onEditCell={onEditCell}
+          bulkActions={(selected, clear) => (
+            <BulkDeleteButton
+              count={selected.length}
+              noun="bài content"
+              warning="Task đăng bài và các bước con (Soạn/Thiết kế/Duyệt/Đăng) của từng bài cũng bị xoá theo."
+              onRun={async () => {
+                const res = await deleteContentItemsAction(selected.map((r) => r.id));
+                if (res.ok) {
+                  toast.success(`Đã xoá ${res.data.deleted} bài content.`);
+                  clear();
+                  router.refresh();
+                } else toast.error(res.error);
+              }}
+            />
+          )}
           initialView={{ sorts: [{ field: "publishDate", direction: "asc" }], rowHeight: "medium" }}
           emptyText="Chưa có content nào — bấm “Content mới” hoặc nhập plan tháng từ file."
         />
@@ -598,6 +614,25 @@ function ContentDialog({
           </details>
 
           <div className="flex items-center justify-end gap-2 border-t pt-3">
+            {item && (
+              <Button
+                variant="outline"
+                className="mr-auto text-red-600 hover:text-red-700"
+                disabled={pending}
+                onClick={() => {
+                  if (!window.confirm(`Xoá bài “${item.topic}”?\n\nTask đăng bài và các bước con cũng bị xoá theo.`)) return;
+                  start(async () => {
+                    const res = await deleteContentItemsAction([item.id]);
+                    if (res.ok) {
+                      toast.success("Đã xoá bài content.");
+                      onDone();
+                    } else toast.error(res.error);
+                  });
+                }}
+              >
+                <Trash2 className="mr-1 h-3.5 w-3.5" /> Xoá bài
+              </Button>
+            )}
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Huỷ
             </Button>

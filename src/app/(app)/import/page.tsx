@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shell/page-header";
 export const metadata = { title: "Nhập liệu — VMG MKT OS" };
 
 export default async function ImportPage() {
-  const user = await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager", "member");
 
   return (
     <div className="space-y-4">

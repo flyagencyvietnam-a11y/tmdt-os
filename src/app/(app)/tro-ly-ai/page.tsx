@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /** SPEC Mục 14.4 (Phase 3) — tách tài liệu kế hoạch thành action plan, LUÔN có bước người duyệt. */
 export default async function AiAssistPage() {
-  await requireRole("admin", "manager");
+  await requireRole("admin", "manager", "member");
   const allUsers = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true));
 
   return (

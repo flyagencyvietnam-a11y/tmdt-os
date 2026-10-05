@@ -77,20 +77,25 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     // không userManagement, không xóa dữ liệu gốc (Mục 3.1)
   },
 
+  // Nhân sự Marketing HO là người làm việc hằng ngày → có quyền vận hành đầy đủ trên plan/số liệu của phòng
+  // (xoá là xoá mềm, khôi phục được). Chỉ KHÔNG có: quản lý người dùng, cài đặt hệ thống, nạp người dùng/SBU.
+  // Giao task cho người khác vẫn cần cờ can_assign (kiểm tra riêng).
   member: {
-    // Thấy toàn bộ plan; sửa/giao task của mình. Giao người khác cần can_assign (kiểm tra riêng).
-    task: { create: "own", read: "all", update: "own" },
-    campaign: { read: "all" },
-    foundation: { read: "all" },
+    task: { create: "all", read: "all", update: "all", delete: "all" },
+    campaign: ALL,
+    foundation: { create: "all", read: "all", update: "all" },
     brandKit: { read: "all" },
-    request: { create: "all", read: "all" },
+    request: { create: "all", read: "all", update: "all" },
     recurringRule: { create: "own", read: "all" },
     sbu: { read: "all" },
-    workloadReport: { read: "own" },
-    content: { create: "all", read: "all", update: "all" },
-    media: { create: "all", read: "all", update: "all" },
-    monitoring: { read: "all", update: "all" },
-    ads: { read: "all" },
+    workloadReport: { read: "all" },
+    importData: { create: "all", read: "all" },
+    content: ALL,
+    media: ALL,
+    monitoring: ALL,
+    ads: ALL,
+    managementDashboard: { read: "all" },
+    aiAssist: { read: "all", create: "all" },
   },
 
   center_contributor: {
@@ -148,3 +153,13 @@ export const ROLE_LABELS: Record<Role, string> = {
   center_contributor: "Đầu mối Marketing trung tâm",
   viewer: "Ban Giám đốc / Khối",
 };
+
+/** Nhóm "nhân sự Marketing HO": admin + manager + member. Dùng cho mọi kiểm tra quyền vận hành ở server action/trang. */
+export function isStaff(role: Role): boolean {
+  return role === "admin" || role === "manager" || role === "member";
+}
+
+/** admin + manager — việc mang tính quản trị (xác nhận nạp dữ liệu hàng loạt, chạy cảnh báo…). */
+export function isManagerLike(role: Role): boolean {
+  return role === "admin" || role === "manager";
+}

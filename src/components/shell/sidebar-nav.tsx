@@ -41,7 +41,6 @@ interface NavGroup {
 
 const ALL: Role[] = ["admin", "manager", "member", "center_contributor", "viewer"];
 const STAFF: Role[] = ["admin", "manager", "member"];
-const MGMT: Role[] = ["admin", "manager"];
 
 /** Điều hướng chính, nhóm theo luồng công việc, hiển thị theo quyền. */
 const GROUPS: NavGroup[] = [
@@ -52,7 +51,7 @@ const GROUPS: NavGroup[] = [
       { href: "/task", label: "Tất cả task", icon: ClipboardList, roles: STAFF },
       { href: "/request", label: "Request", icon: Inbox, roles: ["admin", "manager", "member", "center_contributor"] },
       { href: "/gantt", label: "Gantt", icon: CalendarRange, roles: STAFF },
-      { href: "/workload", label: "Workload", icon: Gauge, roles: MGMT },
+      { href: "/workload", label: "Workload", icon: Gauge, roles: STAFF },
     ],
   },
   {
@@ -67,8 +66,8 @@ const GROUPS: NavGroup[] = [
   {
     label: "Vận hành & số liệu",
     items: [
-      { href: "/ads", label: "Ads", icon: LineChart, roles: MGMT },
-      { href: "/bao-cao", label: "Báo cáo", icon: BarChart3, roles: ["admin", "manager", "viewer"] },
+      { href: "/ads", label: "Ads", icon: LineChart, roles: STAFF },
+      { href: "/bao-cao", label: "Báo cáo", icon: BarChart3, roles: ["admin", "manager", "member", "viewer"] },
       { href: "/sbu", label: "SBU", icon: Building2, roles: ALL },
       { href: "/giam-sat", label: "Giám sát", icon: ShieldAlert, roles: STAFF },
     ],
@@ -76,8 +75,8 @@ const GROUPS: NavGroup[] = [
   {
     label: "Hệ thống",
     items: [
-      { href: "/tro-ly-ai", label: "Trợ lý AI", icon: Bot, roles: MGMT },
-      { href: "/import", label: "Nhập liệu", icon: Upload, roles: MGMT },
+      { href: "/tro-ly-ai", label: "Trợ lý AI", icon: Bot, roles: STAFF },
+      { href: "/import", label: "Nhập liệu", icon: Upload, roles: STAFF },
       { href: "/nguoi-dung", label: "Người dùng", icon: Users, roles: ["admin"] },
       { href: "/cai-dat", label: "Cài đặt", icon: Settings, roles: ["admin"] },
     ],

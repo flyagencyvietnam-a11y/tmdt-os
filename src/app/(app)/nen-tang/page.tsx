@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth/session";
+import { isStaff } from "@/lib/auth/permissions";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -14,7 +15,7 @@ export default async function FoundationPage() {
   if (!canSee(user.role, "foundation")) redirect("/khong-co-quyen");
 
   const { brands, entries } = await listFoundationGrid(db);
-  const canEdit = user.role === "admin" || user.role === "manager";
+  const canEdit = isStaff(user.role);
 
   return (
     <div className="space-y-4">

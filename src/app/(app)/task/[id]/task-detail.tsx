@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, History, ListChecks, MessageSquare, Repeat } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, History, ListChecks, MessageSquare, Repeat, Trash2 } from "lucide-react";
 import { DateInput } from "@/components/ui/date-input";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -17,7 +17,7 @@ import { fmtDate, fmtDateTime } from "@/lib/format";
 import { todayVnDayStr } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useInRouteModal } from "@/components/shell/route-modal";
-import { addCommentAction, toggleChecklistItemAction, updateTaskAction } from "../actions";
+import { addCommentAction, deleteTasksAction, toggleChecklistItemAction, updateTaskAction } from "../actions";
 
 interface TaskFull {
   id: string;
@@ -397,6 +397,30 @@ export function TaskDetail({
                 )}
               </div>
             </Field>
+          </div>
+          <div className="border-t pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-red-600 hover:text-red-700"
+              disabled={pending}
+              onClick={() => {
+                if (!window.confirm(`Xoá task “${task.title}”?\n\nTask con (nếu có) cũng bị xoá theo.`)) return;
+                start(async () => {
+                  const res = await deleteTasksAction([task.id]);
+                  if (!res.ok) {
+                    toast.error(res.error);
+                    return;
+                  }
+                  toast.success(res.archivedRecurring ? "Việc lặp: đã huỷ và chuyển vào Lưu trữ (không bị sinh lại)." : "Đã xoá task.");
+                  if (inModal || window.history.length > 1) router.back();
+                  else router.push("/task");
+                  router.refresh();
+                });
+              }}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Xoá task
+            </Button>
           </div>
         </aside>
       </div>

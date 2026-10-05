@@ -451,8 +451,38 @@ function sqlAddDays(dayStr: string, days: number): string {
 }
 
 export async function softDeleteTask(db: DB, id: string, actorId: string | null) {
-  await db.update(tasks).set({ deletedAt: new Date(), updatedBy: actorId }).where(eq(tasks.id, id));
-  await writeAudit(db, { actorId, entity: "tasks", entityId: id, action: "DELETE" });
+  return softDeleteTasks(db, [id], actorId);
+}
+
+/**
+ * Xoá (mềm) task kèm task con. Quy tắc đặc biệt:
+ *  - Việc LẶP (`recurring_rule_id`): không xoá hẳn — chỉ huỷ + đưa vào Lưu trữ, vì chống trùng của recurring dựa trên
+ *    unique index chỉ tính dòng chưa xoá → xoá thật sẽ khiến lần chạy sau sinh lại đúng task đó. Muốn dừng hẳn thì tắt quy tắc lặp.
+ *  - Task cha đăng bài của 1 content: xoá luôn bài content đó (không để bài mồ côi).
+ * Trả về số task đã xoá và số việc lặp được chuyển sang Lưu trữ.
+ */
+export async function softDeleteTasks(db: DB, ids: string[], actorId: string | null): Promise<{ deleted: number; archivedRecurring: number }> {
+  if (ids.length === 0) return { deleted: 0, archivedRecurring: 0 };
+  const picked = await db
+    .select({ id: tasks.id, recurringRuleId: tasks.recurringRuleId })
+    .from(tasks)
+    .where(and(inArray(tasks.id, ids), isNull(tasks.deletedAt)));
+  const recurringIds = picked.filter((t) => t.recurringRuleId).map((t) => t.id);
+  const plainIds = picked.filter((t) => !t.recurringRuleId).map((t) => t.id);
+  const now = new Date();
+  if (recurringIds.length) {
+    await db.update(tasks).set({ status: "cancelled", archivedAt: now, completedAt: now, updatedBy: actorId }).where(inArray(tasks.id, recurringIds));
+  }
+  if (plainIds.length) {
+    await db
+      .update(tasks)
+      .set({ deletedAt: now, updatedBy: actorId })
+      .where(and(isNull(tasks.deletedAt), sql`(${inArray(tasks.id, plainIds)} or ${inArray(tasks.parentId, plainIds)})`));
+    // Task cha đăng bài của content → xoá luôn bài content.
+    await db.update(contentItems).set({ deletedAt: now, updatedBy: actorId }).where(and(isNull(contentItems.deletedAt), inArray(contentItems.parentTaskId, plainIds)));
+  }
+  for (const t of picked) await writeAudit(db, { actorId, entity: "tasks", entityId: t.id, action: "DELETE" });
+  return { deleted: plainIds.length, archivedRecurring: recurringIds.length };
 }
 
 export async function addComment(db: DB, taskId: string, authorId: string, body: string, mentionedUserIds: string[] = []) {

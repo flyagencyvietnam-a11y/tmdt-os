@@ -1,4 +1,4 @@
-import { and, arrayContains, desc, eq, gte, isNull, like, notInArray, or, sql } from "drizzle-orm";
+import { and, arrayContains, desc, eq, gte, inArray, isNull, like, notInArray, or, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import {
   contentItems,
@@ -319,4 +319,25 @@ export async function listContentItemsScoped(db: DB, q: { scope: "recent" | "all
     db.select({ all: sql<number>`count(*)::int` }).from(contentItems).where(isNull(contentItems.deletedAt)),
   ]);
   return { rows, total: Number(n), allCount: Number(all) };
+}
+
+/** Xoá (mềm) bài content cùng task cha đăng bài + các bước con của nó. Trả về số bài đã xoá. */
+export async function deleteContentItems(db: DB, ids: string[], actorId: string | null): Promise<number> {
+  if (ids.length === 0) return 0;
+  const items = await db
+    .select({ id: contentItems.id, parentTaskId: contentItems.parentTaskId })
+    .from(contentItems)
+    .where(and(inArray(contentItems.id, ids), isNull(contentItems.deletedAt)));
+  if (items.length === 0) return 0;
+  const now = new Date();
+  const parentIds = items.map((i) => i.parentTaskId).filter((x): x is string => !!x);
+  if (parentIds.length) {
+    await db
+      .update(tasks)
+      .set({ deletedAt: now, updatedBy: actorId })
+      .where(and(isNull(tasks.deletedAt), or(inArray(tasks.id, parentIds), inArray(tasks.parentId, parentIds))));
+  }
+  await db.update(contentItems).set({ deletedAt: now, updatedBy: actorId }).where(inArray(contentItems.id, items.map((i) => i.id)));
+  for (const i of items) await writeAudit(db, { actorId, entity: "content_items", entityId: i.id, action: "DELETE" });
+  return items.length;
 }

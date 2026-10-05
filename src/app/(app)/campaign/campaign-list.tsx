@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, CalendarClock, CircleUserRound, Megaphone, PlayCircle } from "lucide-react";
+import { BulkDeleteButton } from "@/components/data-grid/bulk-delete";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -16,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { createCampaignAction, updateCampaignAction } from "./actions";
+import { createCampaignAction, deleteCampaignsAction, updateCampaignAction } from "./actions";
 
 const TYPE_LABEL: Record<string, string> = {
   brand_theme: "Brand Theme",
@@ -312,7 +313,28 @@ export function CampaignList({ campaigns, users, currentUserId, today, canEdit }
         initialView={INITIAL_VIEW}
         onEditCell={canEdit ? onEditCell : undefined}
         onAddRow={canEdit ? () => setOpen(true) : undefined}
-        bulkActions={canEdit ? (selected, clear) => <BulkOwner ids={selected.map((r) => r.id)} users={users} onDone={() => { clear(); router.refresh(); }} /> : undefined}
+        bulkActions={
+          canEdit
+            ? (selected, clear) => (
+                <>
+                  <BulkOwner ids={selected.map((r) => r.id)} users={users} onDone={() => { clear(); router.refresh(); }} />
+                  <BulkDeleteButton
+                    count={selected.length}
+                    noun="campaign"
+                    warning={`Toàn bộ task action plan của campaign (${selected.reduce((a, r) => a + r.taskTotal, 0)} task) sẽ bị xoá theo; task/bài content gắn campaign chỉ bị gỡ liên kết.`}
+                    onRun={async () => {
+                      const res = await deleteCampaignsAction(selected.map((r) => r.id));
+                      if (res.ok) {
+                        toast.success(`Đã xoá ${res.campaigns} campaign (${res.tasks} task).`);
+                        clear();
+                        router.refresh();
+                      } else toast.error(res.error);
+                    }}
+                  />
+                </>
+              )
+            : undefined
+        }
         addRowLabel="Campaign mới"
         rowClassName={(r) => cn(TYPE_BAND[r.type], r.status === "done" || r.status === "cancelled" ? "opacity-60" : r.overdueCount > 0 ? "bg-red-50/70 dark:bg-red-500/10" : undefined)}
         emptyText="Chưa có campaign. Nạp qua template T1 hoặc tạo thủ công."
