@@ -21,6 +21,9 @@ export interface MonitoringRow {
   alert: Alert;
   nextDue: string | null;
   checkCount: number;
+  area: string | null;
+  quantity: number | null;
+  sizeText: string | null;
   photos: PhotoItem[];
 }
 
@@ -56,3 +59,12 @@ export const STATE_PLACEHOLDER: Record<string, string> = {
   exam_room: "Hiện trạng phòng thi: thiết bị, bảng biển, vệ sinh…",
   other: "Hiện trạng đang hiển thị…",
 };
+
+/** Thứ tự hiển thị các khu vực trong 1 trung tâm (khu vực lạ xếp sau, "Khác" cuối cùng). */
+export const AREA_ORDER = ["Mặt tiền / Cửa vào", "Sảnh lễ tân", "Khu vực chờ", "Bàn tư vấn", "Check-in / Hành lang"];
+export const OTHER_AREA = "Khác";
+export function areaRank(a: string | null): number {
+  if (!a) return 999;
+  const i = AREA_ORDER.indexOf(a);
+  return i >= 0 ? i : a === OTHER_AREA ? 998 : 500;
+}

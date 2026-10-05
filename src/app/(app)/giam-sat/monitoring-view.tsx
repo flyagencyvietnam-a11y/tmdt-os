@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertOctagon, Camera, ChevronDown, ChevronRight, CircleDashed, Clock, Plus, RefreshCcw, Search, ShieldCheck, X } from "lucide-react";
+import { AlertOctagon, Camera, ChevronDown, ChevronRight, CircleDashed, Clock, Plus, Table2, RefreshCcw, Search, ShieldCheck, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -16,7 +16,8 @@ import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
 import { bulkCreateMonitoringItemsAction, runMonitoringAlertsNowAction } from "./actions";
 import { MonitoringItem } from "./monitoring-item";
-import { KIND_LABELS, KIND_ORDER, type Alert, type MonitoringRow, type SbuLite } from "./monitoring-shared";
+import { SystemSummary } from "./monitoring-summary";
+import { areaRank, KIND_LABELS, KIND_ORDER, type Alert, type MonitoringRow, type SbuLite } from "./monitoring-shared";
 
 const REGION_COLORS: Record<string, TagColor> = { KV1: "blue", KV2: "violet", KV3: "purple", KV2_KV3: "indigo", ONLINE: "emerald", RND: "slate" };
 
@@ -30,6 +31,7 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
   const [open, setOpen] = useSessionState<string[]>("monitoring:open", []);
   const [alertFilter, setAlertFilter] = useSessionState<Alert | null>("monitoring:alert", null);
   const [query, setQuery] = useSessionState<string>("monitoring:q", "");
+  const [showSummary, setShowSummary] = useSessionState<boolean>("monitoring:summary", false);
   const [adding, setAdding] = React.useState<SbuLite | null>(null);
 
   const count = (a: Alert) => items.filter((i) => i.alert === a).length;
@@ -94,6 +96,9 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <Button variant={showSummary ? "default" : "outline"} size="sm" onClick={() => setShowSummary((v) => !v)}>
+            <Table2 className="mr-1 h-4 w-4" /> Tổng hợp toàn hệ thống
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setOpen(groups.map((g) => g.sbu.id))}>
             Mở tất cả
           </Button>
@@ -120,6 +125,8 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
           )}
         </div>
       </div>
+
+      {showSummary && <SystemSummary items={items} sbus={sbus} />}
 
       <div className="space-y-2">
         {visibleGroups.map((g) => {
@@ -163,7 +170,7 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
                   {g.all.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">SBU này chưa có hạng mục giám sát. Bấm “Thêm hạng mục” (nhập nhiều dòng một lúc: Standee, Poster, Decal cửa kính…).</p>}
                   {g.all.length > 0 && g.shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Không có hạng mục khớp bộ lọc.</p>}
                   {KIND_ORDER.map((k) => {
-                    const list = g.shown.filter((i) => i.kind === k);
+                    const list = g.shown.filter((i) => i.kind === k).sort((a, b) => areaRank(a.area) - areaRank(b.area));
                     if (list.length === 0) return null;
                     return (
                       <div key={k} className="space-y-2">

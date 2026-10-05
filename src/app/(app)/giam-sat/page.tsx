@@ -41,6 +41,9 @@ export default async function MonitoringPage() {
           alert: computeAlert(i),
           nextDue: nextDueDate(i),
           checkCount: checks.get(i.id)?.n ?? 0,
+          area: i.area,
+          quantity: i.quantity,
+          sizeText: i.sizeText,
           photos: (photosByItem.get(i.id) ?? []).map((p) => ({ id: p.id, caption: p.caption, bytes: p.bytes, width: p.width, height: p.height, createdAt: p.createdAt.toISOString() })),
         }))}
         sbus={allSbus}

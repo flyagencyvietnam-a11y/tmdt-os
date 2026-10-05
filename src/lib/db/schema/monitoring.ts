@@ -29,6 +29,12 @@ export const monitoringItems = pgTable(
       .references(() => sbus.id),
     kind: monitoringKindEnum("kind").notNull().default("other"),
     title: text("title").notNull(),
+    /** Khu vực trong trung tâm: Mặt tiền / Cửa vào, Sảnh lễ tân, Khu vực chờ, Bàn tư vấn, Check-in / Hành lang… */
+    area: text("area"),
+    /** Số lượng đang có (kiểm kê). null = chưa kiểm kê. */
+    quantity: integer("quantity"),
+    /** Kích thước ghi tự do (vd. 5m x 1.2m, A5, 50 inch). */
+    sizeText: text("size_text"),
     currentStateNote: text("current_state_note"),
     lastUpdatedDate: date("last_updated_date"),
     cycleMonths: integer("cycle_months").notNull().default(12),

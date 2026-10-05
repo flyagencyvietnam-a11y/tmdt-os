@@ -58,7 +58,25 @@ export function MonitoringItem({ item, canEdit, canManage }: { item: MonitoringR
           <Tag color={ALERT_TAG[item.alert]}>{ALERT_LABELS[item.alert]}</Tag>
           {canEdit && <ItemMenu item={item} canManage={canManage} onSave={save} />}
         </div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-0.5 text-xs">
+          <dt className="text-muted-foreground">Khu vực</dt>
+          <dd>
+            <CellInput value={item.area ?? ""} disabled={!canEdit} placeholder="vd. Sảnh lễ tân" onSave={(v) => save({ area: v || null })} />
+          </dd>
+          <dt className="text-muted-foreground">Số lượng</dt>
+          <dd>
+            <CellInput
+              value={item.quantity == null ? "" : String(item.quantity)}
+              disabled={!canEdit}
+              numeric
+              placeholder="chưa kiểm kê"
+              onSave={(v) => (v === "" ? save({ quantity: null }) : Number.isFinite(Number(v)) && Number(v) >= 0 ? save({ quantity: Math.round(Number(v)) }) : toast.error("Số lượng phải là số ≥ 0."))}
+            />
+          </dd>
+          <dt className="text-muted-foreground">Kích thước</dt>
+          <dd>
+            <CellInput value={item.sizeText ?? ""} disabled={!canEdit} placeholder="vd. 5m x 1.2m" onSave={(v) => save({ sizeText: v || null })} />
+          </dd>
           <dt className="text-muted-foreground">{isMaps ? "Rà review gần nhất" : "Cập nhật gần nhất"}</dt>
           <dd className="tabular-nums">{item.lastUpdatedDate ? fmtDate(item.lastUpdatedDate) : <span className="text-muted-foreground">Chưa có</span>}</dd>
           <dt className="text-muted-foreground">Chu kỳ</dt>
@@ -264,5 +282,23 @@ function ChecksHistory({ itemId, count }: { itemId: string; count: number }) {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** Ô nhập gọn kiểu bảng tính: nhìn như chữ thường, hover/focus mới thành ô nhập; Enter hoặc rời ô = lưu. */
+function CellInput({ value, onSave, disabled, placeholder, numeric }: { value: string; onSave: (v: string) => void; disabled?: boolean; placeholder?: string; numeric?: boolean }) {
+  return (
+    <input
+      key={value}
+      defaultValue={value}
+      disabled={disabled}
+      placeholder={placeholder}
+      inputMode={numeric ? "numeric" : undefined}
+      className="h-6 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-xs outline-none placeholder:text-muted-foreground/60 hover:border-input focus:border-ring focus:bg-background disabled:opacity-100"
+      onBlur={(e) => e.target.value.trim() !== value && onSave(e.target.value.trim())}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+    />
   );
 }

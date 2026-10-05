@@ -45,6 +45,9 @@ export interface CreateMonitoringInput {
   lastUpdatedDate?: string | null;
   cycleMonths?: number;
   photoUrl?: string | null;
+  area?: string | null;
+  quantity?: number | null;
+  sizeText?: string | null;
 }
 
 export async function createMonitoringItem(db: DB, input: CreateMonitoringInput, actorId: string | null) {
@@ -58,6 +61,9 @@ export async function createMonitoringItem(db: DB, input: CreateMonitoringInput,
       lastUpdatedDate: input.lastUpdatedDate ?? null,
       cycleMonths: input.cycleMonths ?? 12,
       photoUrl: input.photoUrl ?? null,
+      area: input.area ?? null,
+      quantity: input.quantity ?? null,
+      sizeText: input.sizeText ?? null,
       createdBy: actorId,
     })
     .returning();
@@ -98,6 +104,9 @@ export interface UpdateMonitoringInput {
   cycleMonths?: number;
   photoUrl?: string | null;
   lastUpdatedDate?: string | null;
+  area?: string | null;
+  quantity?: number | null;
+  sizeText?: string | null;
 }
 
 export async function updateMonitoringItem(db: DB, id: string, patch: UpdateMonitoringInput, actorId: string | null) {
@@ -108,6 +117,9 @@ export async function updateMonitoringItem(db: DB, id: string, patch: UpdateMoni
   if (patch.cycleMonths !== undefined) set.cycleMonths = Math.max(1, Math.round(patch.cycleMonths));
   if (patch.photoUrl !== undefined) set.photoUrl = patch.photoUrl;
   if (patch.lastUpdatedDate !== undefined) set.lastUpdatedDate = patch.lastUpdatedDate;
+  if (patch.area !== undefined) set.area = patch.area;
+  if (patch.quantity !== undefined) set.quantity = patch.quantity;
+  if (patch.sizeText !== undefined) set.sizeText = patch.sizeText;
   await db.update(monitoringItems).set(set).where(eq(monitoringItems.id, id));
   await writeAudit(db, { actorId, entity: "monitoring_items", entityId: id, action: "UPDATE", changes: patch as Record<string, unknown> });
 }
