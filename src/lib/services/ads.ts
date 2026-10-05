@@ -121,6 +121,23 @@ export interface UpsertAdsCampaignInput {
   reactions?: string | null;
   spend: string;
   spendWithVat?: string | null;
+  /** Ngân sách kế hoạch của request. */
+  plannedBudget?: string | null;
+  /** Người chạy ads. */
+  runnerId?: string | null;
+}
+
+/** Sửa 1 phần request (sửa trực tiếp trên bảng) — chỉ ghi các trường có trong `patch`. */
+export async function patchAdsCampaign(db: DB, id: string, patch: Partial<UpsertAdsCampaignInput>, actorId: string | null) {
+  const { id: _ignore, ...fields } = patch;
+  void _ignore;
+  const [row] = await db
+    .update(adsCampaigns)
+    .set({ ...fields, updatedBy: actorId })
+    .where(eq(adsCampaigns.id, id))
+    .returning();
+  await writeAudit(db, { actorId, entity: "ads_campaigns", entityId: id, action: "UPDATE", changes: fields as Record<string, unknown> });
+  return row;
 }
 
 export async function upsertAdsCampaign(db: DB, input: UpsertAdsCampaignInput, actorId: string | null) {

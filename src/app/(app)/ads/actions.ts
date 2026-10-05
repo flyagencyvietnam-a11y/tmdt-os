@@ -9,6 +9,7 @@ import {
   deleteEcomProductPeriod,
   saveEcomProductPeriod,
   rollupCampaignsToMetric,
+  patchAdsCampaign,
   upsertAdsCampaign,
   upsertAdsMetric,
   upsertDisbursementPlan,
@@ -53,6 +54,21 @@ export async function upsertAdsCampaignAction(input: UpsertAdsCampaignInput): Pr
   try {
     const row = await upsertAdsCampaign(db, input, user.id);
     return { ok: true, data: { id: row.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+/** Sửa 1 ô của request ngay trên bảng. */
+export async function patchAdsCampaignAction(id: string, patch: Partial<UpsertAdsCampaignInput>): Promise<Result> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ admin/manager được sửa." };
+  try {
+    if (patch.campaignName !== undefined && !patch.campaignName.trim()) return { ok: false, error: "Tên request không được để trống." };
+    if (patch.spend !== undefined && patch.spend !== "" && !Number.isFinite(Number(patch.spend))) return { ok: false, error: "Chi tiêu phải là số." };
+    if (patch.period !== undefined && !/^d{4}-d{2}$/.test(patch.period)) return { ok: false, error: "Kỳ phải dạng tháng, vd 10/2026." };
+    await patchAdsCampaign(db, id, patch, user.id);
+    return { ok: true, data: undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }

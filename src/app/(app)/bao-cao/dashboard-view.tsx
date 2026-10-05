@@ -1,14 +1,15 @@
 "use client";
 
 import { AlertTriangle, Building2, Download, FileSpreadsheet, Inbox, Megaphone, RefreshCcw, TimerOff } from "lucide-react";
+import { DateInput } from "@/components/ui/date-input";
 import { StatCard } from "@/components/stat-card";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { fmtDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ManagementMetrics } from "@/lib/services/reports";
 import { generateReportNowAction } from "./actions";
@@ -119,7 +120,7 @@ export function DashboardView({
             <div className="space-y-1">
               <Label className="text-xs">Xuất lịch tuần gửi BOD (Thứ Hai)</Label>
               <div className="flex gap-2">
-                <Input type="date" value={monday} onChange={(e) => setMonday(e.target.value)} className="h-9 w-40" />
+                <DateInput value={monday} onChange={setMonday} className="w-40" />
                 <a href={`/api/export/bod-schedule?monday=${monday}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
                   <Download className="mr-1 h-4 w-4" /> Tải
                 </a>
@@ -144,7 +145,7 @@ export function DashboardView({
                     <td className="px-3 py-1.5">{KIND_LABELS[e.kind] ?? e.kind}</td>
                     <td className="px-3 py-1.5">{e.period}</td>
                     <td className="px-3 py-1.5">{e.fileName}</td>
-                    <td className="px-3 py-1.5 text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString("vi-VN")}</td>
+                    <td className="px-3 py-1.5 text-xs text-muted-foreground">{fmtDateTime(e.createdAt)}</td>
                     <td className="px-3 py-1.5">
                       <a href={`/api/reports/${e.id}`} className="inline-flex items-center gap-1 text-xs hover:underline">
                         <FileSpreadsheet className="h-3 w-3" /> Tải

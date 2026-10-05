@@ -1,6 +1,7 @@
 "use client";
 
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { MonthInput } from "@/components/ui/date-input";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -335,10 +336,10 @@ function PeriodDialog({ existing, period, defaultMonth, onOpenChange }: { existi
           {!period && (
             <div className="grid grid-cols-2 gap-3">
               <F label="Từ tháng">
-                <Input type="month" value={from} onChange={(e) => setFrom(e.target.value)} />
+                <MonthInput value={from} onChange={setFrom} />
               </F>
               <F label="Đến tháng (chỉ khi số gộp nhiều tháng)">
-                <Input type="month" value={to} onChange={(e) => setTo(e.target.value)} />
+                <MonthInput value={to} onChange={setTo} />
               </F>
             </div>
           )}

@@ -1,9 +1,9 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, like } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { mediaDeliverables, mediaShoots, type MediaShoot } from "@/lib/db/schema";
+import { mediaDeliverables, mediaShoots, tasks, type MediaShoot } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { nextShootCode } from "./codes";
-import { createTask } from "./tasks";
+import { createTask, updateTask } from "./tasks";
 import { ServiceError } from "./errors";
 import { addDaysStr } from "@/lib/time";
 import { addWorkdays, loadDeptWorkDays, loadHolidaySet } from "./workdays";
@@ -189,4 +189,84 @@ export async function updateShootStatus(db: DB, id: string, status: MediaShoot["
 export async function deleteShoot(db: DB, id: string, actorId: string | null) {
   await db.update(mediaShoots).set({ deletedAt: new Date(), updatedBy: actorId }).where(and(eq(mediaShoots.id, id)));
   await writeAudit(db, { actorId, entity: "media_shoots", entityId: id, action: "DELETE" });
+}
+
+export interface UpdateShootInput {
+  shootDate?: string;
+  location?: string | null;
+  purpose?: string | null;
+  sbuId?: string | null;
+  brandId?: string | null;
+  status?: MediaShoot["status"];
+}
+
+/**
+ * Sửa đợt quay ngay trên bảng. Đổi ngày quay → dời luôn task "Quay" (đúng ngày) và task "Chuẩn bị quay"
+ * (-5 ngày làm việc); đổi mục đích → đổi tiêu đề 2 task đó cho khớp.
+ */
+export async function updateMediaShoot(db: DB, id: string, patch: UpdateShootInput, actorId: string | null) {
+  const [before] = await db.select().from(mediaShoots).where(eq(mediaShoots.id, id)).limit(1);
+  if (!before) throw new ServiceError("Không tìm thấy đợt quay.", "NOT_FOUND");
+  const set: Partial<typeof mediaShoots.$inferInsert> = { updatedBy: actorId };
+  for (const k of ["shootDate", "location", "purpose", "sbuId", "brandId", "status"] as const) {
+    if (patch[k] !== undefined) (set as Record<string, unknown>)[k] = patch[k];
+  }
+  if (patch.shootDate !== undefined && !patch.shootDate) throw new ServiceError("Ngày quay không được để trống.", "VALIDATION");
+  const [after] = await db.update(mediaShoots).set(set).where(eq(mediaShoots.id, id)).returning();
+
+  const dateChanged = patch.shootDate !== undefined && patch.shootDate !== before.shootDate;
+  const purposeChanged = patch.purpose !== undefined && patch.purpose !== before.purpose;
+  if (dateChanged || purposeChanged) {
+    const linked = await db
+      .select({ id: tasks.id, title: tasks.title })
+      .from(tasks)
+      .where(and(eq(tasks.sourceType, "media_shoot"), eq(tasks.sourceId, id), isNull(tasks.deletedAt), like(tasks.title, "%: " + before.code + "%")));
+    const workDays = await loadDeptWorkDays(db);
+    const holidaySet = await loadHolidaySet(db);
+    for (const t of linked) {
+      const isPrep = t.title.startsWith("Chuẩn bị quay");
+      const isShoot = t.title.startsWith("Quay:");
+      if (!isPrep && !isShoot) continue;
+      const taskPatch: { dueDate?: string; title?: string } = {};
+      if (dateChanged) taskPatch.dueDate = isPrep ? addWorkdays(after.shootDate, -5, workDays, holidaySet) : after.shootDate;
+      if (purposeChanged) taskPatch.title = `${isPrep ? "Chuẩn bị quay" : "Quay"}: ${after.code} — ${after.purpose ?? ""}`.trim();
+      await updateTask(db, t.id, taskPatch, actorId, { trackManualEdit: false });
+    }
+  }
+  await writeAudit(db, { actorId, entity: "media_shoots", entityId: id, action: "UPDATE", changes: patch as Record<string, unknown> });
+  return after;
+}
+
+export interface UpdateDeliverableInput {
+  deliverableType?: string;
+  channel?: string | null;
+  editorId?: string | null;
+  dueDate?: string | null;
+  resultUrl?: string | null;
+  quantity?: number;
+}
+
+/** Sửa deliverable trên bảng; đổi editor/hạn → task hậu kỳ tương ứng đổi theo. */
+export async function updateMediaDeliverable(db: DB, id: string, patch: UpdateDeliverableInput, actorId: string | null) {
+  const set: Partial<typeof mediaDeliverables.$inferInsert> = { updatedBy: actorId };
+  for (const k of ["deliverableType", "channel", "editorId", "dueDate", "resultUrl", "quantity"] as const) {
+    if (patch[k] !== undefined) (set as Record<string, unknown>)[k] = patch[k];
+  }
+  if (patch.deliverableType !== undefined && !patch.deliverableType.trim()) throw new ServiceError("Loại deliverable không được để trống.", "VALIDATION");
+  const [row] = await db.update(mediaDeliverables).set(set).where(eq(mediaDeliverables.id, id)).returning();
+  if (!row) throw new ServiceError("Không tìm thấy deliverable.", "NOT_FOUND");
+  if (patch.editorId !== undefined || patch.dueDate !== undefined) {
+    const [t] = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.sourceType, "media_shoot"), eq(tasks.sourceId, id), isNull(tasks.deletedAt))).limit(1);
+    if (t) {
+      await updateTask(
+        db,
+        t.id,
+        { ...(patch.editorId !== undefined ? { assigneeId: patch.editorId } : {}), ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}) },
+        actorId,
+        { trackManualEdit: false },
+      );
+    }
+  }
+  await writeAudit(db, { actorId, entity: "media_deliverables", entityId: id, action: "UPDATE", changes: patch as Record<string, unknown> });
+  return row;
 }

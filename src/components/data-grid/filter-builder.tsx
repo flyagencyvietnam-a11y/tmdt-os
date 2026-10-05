@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
+import { DateInput } from "@/components/ui/date-input";
 import * as React from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -267,29 +268,23 @@ function ConditionRow<Row>({
             onValueChange={(v) => onChange({ ...condition, value: v })}
             options={opts.map((o) => ({ value: o.value, label: optLabel(o) }))}
           />
+        ) : col.kind === "date" ? (
+          <DateInput className="w-36 [&_input]:h-7" value={String(condition.value ?? "")} onChange={(v) => onChange({ ...condition, value: v })} />
         ) : (
           <Input
             className="h-7 w-36"
-            type={
-              col.kind === "number" || col.kind === "money"
-                ? "number"
-                : col.kind === "date"
-                  ? "date"
-                  : "text"
-            }
+            type={col.kind === "number" || col.kind === "money" ? "number" : "text"}
             value={String(condition.value ?? "")}
             onChange={(e) => onChange({ ...condition, value: e.target.value })}
           />
         ))}
 
-      {opMeta.args >= 2 && (
-        <Input
-          className="h-7 w-36"
-          type={col.kind === "date" ? "date" : "number"}
-          value={String(condition.value2 ?? "")}
-          onChange={(e) => onChange({ ...condition, value2: e.target.value })}
-        />
-      )}
+      {opMeta.args >= 2 &&
+        (col.kind === "date" ? (
+          <DateInput className="w-36 [&_input]:h-7" value={String(condition.value2 ?? "")} onChange={(v) => onChange({ ...condition, value2: v })} />
+        ) : (
+          <Input className="h-7 w-36" type="number" value={String(condition.value2 ?? "")} onChange={(e) => onChange({ ...condition, value2: e.target.value })} />
+        ))}
 
       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRemove}>
         <Trash2 className="h-4 w-4" />

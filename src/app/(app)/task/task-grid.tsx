@@ -1,11 +1,15 @@
 "use client";
 
+import { Repeat } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 import { DataGrid, type GridColumn, type SavedViewLike, type ViewConfig } from "@/components/data-grid";
 import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
+import { todayVnDayStr } from "@/lib/time";
+import { isTaskRecurring, ROW_TONE_CLASS, taskTone } from "./task-style";
 import { bulkUpdateTasksAction, updateTaskAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
@@ -56,7 +60,7 @@ const TYPE_LABELS: Record<string, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   manual: "Thủ công",
   import: "Import",
-  recurring: "Lặp",
+  recurring: "Việc lặp",
   content_item: "Content",
   media_shoot: "Quay chụp",
   request: "Request",
@@ -79,6 +83,7 @@ export function TaskGrid({
   const router = useRouter();
   const [savedViews, setSavedViews] = React.useState<SavedViewLike[]>([]);
   const [pending, start] = React.useTransition();
+  const today = todayVnDayStr();
 
   React.useEffect(() => {
     fetch("/api/views?entity=tasks")
@@ -153,9 +158,12 @@ export function TaskGrid({
         defaultWidth: 360,
         groupable: false,
         cell: (r) => (
-          <a href={`/task/${r.id}`} className="font-medium hover:text-brand hover:underline" onClick={(e) => e.stopPropagation()}>
-            {r.title}
-          </a>
+          <span className="inline-flex max-w-full items-center gap-1.5">
+            {isTaskRecurring(r) && <Repeat className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" aria-label="Việc lặp lại" />}
+            <Link href={`/task/${r.id}`} className="truncate font-medium hover:text-brand hover:underline" onClick={(e) => e.stopPropagation()}>
+              {r.title}
+            </Link>
+          </span>
         ),
       },
       {
@@ -258,6 +266,7 @@ export function TaskGrid({
       rows={rows}
       getRowId={(r) => r.id}
       initialView={initialView}
+      rowClassName={(r) => ROW_TONE_CLASS[taskTone(r, today)]}
       savedViews={savedViews}
       onEditCell={canEdit ? onEditCell : undefined}
       onSaveView={async (name, config) => {

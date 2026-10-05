@@ -1,6 +1,7 @@
 "use client";
 
 import { format, getDay, parse, startOfWeek } from "date-fns";
+import { useSessionState } from "@/lib/use-session-state";
 import { vi } from "date-fns/locale";
 import * as React from "react";
 import { Calendar, dateFnsLocalizer, type View } from "react-big-calendar";
@@ -15,6 +16,13 @@ const localizer = dateFnsLocalizer({
   getDay,
   locales,
 });
+
+const FORMATS = {
+  agendaDateFormat: (d: Date) => format(d, "EEE dd/MM/yyyy", { locale: vi }),
+  dayHeaderFormat: (d: Date) => format(d, "EEEE dd/MM/yyyy", { locale: vi }),
+  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) => `${format(start, "dd/MM/yyyy")} – ${format(end, "dd/MM/yyyy")}`,
+  monthHeaderFormat: (d: Date) => format(d, "'Tháng' MM/yyyy"),
+};
 
 const MESSAGES = {
   today: "Hôm nay",
@@ -64,8 +72,10 @@ export function ContentCalendarGrid({
   brandColorIndex: Record<string, number>;
   onSelect: (id: string) => void;
 }) {
-  const [view, setView] = React.useState<View>("month");
-  const [date, setDate] = React.useState(new Date());
+  const [view, setView] = useSessionState<View>("cal:content:view", "month");
+  const [dateIso, setDateIso] = useSessionState<string>("cal:content:date", "");
+  const date = React.useMemo(() => (dateIso ? new Date(dateIso) : new Date()), [dateIso]);
+  const setDate = React.useCallback((d: Date) => setDateIso(d.toISOString()), [setDateIso]);
 
   const events: CalEvent[] = React.useMemo(
     () =>
@@ -90,6 +100,7 @@ export function ContentCalendarGrid({
         views={["month", "week", "agenda"]}
         culture="vi"
         messages={MESSAGES}
+        formats={FORMATS}
         popup
         onSelectEvent={(e: CalEvent) => onSelect(e.id)}
         eventPropGetter={(e: CalEvent) => {

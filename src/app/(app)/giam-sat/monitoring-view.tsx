@@ -1,96 +1,65 @@
 "use client";
 
-import { AlertOctagon, CircleDashed, Clock, Plus, RefreshCcw, ShieldCheck } from "lucide-react";
-import { StatCard } from "@/components/stat-card";
+import { AlertOctagon, Camera, ChevronDown, ChevronRight, CircleDashed, Clock, Plus, RefreshCcw, Search, ShieldCheck, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
-import { DataGrid, type GridColumn } from "@/components/data-grid";
 import { Tag, type TagColor } from "@/components/data-grid/tag";
+import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { fmtDate } from "@/lib/format";
-import { createMonitoringItemAction, markMonitoringRefreshedAction, runMonitoringAlertsNowAction } from "./actions";
-import { todayVnDayStr } from "@/lib/time";
+import { Textarea } from "@/components/ui/textarea";
+import { useSessionState } from "@/lib/use-session-state";
+import { cn } from "@/lib/utils";
+import { bulkCreateMonitoringItemsAction, runMonitoringAlertsNowAction } from "./actions";
+import { MonitoringItem } from "./monitoring-item";
+import { KIND_LABELS, KIND_ORDER, type Alert, type MonitoringRow, type SbuLite } from "./monitoring-shared";
 
-type Alert = "overdue" | "due_soon" | "ok" | "no_data";
-interface MonitoringRow {
-  id: string;
-  sbuId: string;
-  kind: string;
-  title: string;
-  currentStateNote: string | null;
-  lastUpdatedDate: string | null;
-  cycleMonths: number;
-  photoUrl: string | null;
-  alert: Alert;
-  nextDue: string | null;
-}
+const REGION_COLORS: Record<string, TagColor> = { KV1: "blue", KV2: "violet", KV3: "purple", KV2_KV3: "indigo", ONLINE: "emerald", RND: "slate" };
 
-const ALERT_LABELS: Record<Alert, string> = { overdue: "Quá hạn", due_soon: "Sắp đến hạn", ok: "Còn hạn", no_data: "Chưa có dữ liệu" };
-const ALERT_COLORS_FIXED: Record<Alert, TagColor> = { overdue: "red", due_soon: "amber", ok: "emerald", no_data: "gray" };
-const KIND_LABELS: Record<string, string> = {
-  posm: "POSM",
-  signage: "Bảng hiệu",
-  ooh: "OOH",
-  google_maps: "Google Maps",
-  vmp_booth: "Quầy tư vấn VMP",
-  exam_room: "Phòng thi",
-  other: "Khác",
-};
-
-export function MonitoringView({ items, sbus, canManage }: { items: MonitoringRow[]; sbus: { id: string; code: string }[]; canManage: boolean }) {
+/**
+ * Giám sát theo SBU: danh sách SBU (kèm tóm tắt cảnh báo) — mở từng SBU để xem từng hạng mục
+ * (Standee, Poster, Decal cửa kính, Bảng hiệu, Google Maps…) với hiện trạng, ảnh thực tế và lịch rà soát.
+ */
+export function MonitoringView({ items, sbus, canEdit, canManage }: { items: MonitoringRow[]; sbus: SbuLite[]; canEdit: boolean; canManage: boolean }) {
   const router = useRouter();
-  const [createOpen, setCreateOpen] = React.useState(false);
-  const [refreshFor, setRefreshFor] = React.useState<MonitoringRow | null>(null);
   const [pending, start] = React.useTransition();
+  const [open, setOpen] = useSessionState<string[]>("monitoring:open", []);
+  const [alertFilter, setAlertFilter] = useSessionState<Alert | null>("monitoring:alert", null);
+  const [query, setQuery] = useSessionState<string>("monitoring:q", "");
+  const [adding, setAdding] = React.useState<SbuLite | null>(null);
 
-  const sbuCode = React.useCallback((id: string) => sbus.find((s) => s.id === id)?.code ?? "", [sbus]);
-
-  const columns: GridColumn<MonitoringRow>[] = React.useMemo(
-    () => [
-      { field: "sbuId", header: "SBU", kind: "enum", accessor: (r) => r.sbuId, cell: (r) => sbuCode(r.sbuId), enumOptions: sbus.map((s) => ({ value: s.id, label: s.code })), defaultWidth: 90 },
-      { field: "kind", header: "Loại", kind: "enum", accessor: (r) => r.kind, enumLabels: KIND_LABELS, defaultWidth: 140 },
-      { field: "title", header: "Hạng mục", kind: "text", accessor: (r) => r.title, defaultWidth: 220, groupable: false },
-      { field: "lastUpdatedDate", header: "Cập nhật gần nhất", kind: "date", accessor: (r) => r.lastUpdatedDate, cell: (r) => (r.lastUpdatedDate ? fmtDate(r.lastUpdatedDate) : "—"), defaultWidth: 140 },
-      { field: "cycleMonths", header: "Chu kỳ (tháng)", kind: "number", accessor: (r) => r.cycleMonths, defaultWidth: 110 },
-      { field: "nextDue", header: "Hạn kế tiếp", kind: "date", accessor: (r) => r.nextDue, cell: (r) => (r.nextDue ? fmtDate(r.nextDue) : "—"), defaultWidth: 120 },
-      {
-        field: "alert",
-        header: "Cảnh báo",
-        kind: "enum",
-        accessor: (r) => r.alert,
-        cell: (r) => <Tag color={ALERT_COLORS_FIXED[r.alert]}>{ALERT_LABELS[r.alert]}</Tag>,
-        enumLabels: ALERT_LABELS,
-        defaultWidth: 140,
-      },
-      {
-        field: "actions",
-        header: "",
-        kind: "text",
-        accessor: () => "",
-        groupable: false,
-        sortable: false,
-        cell: (r) =>
-          canManage ? (
-            <Button size="sm" variant="outline" className="h-7" onClick={() => setRefreshFor(r)}>
-              Cập nhật
-            </Button>
-          ) : null,
-        defaultWidth: 110,
-      },
-    ],
-    [sbus, canManage, sbuCode],
-  );
-
-  const [alertFilter, setAlertFilter] = React.useState<Alert | null>(null);
   const count = (a: Alert) => items.filter((i) => i.alert === a).length;
-  const shown = alertFilter ? items.filter((i) => i.alert === alertFilter) : items;
   const pick = (a: Alert) => setAlertFilter((p) => (p === a ? null : a));
   const ring = (a: Alert) => (alertFilter === a ? "ring-2 ring-brand" : "");
+
+  const q = query.trim().toLowerCase();
+  const matches = React.useCallback((i: MonitoringRow) => (!alertFilter || i.alert === alertFilter) && (!q || i.title.toLowerCase().includes(q) || (i.currentStateNote ?? "").toLowerCase().includes(q) || (KIND_LABELS[i.kind] ?? "").toLowerCase().includes(q)), [alertFilter, q]);
+
+  const groups = React.useMemo(() => {
+    const list = sbus.map((s) => {
+      const all = items.filter((i) => i.sbuId === s.id);
+      return {
+        sbu: s,
+        all,
+        shown: all.filter(matches),
+        overdue: all.filter((i) => i.alert === "overdue").length,
+        dueSoon: all.filter((i) => i.alert === "due_soon").length,
+        noData: all.filter((i) => i.alert === "no_data").length,
+        photos: all.reduce((a, i) => a + i.photos.length, 0),
+      };
+    });
+    // SBU có vấn đề (quá hạn → sắp hạn) lên đầu; còn lại theo mã.
+    return list.sort((a, b) => b.overdue - a.overdue || b.dueSoon - a.dueSoon || a.sbu.code.localeCompare(b.sbu.code));
+  }, [sbus, items, matches]);
+
+  const filtering = !!alertFilter || !!q;
+  const visibleGroups = filtering ? groups.filter((g) => g.shown.length > 0) : groups;
+  const isOpen = (id: string) => open.includes(id) || (filtering && visibleGroups.some((g) => g.sbu.id === id));
+  const toggle = (id: string) => setOpen((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   return (
     <div className="space-y-3">
@@ -105,130 +74,171 @@ export function MonitoringView({ items, sbus, canManage }: { items: MonitoringRo
           <StatCard className={ring("ok")} label="Còn hạn" value={count("ok")} icon={ShieldCheck} tone="ok" hint="Bấm để lọc" />
         </button>
         <button type="button" className="text-left" onClick={() => pick("no_data")}>
-          <StatCard className={ring("no_data")} label="Chưa có dữ liệu" value={count("no_data")} icon={CircleDashed} tone={count("no_data") ? "info" : "muted"} hint="Thiếu ngày cập nhật" />
+          <StatCard className={ring("no_data")} label="Chưa rà soát lần nào" value={count("no_data")} icon={CircleDashed} tone={count("no_data") ? "info" : "muted"} hint="Chưa có ngày cập nhật" />
         </button>
       </div>
-      {canManage && (
-        <div className="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pending}
-            onClick={() =>
-              start(async () => {
-                const res = await runMonitoringAlertsNowAction();
-                if (res.ok) {
-                  toast.success(`Đã sinh ${res.data.created} task cảnh báo.`);
-                  router.refresh();
-                } else toast.error(res.error);
-              })
-            }
-          >
-            <RefreshCcw className="mr-1 h-4 w-4" /> Chạy cảnh báo ngay
-          </Button>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" /> Hạng mục mới
-          </Button>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm hạng mục, hiện trạng…" className="h-8 w-64 pl-8 pr-7 text-sm" />
+          {query && (
+            <button type="button" aria-label="Xoá tìm kiếm" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted" onClick={() => setQuery("")}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
-      )}
-      <DataGrid entity="monitoring_items" columns={columns} rows={shown} getRowId={(r) => r.id} emptyText="Chưa có hạng mục giám sát nào." />
-      <CreateMonitoringDialog open={createOpen} onOpenChange={setCreateOpen} sbus={sbus} onDone={() => { setCreateOpen(false); router.refresh(); }} />
-      <RefreshDialog item={refreshFor} onOpenChange={(o) => !o && setRefreshFor(null)} onDone={() => { setRefreshFor(null); router.refresh(); }} />
+        {alertFilter && (
+          <button type="button" className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand" onClick={() => setAlertFilter(null)}>
+            Đang lọc theo cảnh báo <X className="h-3 w-3" />
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setOpen(groups.map((g) => g.sbu.id))}>
+            Mở tất cả
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setOpen([])}>
+            Thu gọn
+          </Button>
+          {canManage && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await runMonitoringAlertsNowAction();
+                  if (res.ok) {
+                    toast.success(`Đã sinh ${res.data.created} task cảnh báo.`);
+                    router.refresh();
+                  } else toast.error(res.error);
+                })
+              }
+            >
+              <RefreshCcw className="mr-1 h-4 w-4" /> Chạy cảnh báo ngay
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {visibleGroups.map((g) => {
+          const expanded = isOpen(g.sbu.id);
+          return (
+            <section key={g.sbu.id} className={cn("overflow-hidden rounded-xl border bg-card shadow-xs", g.overdue > 0 && "border-red-300 dark:border-red-500/40")}>
+              <button type="button" className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-muted/40", g.overdue > 0 && "bg-red-50/70 dark:bg-red-500/10")} onClick={() => toggle(g.sbu.id)} aria-expanded={expanded}>
+                {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                <span className="text-base font-semibold">{g.sbu.code}</span>
+                <span className="text-sm text-muted-foreground">{g.sbu.name !== g.sbu.code ? g.sbu.name : ""}</span>
+                <Tag color={REGION_COLORS[g.sbu.region]}>{g.sbu.region.replace("_", "/")}</Tag>
+                <span className="ml-auto flex flex-wrap items-center gap-1.5 text-xs">
+                  {g.all.length === 0 ? (
+                    <span className="text-muted-foreground">Chưa có hạng mục</span>
+                  ) : (
+                    <>
+                      <span className="rounded bg-muted px-1.5 py-0.5 font-medium tabular-nums">{g.all.length} hạng mục</span>
+                      {g.overdue > 0 && <span className="rounded bg-red-600 px-1.5 py-0.5 font-semibold text-white tabular-nums">{g.overdue} quá hạn</span>}
+                      {g.dueSoon > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800 tabular-nums dark:bg-amber-500/20 dark:text-amber-300">{g.dueSoon} sắp hạn</span>}
+                      {g.noData > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground tabular-nums">{g.noData} chưa rà soát</span>}
+                      {g.overdue === 0 && g.dueSoon === 0 && g.noData === 0 && <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">Ổn</span>}
+                      {g.photos > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 tabular-nums text-muted-foreground">
+                          <Camera className="h-3 w-3" /> {g.photos}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </span>
+              </button>
+
+              {expanded && (
+                <div className="space-y-4 border-t bg-muted/20 p-3">
+                  {canEdit && (
+                    <div className="flex justify-end">
+                      <Button size="sm" onClick={() => setAdding(g.sbu)}>
+                        <Plus className="mr-1 h-4 w-4" /> Thêm hạng mục cho {g.sbu.code}
+                      </Button>
+                    </div>
+                  )}
+                  {g.all.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">SBU này chưa có hạng mục giám sát. Bấm “Thêm hạng mục” (nhập nhiều dòng một lúc: Standee, Poster, Decal cửa kính…).</p>}
+                  {g.all.length > 0 && g.shown.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Không có hạng mục khớp bộ lọc.</p>}
+                  {KIND_ORDER.map((k) => {
+                    const list = g.shown.filter((i) => i.kind === k);
+                    if (list.length === 0) return null;
+                    return (
+                      <div key={k} className="space-y-2">
+                        <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          {KIND_LABELS[k]} <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums">{list.length}</span>
+                        </h3>
+                        {list.map((i) => (
+                          <MonitoringItem key={i.id} item={i} canEdit={canEdit} canManage={canManage} />
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })}
+        {visibleGroups.length === 0 && <p className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">Không có SBU / hạng mục nào khớp.</p>}
+      </div>
+
+      <AddItemsDialog key={adding?.id ?? "none"} sbu={adding} onClose={() => setAdding(null)} onDone={(id) => {
+        setOpen((p) => (p.includes(id) ? p : [...p, id]));
+        setAdding(null);
+        router.refresh();
+      }} />
     </div>
   );
 }
 
-function CreateMonitoringDialog({ open, onOpenChange, sbus, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; sbus: { id: string; code: string }[]; onDone: () => void }) {
+function AddItemsDialog({ sbu, onClose, onDone }: { sbu: SbuLite | null; onClose: () => void; onDone: (sbuId: string) => void }) {
   const [pending, start] = React.useTransition();
-  const [f, setF] = React.useState({ sbuId: sbus[0]?.id ?? "", kind: "posm", title: "", cycleMonths: 12 });
+  const [kind, setKind] = React.useState("posm");
+  const [titles, setTitles] = React.useState("");
+  const [cycle, setCycle] = React.useState(12);
+  const lines = titles.split("\n").map((t) => t.trim()).filter(Boolean);
+  const placeholder = kind === "google_maps" ? `Google Maps — ${sbu?.code ?? ""}` : kind === "posm" ? "Standee\nPoster\nDecal cửa kính" : kind === "signage" ? "Bảng hiệu mặt tiền\nBảng hiệu trong sảnh" : "Mỗi dòng 1 hạng mục";
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={!!sbu} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Hạng mục giám sát mới</DialogTitle>
+          <DialogTitle>Thêm hạng mục giám sát — {sbu?.code}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-2">
-          <F label="SBU">
-            <SimpleSelect value={f.sbuId} onValueChange={(v) => v && setF((p) => ({ ...p, sbuId: v }))} options={sbus.map((s) => ({ value: s.id, label: s.code }))} />
-          </F>
-          <F label="Loại">
-            <SimpleSelect value={f.kind} onValueChange={(v) => v && setF((p) => ({ ...p, kind: v }))} options={Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }))} />
-          </F>
-          <F label="Tên hạng mục">
-            <Input value={f.title} onChange={(e) => setF((p) => ({ ...p, title: e.target.value }))} />
-          </F>
-          <F label="Chu kỳ (tháng)">
-            <Input type="number" min={1} value={f.cycleMonths} onChange={(e) => setF((p) => ({ ...p, cycleMonths: Number(e.target.value) }))} />
-          </F>
+        <div className="space-y-3">
+          <div className="grid grid-cols-[1fr_8rem] gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Loại</Label>
+              <SimpleSelect value={kind} onValueChange={(v) => v && setKind(v)} options={Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Chu kỳ (tháng)</Label>
+              <Input type="number" min={1} value={cycle} onChange={(e) => setCycle(Number(e.target.value))} />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Tên hạng mục — mỗi dòng 1 hạng mục</Label>
+            <Textarea rows={6} autoFocus value={titles} onChange={(e) => setTitles(e.target.value)} placeholder={placeholder} />
+          </div>
           <Button
             className="w-full"
-            disabled={pending || !f.sbuId || !f.title.trim()}
+            disabled={pending || !sbu || lines.length === 0}
             onClick={() =>
               start(async () => {
-                const res = await createMonitoringItemAction({ sbuId: f.sbuId, kind: f.kind as never, title: f.title.trim(), cycleMonths: f.cycleMonths });
+                if (!sbu) return;
+                const res = await bulkCreateMonitoringItemsAction({ sbuId: sbu.id, kind: kind as never, titles: lines, cycleMonths: Math.max(1, cycle || 12) });
                 if (res.ok) {
-                  toast.success("Đã tạo.");
-                  onDone();
+                  toast.success(res.data.created === lines.length ? `Đã thêm ${res.data.created} hạng mục.` : `Đã thêm ${res.data.created}/${lines.length} hạng mục (còn lại đã có sẵn).`);
+                  onDone(sbu.id);
                 } else toast.error(res.error);
               })
             }
           >
-            Tạo
+            Thêm {lines.length > 0 ? `${lines.length} hạng mục` : ""}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function RefreshDialog({ item, onOpenChange, onDone }: { item: MonitoringRow | null; onOpenChange: (o: boolean) => void; onDone: () => void }) {
-  const [pending, start] = React.useTransition();
-  const [date, setDate] = React.useState(todayVnDayStr());
-  const [photoUrl, setPhotoUrl] = React.useState("");
-  const [note, setNote] = React.useState("");
-  return (
-    <Dialog open={!!item} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Cập nhật: {item?.title}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-2">
-          <F label="Ngày cập nhật">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </F>
-          <F label="Link ảnh">
-            <Input value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} />
-          </F>
-          <F label="Ghi chú">
-            <Input value={note} onChange={(e) => setNote(e.target.value)} />
-          </F>
-          <Button
-            className="w-full"
-            disabled={pending || !item}
-            onClick={() =>
-              start(async () => {
-                if (!item) return;
-                const res = await markMonitoringRefreshedAction(item.id, { lastUpdatedDate: date, photoUrl: photoUrl || null, note: note || null });
-                if (res.ok) {
-                  toast.success("Đã cập nhật.");
-                  onDone();
-                } else toast.error(res.error);
-              })
-            }
-          >
-            Lưu
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function F({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
-      {children}
-    </div>
   );
 }

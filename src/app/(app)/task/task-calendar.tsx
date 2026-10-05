@@ -1,6 +1,7 @@
 "use client";
 
 import { format, getDay, parse, startOfWeek } from "date-fns";
+import { useSessionState } from "@/lib/use-session-state";
 import { vi } from "date-fns/locale";
 import { Link as LinkIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -10,6 +11,8 @@ import { Calendar, dateFnsLocalizer, type View } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import { Button } from "@/components/ui/button";
 import type { TaskItem } from "./task-board";
+import { EVENT_TONE_COLOR, taskTone } from "./task-style";
+import { todayVnDayStr } from "@/lib/time";
 
 const locales = { vi };
 const localizer = dateFnsLocalizer({
@@ -19,6 +22,13 @@ const localizer = dateFnsLocalizer({
   getDay,
   locales,
 });
+
+const FORMATS = {
+  agendaDateFormat: (d: Date) => format(d, "EEE dd/MM/yyyy", { locale: vi }),
+  dayHeaderFormat: (d: Date) => format(d, "EEEE dd/MM/yyyy", { locale: vi }),
+  dayRangeHeaderFormat: ({ start, end }: { start: Date; end: Date }) => `${format(start, "dd/MM/yyyy")} – ${format(end, "dd/MM/yyyy")}`,
+  monthHeaderFormat: (d: Date) => format(d, "'Tháng' MM/yyyy"),
+};
 
 const MESSAGES = {
   today: "Hôm nay",
@@ -55,8 +65,11 @@ interface CalEvent {
 
 export function TaskCalendar({ tasks, icsUrl }: { tasks: TaskItem[]; icsUrl?: string }) {
   const router = useRouter();
-  const [view, setView] = React.useState<View>("month");
-  const [date, setDate] = React.useState(new Date());
+  const [view, setView] = useSessionState<View>("cal:task:view", "month");
+  const [dateIso, setDateIso] = useSessionState<string>("cal:task:date", "");
+  const date = React.useMemo(() => (dateIso ? new Date(dateIso) : new Date()), [dateIso]);
+  const setDate = React.useCallback((d: Date) => setDateIso(d.toISOString()), [setDateIso]);
+  const today = todayVnDayStr();
 
   const events: CalEvent[] = React.useMemo(
     () =>
@@ -64,9 +77,11 @@ export function TaskCalendar({ tasks, icsUrl }: { tasks: TaskItem[]; icsUrl?: st
         .filter((t) => t.dueDate)
         .map((t) => {
           const d = new Date(`${t.dueDate}T00:00:00`);
-          return { id: t.id, title: t.title, start: d, end: d, allDay: true, task: t };
+          const tone = taskTone(t, today);
+          const prefix = tone === "overdue" ? "⚠ " : t.sourceType === "recurring" ? "↻ " : "";
+          return { id: t.id, title: prefix + t.title, start: d, end: d, allDay: true, task: t };
         }),
-    [tasks],
+    [tasks, today],
   );
 
   return (
@@ -101,11 +116,15 @@ export function TaskCalendar({ tasks, icsUrl }: { tasks: TaskItem[]; icsUrl?: st
         views={["month", "week", "day", "agenda"]}
         culture="vi"
         messages={MESSAGES}
+        formats={FORMATS}
         popup
         onSelectEvent={(e) => router.push(`/task/${e.id}`)}
         eventPropGetter={(e: CalEvent) => ({
           style: {
-            backgroundColor: STATUS_BG[e.task.status] ?? "#64748b",
+            backgroundColor: (() => {
+              const tone = taskTone(e.task, today);
+              return tone === "normal" ? (STATUS_BG[e.task.status] ?? "#64748b") : EVENT_TONE_COLOR[tone];
+            })(),
             borderRadius: 4,
             border: "none",
             opacity: e.task.status === "done" || e.task.status === "cancelled" ? 0.6 : 1,

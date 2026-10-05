@@ -50,10 +50,11 @@ async function seedUsers() {
     role: "admin",
     canAssign: true,
   });
-  // SPEC Mục 15: "Khiết và Đạt (member), Trân - thiết kế (member)" — email thật [CẦN XÁC NHẬN].
-  const khiet = await upsertUser({ email: "khiet@vmg.local", fullName: "Khiết", role: "member" });
-  const dat = await upsertUser({ email: "dat@vmg.local", fullName: "Đạt", role: "member" });
-  const tran = await upsertUser({ email: "tran@vmg.local", fullName: "Trân", role: "member" });
+  // SPEC Mục 15: "Khiết và Đạt (member), Trân - thiết kế (member)". Theo yêu cầu chủ sản phẩm:
+  // đăng nhập bằng tên ngắn, mật khẩu trùng tên, không bắt đổi mật khẩu — MẬT KHẨU YẾU, chỉ nội bộ.
+  const khiet = await upsertUser({ email: "khiet", fullName: "Khiết", role: "member", password: "khiet", mustChangePassword: false });
+  const dat = await upsertUser({ email: "dat", fullName: "Đạt", role: "member", password: "dat", mustChangePassword: false });
+  const tran = await upsertUser({ email: "tran", fullName: "Trân", role: "member", password: "tran", mustChangePassword: false });
   // Tài khoản dự phòng luôn đăng nhập được — theo yêu cầu người dùng. KHÔNG dùng
   // mật khẩu này sau khi mời người dùng thật / trước khi public ra ngoài đội.
   const fallbackAdmin = await upsertUser({
@@ -68,8 +69,8 @@ async function seedUsers() {
     `users: admin=${admin.email} khiet=${khiet.email} dat=${dat.email} tran=${tran.email} fallback=${fallbackAdmin.email}`,
   );
   console.warn(
-    "[seed] 4 email trên là placeholder @vmg.local, KHÔNG phải email thật — đổi qua Cài đặt ▸ Người dùng " +
-      "hoặc nạp lại bằng template T2 trước khi mời người dùng thật đăng nhập.",
+    "[seed] Khiết/Đạt/Trân đăng nhập bằng 'khiet'/'dat'/'tran' (mật khẩu trùng tên) — mật khẩu YẾU, " +
+      "đổi qua Cài đặt ▸ Người dùng trước khi public ra ngoài đội. Admin vẫn là placeholder @vmg.local.",
   );
   console.warn(
     "[seed] Tài khoản dự phòng 'admin' / 'admin' (full quyền, không bắt đổi mật khẩu) đã tạo theo " +

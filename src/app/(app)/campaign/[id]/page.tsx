@@ -2,7 +2,8 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { campaigns, tasks } from "@/lib/db/schema";
+import { campaigns, tasks, users } from "@/lib/db/schema";
+import { fmtDate } from "@/lib/format";
 import { CampaignActionPlan } from "./action-plan";
 import { DuplicateCampaignDialog } from "./duplicate-campaign-dialog";
 import { canSee } from "@/lib/auth/permissions";
@@ -15,6 +16,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const user = await requireUser();
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
   if (!campaign) notFound();
+
+  const [owner] = campaign.ownerId ? await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, campaign.ownerId)).limit(1) : [];
 
   const actionTasks = await db
     .select()
@@ -34,7 +37,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           <div className="text-xs text-muted-foreground">{campaign.code}</div>
           <h1 className="text-2xl font-semibold tracking-tight">{campaign.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {campaign.startDate} – {campaign.endDate} · Tiến độ {done}/{total} task xong
+            {fmtDate(campaign.startDate)} – {fmtDate(campaign.endDate)} · Owner: {owner ? <b className="font-medium text-foreground">{owner.fullName}</b> : <b className="text-crit">chưa có owner</b>} · Tiến độ {done}/{total} task xong
             {overdueCount > 0 && <span className="text-crit"> · {overdueCount} trễ hạn</span>}
           </p>
         </div>

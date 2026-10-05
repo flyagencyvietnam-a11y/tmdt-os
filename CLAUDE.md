@@ -190,7 +190,7 @@ là một app hoàn toàn mới về nghiệp vụ.
 - **Đã nạp plan thực tế EduNext (10/2026)** từ file "VMG_EduNext_ActionPlan": campaign `EDUNEXT-2026` (product_gtm, brand VMG,
   03/09–30/11/2026, owner = Trưởng phòng Marketing) + 21 hạng mục Action Plan. Mỗi hạng mục = 1 task duy nhất: 14 task chạy qua pipeline T1
   (`importScope=T1:EDUNEXT-2026`, `externalKey=A01..A21`, có thể undo) + 7 hạng mục #11,13,15,16,17,18,19 là bài content nên là task cha của 7
-  `content_items` (không sinh task con, ngày đăng = hạn hạng mục vì Lịch Content chỉ ghi tuần). Map tên: Khiết/Trân → `*@vmg.local`, Nghiêm →
+  `content_items` (không sinh task con, ngày đăng = hạn hạng mục vì Lịch Content chỉ ghi tuần). Map tên: Khiết/Trân → tài khoản `khiet`/`tran`, Nghiêm →
   `admin@vmg.local`. "Giám đốc Khu vực"/"R&D" không có tài khoản nên chỉ nằm trong mô tả task. Link Canva + thư mục media ở `campaigns.notes`;
   Sale Kit chưa có link (`[CẦN BỔ SUNG]`). Hạng mục #11 (Action Plan: Chưa bắt đầu) lệch Lịch Content (Hoàn thành) → đang theo Lịch Content (published).
 - **Đã nạp plan UpLearn Q4/2026** từ file "VMG_UpLearn_Ke_Hoach_Trien_Khai_Q4_2026": campaign `UPLEARN-Q4-2026` (product_gtm, brand UPLEARN,
@@ -247,6 +247,16 @@ là một app hoàn toàn mới về nghiệp vụ.
   so sánh với 1 route hoạt động đúng. Khối `redirects()` đã bị xoá hẳn. Nếu
   thêm route mới mà bị "nuốt" y hệt (không log, về "/"), nghi ngờ đầu tiên là
   `next.config.ts`/`vercel.json`, không phải code route.
+- **Đợt phản hồi team MKT (10/2026) — đọc trước khi đụng các chỗ sau (chi tiết nghiệp vụ: SPEC Phụ lục D):**
+  - **Popup chi tiết = Intercepting Routes**: slot `src/app/(app)/@modal/` (`(.)task/[id]`, `(.)campaign/[id]`, `(.)sbu/[id]`, `[...catchAll]`, `default.tsx` trả null) render lại đúng `page.tsx` gốc bên trong `<RouteModal>` (`components/shell/route-modal.tsx`; `useInRouteModal()` để ẩn nút Quay lại). **Link tới 3 trang này PHẢI dùng `next/link` / `router.push`** — thẻ `<a href>` thường tải lại cả trang và mất popup. Thêm trang chi tiết mới muốn có popup → thêm 1 thư mục `(.)ten/[id]` y hệt.
+  - **Nhớ trạng thái UI**: `lib/use-session-state.ts` (`useSessionState`, nạp ở effect để không lệch hydration). DataGrid tự nhớ view/ô tìm/nhóm thu gọn/vị trí cuộn theo `persistKey ?? entity`; tab/bộ lọc ở Ads, Content, Gantt, Giám sát, Lịch, Task layout dùng hook này. State nào mới mà muốn sống sót qua Back thì dùng hook này thay `useState`.
+  - **DataGrid kiểu Excel** (`components/data-grid/`): chọn ô + phím mũi tên/Tab/Enter/F2, gõ để sửa, Delete, Ctrl+C/V (dán nhiều ô), `rowClassName`, `onAddRow`, sắp xếp ô trống xuống cuối. Cột `editInputType` hỗ trợ `date` (DateInput), `month`, `number`; `editKind: "select"`. **"+ Cột"**: `custom-columns.tsx` + `custom-actions.ts` (server) + bảng `grid_custom_columns/values` — tự bật khi grid có `onEditCell`; trường tự thêm KHÔNG đi qua `onEditCell` của trang. Bảng số liệu dạng pivot ở Ads dùng `ads/ads-inline.tsx` (`InlineNum` + `useMetricSaver`: chỉ ghi đúng 1 trường).
+  - **Màu task dùng chung** ở `app/(app)/task/task-style.ts` (trễ hạn đỏ, việc lặp tím) — đừng lặp lại điều kiện/màu ở nơi khác. Kanban dùng chung `task-kanban.tsx` (chống click sau khi kéo bằng mốc `lastDragAt`).
+  - **Ngày**: `components/ui/date-input.tsx` (`DateInput` dd/mm/yyyy ↔ ISO, `MonthInput`) — KHÔNG dùng `<input type="date|month">`. Text sinh ra từ server (thông báo, email, tiêu đề) phải qua `fmtDate` (`lib/format.ts`). Export CSV/XLSX tự đổi cột ngày sang dd/mm/yyyy.
+  - **Giám sát** (`/giam-sat`): theo SBU → hạng mục → ảnh. Ảnh nén ở client (`lib/image-compress.ts`), tải qua `POST /api/monitoring/photos`, phục vụ qua `GET /api/monitoring/photos/[id]?size=thumb|full` (lưu bytea trong `monitoring_photos`, cache bất biến). Service ở `lib/services/monitoring.ts`.
+  - **SBU**: chỉ số tổng quan ở `lib/services/sbu-overview.ts` (suy ra tại truy vấn). **Campaign**: `owner_id` bắt buộc khi tạo; 24 campaign nạp từ file gốc chưa có owner → chờ chủ sản phẩm chỉ định (dùng thao tác chọn nhiều → "Gán owner").
+  - **Ads Theo request**: là DataGrid (`entity="ads_requests"`), có `planned_budget` + `runner_id`; `patchAdsCampaign` chỉ ghi các trường được truyền.
+  - **Tài khoản nhân sự**: Khiết/Đạt/Trân đăng nhập bằng `khiet`/`dat`/`tran` (mật khẩu trùng tên — yếu, chỉ nội bộ; xem `scripts/seed.ts`).
 - Stack: Next.js 16 (App Router) + React 19 + Tailwind v4 + shadcn/ui (Base UI)
   + Drizzle + postgres-js + Auth.js v5 (Credentials) + `rrule` + `@dnd-kit` +
   `react-big-calendar` + `recharts` (Dashboard) + `web-push` (VAPID tự sinh,
@@ -302,7 +312,7 @@ public/sw.js                        service worker tối giản cho Web push
 
 ## Câu hỏi mở chưa có câu trả lời (không tự đoán — hỏi chủ sản phẩm)
 
-Email thật của admin/Khiết/Đạt/Trân (đang seed placeholder `*@vmg.local`) ·
+Email thật của admin (placeholder `admin@vmg.local`; Khiết/Đạt/Trân hiện đăng nhập bằng tên ngắn `khiet`/`dat`/`tran`, mật khẩu trùng tên — yếu, chỉ nội bộ) ·
 dữ liệu 28 campaign + 46 hạng mục SBU catalog từ file
 `VMG_Marketing_Strategy_Operations_2026.xlsx` (chưa được cung cấp) · SLA
 request theo loại (đã hỏi — chủ sản phẩm xác nhận CHƯA CÓ, giữ mặc định

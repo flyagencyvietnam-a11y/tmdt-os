@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { fmtDate } from "@/lib/format";
 import type { DB } from "@/lib/db";
 import {
   activityLog,
@@ -34,7 +35,7 @@ async function maybeSendCenterContributorLink(db: DB, assigneeId: string, task: 
   await sendMail({
     to: u.email,
     subject: `[MKT OS] Việc mới: ${task.title}`,
-    text: `Bạn được giao: ${task.title}\nHạn: ${task.dueDate ?? "chưa có"}\n\nXác nhận đã xong / báo vướng (không cần đăng nhập): ${link}\n(Liên kết hết hạn sau 7 ngày, chỉ dùng được 1 lần.)`,
+    text: `Bạn được giao: ${task.title}\nHạn: ${task.dueDate ? fmtDate(task.dueDate) : "chưa có"}\n\nXác nhận đã xong / báo vướng (không cần đăng nhập): ${link}\n(Liên kết hết hạn sau 7 ngày, chỉ dùng được 1 lần.)`,
   });
 }
 

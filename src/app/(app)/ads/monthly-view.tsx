@@ -1,6 +1,7 @@
 "use client";
 
 import { Coins, Pencil, Percent, Plus, Target, UserPlus, Users } from "lucide-react";
+import { useSessionState } from "@/lib/use-session-state";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, Line as RLine, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
 import { cn } from "@/lib/utils";
 import { EffBadge, MonthPicker } from "./ads-ui";
+import { InlineNum, useMetricSaver } from "./ads-inline";
 import { B2cView } from "./b2c-view";
 import { axisProps, ChartCard, ChartTooltip, gridProps } from "./charts";
 import { EcomProducts } from "./ecom-products";
@@ -67,7 +69,7 @@ export function MonthlyView({
   rubric: EffectivenessRubric;
 }) {
   const router = useRouter();
-  const [tab, setTab] = React.useState<Tab>("b2c");
+  const [tab, setTab] = useSessionState<Tab>("ads:month:tab", "b2c");
   const [editing, setEditing] = React.useState<{ row: MetricRow | null; period: string } | null>(null);
 
   const hasRow = (t: Tab, p: string) => metrics.some((m) => m.periodType === "month" && m.line === t && m.period === p);
@@ -250,30 +252,31 @@ export function LineMonthTable({
 }) {
   const desc = [...months].reverse();
   const total = der(months.flatMap((p) => rows(p)));
+  const saveMetric = useMetricSaver();
   const isEcom = line === "ecom";
   const isB2b = line === "b2b";
 
   // Mỗi mảng 1 bộ cột: Ecom dùng MQL (không có "Lead" thường) + Doanh thu/ROAS; B2B thêm Mess/Deal.
-  type Col = { label: string; cell: (d: AggDerived) => React.ReactNode; strong?: boolean };
+  type Col = { label: string; cell: (d: AggDerived) => React.ReactNode; strong?: boolean; /** Trường nhập được ngay trên bảng (cột suy ra thì không có). */ field?: "budget" | "leads" | "newStudents" | "messages" | "revenue" | "mql" | "deals" };
   const cols: Col[] = isEcom
     ? [
-        { label: "Chi tiêu", cell: (d) => fmtMoney(d.spend), strong: true },
-        { label: "MQL", cell: (d) => fmt(d.mql) },
-        { label: conversionLabel(line), cell: (d) => fmt(d.newStudents) },
+        { label: "Chi tiêu", cell: (d) => fmtMoney(d.spend), strong: true, field: "budget" },
+        { label: "MQL", cell: (d) => fmt(d.mql), field: "mql" },
+        { label: conversionLabel(line), cell: (d) => fmt(d.newStudents), field: "newStudents" },
         { label: "CP/MQL", cell: (d) => fmtMoney(d.spend != null && d.mql ? d.spend / d.mql : null) },
         { label: "CAC", cell: (d) => fmtMoney(d.cac) },
         { label: "CVR MQL→HVM", cell: (d) => fmtPct(d.mql && d.newStudents != null ? d.newStudents / d.mql : null) },
-        { label: "Doanh thu", cell: (d) => fmtMoney(d.revenue) },
+        { label: "Doanh thu", cell: (d) => fmtMoney(d.revenue), field: "revenue" },
         { label: "ROAS", cell: (d) => (d.roas != null ? `${d.roas.toFixed(2)}x` : "—") },
       ]
     : [
-        { label: "Chi tiêu", cell: (d) => fmtMoney(d.spend), strong: true },
-        { label: "Lead", cell: (d) => fmt(d.leads) },
-        { label: conversionLabel(line), cell: (d) => fmt(d.newStudents) },
+        { label: "Chi tiêu", cell: (d) => fmtMoney(d.spend), strong: true, field: "budget" },
+        { label: "Lead", cell: (d) => fmt(d.leads), field: "leads" },
+        { label: conversionLabel(line), cell: (d) => fmt(d.newStudents), field: "newStudents" },
         { label: "CPL", cell: (d) => fmtMoney(d.cpl) },
         { label: "CAC", cell: (d) => fmtMoney(d.cac) },
         { label: "CVR", cell: (d) => fmtPct(d.cvr) },
-        ...(isB2b ? [{ label: "Mess", cell: (d: AggDerived) => fmt(d.messages) }, { label: "Deal chốt", cell: (d: AggDerived) => fmt(d.deals) }] : []),
+        ...(isB2b ? [{ label: "Mess", cell: (d: AggDerived) => fmt(d.messages), field: "messages" as const }, { label: "Deal chốt", cell: (d: AggDerived) => fmt(d.deals), field: "deals" as const }] : []),
       ];
 
   return (
@@ -303,7 +306,7 @@ export function LineMonthTable({
               return (
                 <tr key={p} onClick={() => onPickMonth(p)} className={cn("cursor-pointer hover:bg-muted/30", p === activeMonth && "bg-brand/[0.05]")}>
                   <td className={cn("px-3 py-2 font-medium", p === activeMonth && "text-brand")}>{monthLabel(p)}</td>
-                  {r.length === 0 ? (
+                  {r.length === 0 && !canManage ? (
                     <td colSpan={cols.length + (isEcom ? 0 : 1)} className="px-3 py-2 text-xs text-muted-foreground">
                       Chưa có số liệu
                     </td>
@@ -311,14 +314,21 @@ export function LineMonthTable({
                     <>
                       {cols.map((c) => (
                         <td key={c.label} className={cn("px-3 py-2 text-right tabular-nums", c.strong && "font-medium")}>
-                          {c.cell(d)}
+                          {canManage && c.field ? (
+                            <InlineNum
+                              value={r[0]?.[c.field]}
+                              display={r.length === 0 ? <span className="text-muted-foreground/50">＋</span> : c.cell(d)}
+                              title={`Sửa ${c.label} — ${monthLabel(p)}`}
+                              onSave={(val) => saveMetric(r[0] ?? null, { line, periodType: "month", period: p, sbuId: null }, c.field!, val)}
+                            />
+                          ) : r.length === 0 ? (
+                            <span className="text-muted-foreground/50">—</span>
+                          ) : (
+                            c.cell(d)
+                          )}
                         </td>
                       ))}
-                      {!isEcom && (
-                        <td className="px-3 py-2">
-                          <EffBadge label={d.effectivenessLabel} />
-                        </td>
-                      )}
+                      {!isEcom && <td className="px-3 py-2">{r.length > 0 && <EffBadge label={d.effectivenessLabel} />}</td>}
                     </>
                   )}
                   <td className="px-3 py-2 text-right">

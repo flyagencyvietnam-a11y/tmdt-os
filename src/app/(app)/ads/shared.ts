@@ -47,6 +47,8 @@ export interface CampaignRow {
   engagements?: string | null;
   reactions?: string | null;
   spendWithVat?: string | null;
+  plannedBudget?: string | null;
+  runnerId?: string | null;
   [k: string]: unknown;
 }
 
@@ -130,7 +132,7 @@ function shiftDay(day: string, n: number): string {
 /** Tuần = Thứ 7 (period) → hết Thứ 6. "19/09 – 25/09". */
 export function weekLabel(sat: string): string {
   const end = shiftDay(sat, 6);
-  return `${sat.slice(8, 10)}/${sat.slice(5, 7)} – ${end.slice(8, 10)}/${end.slice(5, 7)}`;
+  return `${sat.slice(8, 10)}/${sat.slice(5, 7)} – ${end.slice(8, 10)}/${end.slice(5, 7)}/${end.slice(0, 4)}`;
 }
 export function weekShort(sat: string): string {
   return `${sat.slice(8, 10)}/${sat.slice(5, 7)}`;

@@ -3,6 +3,7 @@ import { date, index, numeric, pgTable, text, uniqueIndex, uuid } from "drizzle-
 import { auditColumns, pkUuid } from "./_shared";
 import { adsLineEnum, adsPeriodTypeEnum, adsStatusEnum } from "./enums";
 import { sbus } from "./sbus";
+import { users } from "./users";
 
 /**
  * Ads hàng tuần/tháng theo 6 mảng digital thực tế (Mục 1-6, file
@@ -98,6 +99,10 @@ export const adsCampaigns = pgTable(
     engagements: numeric("engagements", { precision: 10, scale: 0 }),
     reactions: numeric("reactions", { precision: 10, scale: 0 }),
     spend: numeric("spend", { precision: 14, scale: 0 }).notNull(),
+    /** Ngân sách KẾ HOẠCH của request (so với `spend` thực chi). */
+    plannedBudget: numeric("planned_budget", { precision: 14, scale: 0 }),
+    /** Người chạy ads cho request này. */
+    runnerId: uuid("runner_id").references(() => users.id),
     spendWithVat: numeric("spend_with_vat", { precision: 14, scale: 0 }),
     ...auditColumns,
   },

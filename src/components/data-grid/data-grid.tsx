@@ -21,12 +21,18 @@ import {
   Filter as FilterIcon,
   Group,
   ArrowUpDown,
+  Plus,
+  RotateCcw,
   Save,
   Search,
   Trash2,
   X,
 } from "lucide-react";
 import * as React from "react";
+import { toast } from "sonner";
+import { DateInput, MonthInput } from "@/components/ui/date-input";
+import { readSessionNumber, useSessionState, writeSessionNumber } from "@/lib/use-session-state";
+import { CustomColumnMenu, AddColumnPopover, useCustomColumns } from "./custom-columns";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -70,8 +76,17 @@ export interface DataGridProps<Row> {
   onDeleteView?: (id: string) => Promise<void> | void;
   onExportAudit?: (rowCount: number) => void;
   bulkActions?: (selected: Row[], clear: () => void) => React.ReactNode;
-  onEditCell?: (rowId: string, field: string, value: string) => void;
+  onEditCell?: (rowId: string, field: string, value: string) => void | Promise<unknown>;
   emptyText?: string;
+  /** Class thêm cho cả dòng (vd. tô đỏ toàn dòng khi trễ hạn, tím khi là việc lặp). */
+  rowClassName?: (row: Row) => string | undefined;
+  /** Khoá lưu trạng thái (lọc/sắp xếp/nhóm/cuộn) để Back quay về đúng chỗ cũ. Mặc định = entity. */
+  persistKey?: string;
+  /** Nút "+ Dòng mới" cuối bảng. */
+  onAddRow?: () => void;
+  addRowLabel?: string;
+  /** Cho phép "+ Cột" tự thêm (mặc định bật nếu người dùng có quyền sửa). */
+  allowCustomColumns?: boolean;
 }
 
 const triggerBtn = cn(buttonVariants({ variant: "outline", size: "sm" }));
@@ -107,7 +122,7 @@ const SELECT_COL_W = 40;
 const GRID_MAX_H = "70vh";
 
 export function DataGrid<Row>({
-  columns,
+  columns: baseColumns,
   rows,
   getRowId,
   entity,
@@ -119,18 +134,48 @@ export function DataGrid<Row>({
   bulkActions,
   onEditCell,
   emptyText = "Không có dòng nào khớp bộ lọc.",
+  rowClassName,
+  persistKey,
+  onAddRow,
+  addRowLabel = "Dòng mới",
+  allowCustomColumns = true,
 }: DataGridProps<Row>) {
-  const [view, setView] = React.useState<ViewConfig>(
-    () => initialView ?? { rowHeight: "medium" },
+  const storeKey = `grid:${persistKey ?? entity}`;
+  const defaultView = React.useMemo<ViewConfig>(() => initialView ?? { rowHeight: "medium" }, [initialView]);
+  // Trạng thái bảng (lọc/sắp xếp/nhóm/ẩn cột + ô tìm + nhóm thu gọn) được nhớ theo tab trình duyệt:
+  // mở 1 dòng rồi bấm Back sẽ quay về đúng bộ lọc/nhóm đang xem.
+  const [ui, setUi, uiRestored] = useSessionState<{ view: ViewConfig; query: string; collapsed: string[] }>(storeKey, {
+    view: defaultView,
+    query: "",
+    collapsed: [],
+  });
+  const view = ui.view;
+  const query = ui.query;
+  const collapsedGroups = React.useMemo(() => new Set(ui.collapsed), [ui.collapsed]);
+  const setView = React.useCallback(
+    (v: ViewConfig | ((p: ViewConfig) => ViewConfig)) => setUi((p) => ({ ...p, view: typeof v === "function" ? v(p.view) : v })),
+    [setUi],
   );
+  const setQuery = React.useCallback((q: string) => setUi((p) => ({ ...p, query: q })), [setUi]);
+  const setCollapsedGroups = React.useCallback((s: Set<string>) => setUi((p) => ({ ...p, collapsed: [...s] })), [setUi]);
+
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
-  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(
-    new Set(),
+  const [editing, setEditing] = React.useState<{ id: string; field: string; initial?: string } | null>(null);
+  const [active, setActive] = React.useState<{ id: string; field: string } | null>(null);
+
+  // --- cột tự thêm (+ Cột) ---
+  const custom = useCustomColumns<Row>(entity, allowCustomColumns && !!onEditCell, getRowId);
+  const columns = React.useMemo(() => [...baseColumns, ...custom.columns] as GridColumn<Row>[], [baseColumns, custom.columns]);
+  const canEdit = !!onEditCell;
+
+  /** Ghi 1 ô: cột tự thêm đi vào bảng grid_custom_*, cột thường đi qua onEditCell của trang. */
+  const writeCell = React.useCallback(
+    async (rowId: string, field: string, raw: string) => {
+      if (custom.isCustom(field)) return custom.setValue(field, rowId, raw);
+      return onEditCell?.(rowId, field, raw);
+    },
+    [custom, onEditCell],
   );
-  const [editing, setEditing] = React.useState<{ id: string; field: string } | null>(
-    null,
-  );
-  const [query, setQuery] = React.useState("");
 
   const accessorOf = React.useCallback(
     (field: string) => {
@@ -144,7 +189,7 @@ export function DataGrid<Row>({
   const distinctCache = React.useMemo(
     () => new Map<string, string[]>(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows],
+    [rows, custom.columns],
   );
   const distinct = React.useCallback(
     (field: string) => {
@@ -200,6 +245,13 @@ export function DataGrid<Row>({
       for (const s of sorts) {
         const av = accessorOf(s.field)(a);
         const bv = accessorOf(s.field)(b);
+        // Ô trống luôn xuống CUỐI (cả khi sắp giảm dần) — dòng chưa có ngày không được chiếm đầu danh sách.
+        const aNil = av == null || av === "";
+        const bNil = bv == null || bv === "";
+        if (aNil || bNil) {
+          if (aNil && bNil) continue;
+          return aNil ? 1 : -1;
+        }
         const cmp = compare(av, bv);
         if (cmp !== 0) return s.direction === "asc" ? cmp : -cmp;
       }
@@ -215,14 +267,15 @@ export function DataGrid<Row>({
     return buildGroups(sorted, g, accessorOf);
   }, [sorted, view.groupBy, accessorOf]);
 
-  const toggleCollapse = React.useCallback((key: string) => {
-    setCollapsedGroups((prev) => {
-      const n = new Set(prev);
+  const toggleCollapse = React.useCallback(
+    (key: string) => {
+      const n = new Set(collapsedGroups);
       if (n.has(key)) n.delete(key);
       else n.add(key);
-      return n;
-    });
-  }, []);
+      setCollapsedGroups(n);
+    },
+    [collapsedGroups, setCollapsedGroups],
+  );
 
   // --- phẳng hoá (group header + data row) để cuộn ảo, bỏ qua con của nhóm đã thu ---
   const visualRows = React.useMemo<VisualRow<Row>[]>(() => {
@@ -262,6 +315,16 @@ export function DataGrid<Row>({
     ? totalSize - vItems[vItems.length - 1].end
     : 0;
 
+  // --- nhớ vị trí cuộn trong bảng (Back về đúng dòng đang xem) ---
+  const scrollKey = `${storeKey}:scroll`;
+  const scrollRestored = React.useRef(false);
+  React.useEffect(() => {
+    if (scrollRestored.current || !uiRestored || visualRows.length === 0) return;
+    scrollRestored.current = true;
+    const saved = readSessionNumber(scrollKey);
+    if (saved && saved > 0 && scrollRef.current) scrollRef.current.scrollTop = saved;
+  }, [uiRestored, visualRows.length, scrollKey, virtualizer]);
+
   // bề rộng cột cho table-layout: fixed (cuộn ảo cần chiều rộng ổn định)
   const colWidths = React.useMemo(
     () =>
@@ -271,8 +334,9 @@ export function DataGrid<Row>({
       }),
     [visibleColumns, view.columns],
   );
+  const ADD_COL_W = custom.enabled ? 44 : 0;
   const tableMinWidth =
-    SELECT_COL_W + colWidths.reduce((a, b) => a + b, 0);
+    SELECT_COL_W + colWidths.reduce((a, b) => a + b, 0) + ADD_COL_W;
   const allChecked = sorted.length > 0 && selected.size === sorted.length;
 
   function toggleAll() {
@@ -291,6 +355,180 @@ export function DataGrid<Row>({
   }
 
   const selectedRows = sorted.filter((r) => selected.has(getRowId(r)));
+
+  // ------------------------------------------------------------------
+  //  Điều khiển kiểu Excel: chọn ô, phím mũi tên, gõ để sửa, Enter/Tab, dán nhiều ô
+  // ------------------------------------------------------------------
+  const dataIndex = React.useMemo(() => {
+    const ids: string[] = [];
+    const rowsById = new Map<string, Row>();
+    const visualIndexById = new Map<string, number>();
+    visualRows.forEach((vr, i) => {
+      if (vr.kind !== "data") return;
+      const id = getRowId(vr.row);
+      ids.push(id);
+      rowsById.set(id, vr.row);
+      visualIndexById.set(id, i);
+    });
+    return { ids, rowsById, visualIndexById };
+  }, [visualRows, getRowId]);
+
+  const focusGrid = React.useCallback(() => {
+    // Trả focus cho khung bảng sau khi đóng ô sửa để phím mũi tên tiếp tục hoạt động.
+    requestAnimationFrame(() => scrollRef.current?.focus({ preventScroll: true }));
+  }, []);
+
+  const moveActive = React.useCallback(
+    (from: { id: string; field: string }, dRow: number, dCol: number) => {
+      const fields = visibleColumns.map((c) => c.field);
+      let ci = fields.indexOf(from.field);
+      let ri = dataIndex.ids.indexOf(from.id);
+      if (ci < 0 || ri < 0) return;
+      ci += dCol;
+      ri += dRow;
+      // Tab ở ô cuối hàng → xuống ô đầu hàng kế tiếp (như Excel)
+      if (ci >= fields.length) {
+        ci = 0;
+        ri += 1;
+      } else if (ci < 0) {
+        ci = fields.length - 1;
+        ri -= 1;
+      }
+      ri = Math.max(0, Math.min(dataIndex.ids.length - 1, ri));
+      const id = dataIndex.ids[ri];
+      if (id == null) return;
+      setActive({ id, field: fields[ci] });
+      const vi = dataIndex.visualIndexById.get(id);
+      if (vi != null) virtualizer.scrollToIndex(vi, { align: "auto" });
+    },
+    [visibleColumns, dataIndex, virtualizer],
+  );
+
+  const commitEdit = React.useCallback(
+    (id: string, field: string, value: string, move: "down" | "right" | "left" | "none") => {
+      setEditing(null);
+      const col = columns.find((c) => c.field === field);
+      const row = dataIndex.rowsById.get(id);
+      // Không gọi server nếu giá trị không đổi (tránh refresh thừa khi chỉ nhấn Tab đi qua ô).
+      const before = col && row ? (col.editValue ? col.editValue(row) : String(col.accessor(row) ?? "")) : "";
+      if (value !== before) void writeCell(id, field, value);
+      if (move === "down") moveActive({ id, field }, 1, 0);
+      else if (move === "right") moveActive({ id, field }, 0, 1);
+      else if (move === "left") moveActive({ id, field }, 0, -1);
+      focusGrid();
+    },
+    [columns, dataIndex, writeCell, moveActive, focusGrid],
+  );
+
+  const cancelEdit = React.useCallback(() => {
+    setEditing(null);
+    focusGrid();
+  }, [focusGrid]);
+
+  const startEditing = React.useCallback(
+    (id: string, field: string, initial?: string) => {
+      const col = columns.find((c) => c.field === field);
+      if (!col?.editable || !canEdit) return false;
+      setActive({ id, field });
+      setEditing({ id, field, initial });
+      return true;
+    },
+    [columns, canEdit],
+  );
+
+  function onGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    // Phím gõ trong ô sửa/ô nhập khác do chính ô đó xử lý.
+    if (e.target !== e.currentTarget || editing) return;
+    if (!active) {
+      if (["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key) && dataIndex.ids.length && visibleColumns.length) {
+        e.preventDefault();
+        setActive({ id: dataIndex.ids[0], field: visibleColumns[0].field });
+      }
+      return;
+    }
+    const col = columns.find((c) => c.field === active.field);
+    const mod = e.ctrlKey || e.metaKey;
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        return moveActive(active, 1, 0);
+      case "ArrowUp":
+        e.preventDefault();
+        return moveActive(active, -1, 0);
+      case "ArrowRight":
+        e.preventDefault();
+        return moveActive(active, 0, 1);
+      case "ArrowLeft":
+        e.preventDefault();
+        return moveActive(active, 0, -1);
+      case "Tab":
+        e.preventDefault();
+        return moveActive(active, 0, e.shiftKey ? -1 : 1);
+      case "Enter":
+      case "F2":
+        if (startEditing(active.id, active.field)) e.preventDefault();
+        else if (e.key === "Enter") moveActive(active, 1, 0);
+        return;
+      case "Escape":
+        setActive(null);
+        return;
+      case "Delete":
+      case "Backspace":
+        if (col?.editable && canEdit && col.editKind !== "select") {
+          e.preventDefault();
+          void writeCell(active.id, active.field, "");
+        }
+        return;
+    }
+    if (!mod && !e.altKey && e.key.length === 1 && col?.editable && canEdit) {
+      // Gõ ký tự = thay nội dung ô (kiểu Excel). Với ô chọn danh sách: mở danh sách.
+      if (startEditing(active.id, active.field, col.editKind === "select" || col.editInputType === "date" ? undefined : e.key)) e.preventDefault();
+    }
+  }
+
+  function onGridCopy(e: React.ClipboardEvent<HTMLDivElement>) {
+    if (editing || !active) return;
+    const col = columns.find((c) => c.field === active.field);
+    const row = dataIndex.rowsById.get(active.id);
+    if (!col || !row) return;
+    e.preventDefault();
+    e.clipboardData.setData("text/plain", searchText(col, row));
+  }
+
+  async function onGridPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    if (editing || !active || !canEdit) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    const matrix = text.replace(/\r/g, "").replace(/\n$/, "").split("\n").map((l) => l.split("\t"));
+    const fields = visibleColumns.map((c) => c.field);
+    const c0 = fields.indexOf(active.field);
+    const r0 = dataIndex.ids.indexOf(active.id);
+    if (c0 < 0 || r0 < 0) return;
+    let n = 0;
+    for (let ri = 0; ri < matrix.length; ri++) {
+      const id = dataIndex.ids[r0 + ri];
+      if (id == null) break;
+      for (let ci = 0; ci < matrix[ri].length; ci++) {
+        const col = columns.find((c) => c.field === fields[c0 + ci]);
+        if (!col?.editable) continue;
+        let v = matrix[ri][ci].trim();
+        if (col.editKind === "select") {
+          const opt = col.editOptions?.find((o) => o.label.toLowerCase() === v.toLowerCase() || o.value === v);
+          if (!opt) continue;
+          v = opt.value;
+        } else if (col.editInputType === "date") {
+          const m = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(v);
+          if (m) v = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+        }
+        await writeCell(id, col.field, v);
+        n++;
+      }
+    }
+    if (n > 0) toast.success(`Đã dán ${n} ô.`);
+  }
+
+  const viewChanged = JSON.stringify(view) !== JSON.stringify(defaultView) || query !== "";
 
   return (
     <div className="flex flex-col gap-2">
@@ -344,6 +582,18 @@ export function DataGrid<Row>({
           </div>
         )}
         <ColumnsButton view={view} columns={columns} onChange={patchView} />
+        {viewChanged && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Bỏ mọi bộ lọc/sắp xếp/nhóm đã chọn, về cách xem mặc định"
+            onClick={() => {
+              setUi({ view: defaultView, query: "", collapsed: [] });
+            }}
+          >
+            <RotateCcw className="h-3 w-3" /> Đặt lại
+          </button>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           {onSaveView && (
@@ -404,7 +654,12 @@ export function DataGrid<Row>({
 
       <div
         ref={scrollRef}
-        className="overflow-auto rounded-xl border bg-card shadow-xs"
+        tabIndex={0}
+        onKeyDown={onGridKeyDown}
+        onCopy={onGridCopy}
+        onPaste={onGridPaste}
+        onScroll={(e) => writeSessionNumber(scrollKey, e.currentTarget.scrollTop)}
+        className="overflow-auto rounded-xl border bg-card shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
         style={{ maxHeight: GRID_MAX_H }}
       >
         <table
@@ -416,6 +671,7 @@ export function DataGrid<Row>({
             {colWidths.map((w, i) => (
               <col key={i} style={{ width: w }} />
             ))}
+            {custom.enabled && <col style={{ width: ADD_COL_W }} />}
           </colgroup>
           <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
             <tr className="border-b">
@@ -444,17 +700,25 @@ export function DataGrid<Row>({
                       {sort?.direction === "desc" && (
                         <ArrowDown className="h-3 w-3" />
                       )}
+                      {c.customId && custom.defOf(c.field) && (
+                        <CustomColumnMenu def={custom.defOf(c.field)!} onRename={custom.rename} onDelete={custom.remove} />
+                      )}
                     </span>
                   </th>
                 );
               })}
+              {custom.enabled && (
+                <th className="px-1 text-center">
+                  <AddColumnPopover onCreate={custom.create} />
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {visualRows.length === 0 && (
               <tr>
                 <td
-                  colSpan={visibleColumns.length + 1}
+                  colSpan={visibleColumns.length + 1 + (custom.enabled ? 1 : 0)}
                   className="px-3 py-14 text-center text-sm text-muted-foreground"
                 >
                   <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
@@ -469,7 +733,7 @@ export function DataGrid<Row>({
 
             {padTop > 0 && (
               <tr aria-hidden style={{ height: padTop }}>
-                <td colSpan={visibleColumns.length + 1} />
+                <td colSpan={visibleColumns.length + 2} />
               </tr>
             )}
 
@@ -481,7 +745,7 @@ export function DataGrid<Row>({
                     key={`g:${vr.node.key}`}
                     node={vr.node}
                     column={columns.find((c) => c.field === vr.node.field)}
-                    colCount={visibleColumns.length}
+                    colCount={visibleColumns.length + (custom.enabled ? 1 : 0)}
                     collapsed={collapsedGroups.has(vr.node.key)}
                     onToggle={() => toggleCollapse(vr.node.key)}
                     rowPx={rowPx}
@@ -496,11 +760,20 @@ export function DataGrid<Row>({
                   rowId={id}
                   columns={visibleColumns}
                   rowHeightClass={rowHeightClass}
+                  rowClass={rowClassName?.(vr.row)}
                   checked={selected.has(id)}
                   onToggle={() => toggleOne(id)}
                   editing={editing}
-                  setEditing={setEditing}
-                  onEditCell={onEditCell}
+                  active={active?.id === id ? active.field : null}
+                  setActive={(field) => {
+                    setActive({ id, field });
+                    scrollRef.current?.focus({ preventScroll: true });
+                  }}
+                  startEditing={startEditing}
+                  commitEdit={commitEdit}
+                  cancelEdit={cancelEdit}
+                  canEdit={canEdit}
+                  extraCol={custom.enabled}
                   indent={vr.indent}
                 />
               );
@@ -508,7 +781,7 @@ export function DataGrid<Row>({
 
             {padBottom > 0 && (
               <tr aria-hidden style={{ height: padBottom }}>
-                <td colSpan={visibleColumns.length + 1} />
+                <td colSpan={visibleColumns.length + 2} />
               </tr>
             )}
           </tbody>
@@ -535,16 +808,27 @@ export function DataGrid<Row>({
                       : ""}
                   </td>
                 ))}
+                {custom.enabled && <td />}
               </tr>
             </tfoot>
           )}
         </table>
+        {onAddRow && (
+          <button
+            type="button"
+            onClick={onAddRow}
+            className="flex w-full items-center gap-1.5 border-t px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          >
+            <Plus className="h-4 w-4" /> {addRowLabel}
+          </button>
+        )}
       </div>
 
       <p className="px-1 text-xs text-muted-foreground">
         {sorted.length} / {rows.length} dòng
         {visualRows.length !== sorted.length &&
           ` · ${visualRows.length} dòng hiển thị (đã gom nhóm)`}
+        {canEdit && " · Bấm ô để chọn, gõ để sửa, Enter/Tab để sang ô kế, Ctrl+V để dán nhiều ô"}
       </p>
     </div>
   );
@@ -554,11 +838,9 @@ export function DataGrid<Row>({
 
 /** Tooltip của ô: hiện đầy đủ chữ bị cắt "…" (+ gợi ý sửa nếu ô sửa được). */
 function cellTitle<Row>(c: GridColumn<Row>, row: Row): string | undefined {
-  if (c.kind === "boolean") return c.editable ? "Nhấp đôi để sửa" : undefined;
+  if (c.kind === "boolean") return undefined;
   const text = searchText(c, row);
-  if (!text) return c.editable ? "Nhấp đôi để sửa" : undefined;
-  return c.editable ? `${text}
-(Nhấp đôi để sửa)` : text;
+  return text || undefined;
 }
 
 function normalizeSearch(v: string): string {
@@ -616,37 +898,52 @@ function formatAgg(v: number | null, fn: AggregateFn): string {
   return v.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
 
+type EditMove = "down" | "right" | "left" | "none";
+
 function DataRow<Row>({
   row,
   rowId,
   columns,
   rowHeightClass,
+  rowClass,
   checked,
   onToggle,
   editing,
-  setEditing,
-  onEditCell,
+  active,
+  setActive,
+  startEditing,
+  commitEdit,
+  cancelEdit,
+  canEdit,
+  extraCol,
   indent = 0,
 }: {
   row: Row;
   rowId: string;
   columns: GridColumn<Row>[];
   rowHeightClass: string;
+  rowClass?: string;
   checked: boolean;
   onToggle: () => void;
-  editing: { id: string; field: string } | null;
-  setEditing: (e: { id: string; field: string } | null) => void;
-  onEditCell?: (rowId: string, field: string, value: string) => void;
+  editing: { id: string; field: string; initial?: string } | null;
+  /** field của ô đang chọn trong dòng này (null nếu ô chọn không thuộc dòng). */
+  active: string | null;
+  setActive: (field: string) => void;
+  startEditing: (id: string, field: string, initial?: string) => boolean;
+  commitEdit: (id: string, field: string, value: string, move: EditMove) => void;
+  cancelEdit: () => void;
+  canEdit: boolean;
+  extraCol: boolean;
   indent?: number;
 }) {
   return (
-    <tr className={cn("border-b hover:bg-muted/30", rowHeightClass)}>
+    <tr className={cn("border-b hover:bg-muted/30", rowHeightClass, rowClass)}>
       <td className="px-2">
         <Checkbox checked={checked} onCheckedChange={onToggle} />
       </td>
       {columns.map((c, ci) => {
-        const isEditing =
-          editing?.id === rowId && editing.field === c.field && c.editable;
+        const isEditing = editing?.id === rowId && editing.field === c.field && c.editable && canEdit;
+        const isActive = active === c.field;
         return (
           <td
             key={c.field}
@@ -655,54 +952,26 @@ function DataRow<Row>({
               !isEditing && "whitespace-nowrap",
               c.align === "right" && "text-right tabular-nums",
               c.align === "center" && "text-center",
+              isActive && "relative bg-brand/[0.06] outline-2 -outline-offset-2 outline-brand/70",
+              c.editable && canEdit && "cursor-cell",
             )}
             style={ci === 0 && indent ? { paddingLeft: 12 + indent * 16 } : undefined}
-            title={cellTitle(c, row)}
-            onDoubleClick={() =>
-              c.editable && setEditing({ id: rowId, field: c.field })
-            }
+            title={isEditing ? undefined : cellTitle(c, row)}
+            onClick={() => {
+              if (isEditing) return;
+              // Bấm lần 2 vào ô đang chọn (hoặc ô danh sách/ngày) = vào chế độ sửa, như Airtable.
+              if (isActive && c.editable && canEdit && !(c.kind === "text" && c.cell)) startEditing(rowId, c.field);
+              else setActive(c.field);
+            }}
+            onDoubleClick={() => c.editable && canEdit && startEditing(rowId, c.field)}
           >
-            {isEditing && c.editKind === "select" ? (
-              <select
-                autoFocus
-                defaultValue={
-                  c.editValue ? c.editValue(row) : String(c.accessor(row) ?? "")
-                }
-                className="h-7 w-full rounded border bg-background px-1 text-sm"
-                onChange={(e) => {
-                  onEditCell?.(rowId, c.field, e.target.value);
-                  setEditing(null);
-                }}
-                onBlur={() => setEditing(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setEditing(null);
-                }}
-              >
-                {(c.editOptions ?? []).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            ) : isEditing ? (
-              <Input
-                autoFocus
-                type={c.editInputType ?? "text"}
-                defaultValue={
-                  c.editValue ? c.editValue(row) : String(c.accessor(row) ?? "")
-                }
-                className="h-7"
-                onBlur={(e) => {
-                  onEditCell?.(rowId, c.field, e.target.value);
-                  setEditing(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    onEditCell?.(rowId, c.field, (e.target as HTMLInputElement).value);
-                    setEditing(null);
-                  }
-                  if (e.key === "Escape") setEditing(null);
-                }}
+            {isEditing ? (
+              <CellEditor
+                column={c}
+                row={row}
+                initial={editing?.initial}
+                onCommit={(v, move) => commitEdit(rowId, c.field, v, move)}
+                onCancel={cancelEdit}
               />
             ) : c.cell ? (
               <div className="truncate">{c.cell(row)}</div>
@@ -716,13 +985,165 @@ function DataRow<Row>({
               </Tag>
             ) : c.kind === "enum" && c.enumLabels ? (
               (c.enumLabels[String(c.accessor(row))] ?? String(c.accessor(row) ?? "–"))
+            ) : c.kind === "enum" && c.enumOptions ? (
+              (c.enumOptions.find((o) => o.value === String(c.accessor(row)))?.label ?? String(c.accessor(row) ?? "–"))
+            ) : c.kind === "date" ? (
+              fmtDateCell(c.accessor(row))
             ) : (
               String(c.accessor(row) ?? "–")
             )}
           </td>
         );
       })}
+      {extraCol && <td />}
     </tr>
+  );
+}
+
+/** Ngày luôn dd/mm/yyyy trong ô (kể cả khi cột không khai báo `cell`). */
+function fmtDateCell(v: unknown): string {
+  if (v == null || v === "") return "–";
+  const s = String(v);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+}
+
+/** Ô sửa tại chỗ: Enter = lưu + xuống dòng, Tab = lưu + sang phải, Esc = huỷ, rời ô = lưu. */
+function CellEditor<Row>({
+  column: c,
+  row,
+  initial,
+  onCommit,
+  onCancel,
+}: {
+  column: GridColumn<Row>;
+  row: Row;
+  initial?: string;
+  onCommit: (value: string, move: EditMove) => void;
+  onCancel: () => void;
+}) {
+  const current = c.editValue ? c.editValue(row) : String(c.accessor(row) ?? "");
+  const done = React.useRef(false);
+  const finish = (v: string, move: EditMove) => {
+    if (done.current) return;
+    done.current = true;
+    onCommit(v, move);
+  };
+  const cancel = () => {
+    if (done.current) return;
+    done.current = true;
+    onCancel();
+  };
+
+  if (c.editKind === "select") {
+    return (
+      <select
+        autoFocus
+        ref={(el) => {
+          // Mở sẵn danh sách để chọn bằng 1 thao tác.
+          if (el) requestAnimationFrame(() => (el as HTMLSelectElement & { showPicker?: () => void }).showPicker?.());
+        }}
+        defaultValue={current}
+        className="h-7 w-full rounded border bg-background px-1 text-sm"
+        onChange={(e) => finish(e.target.value, "none")}
+        onBlur={cancel}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") cancel();
+          if (e.key === "Tab") {
+            e.preventDefault();
+            finish((e.target as HTMLSelectElement).value, e.shiftKey ? "left" : "right");
+          }
+        }}
+      >
+        {(c.editOptions ?? []).map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (c.editInputType === "date") {
+    return <DateEditor value={current} onCommit={finish} onCancel={cancel} />;
+  }
+  if (c.editInputType === "month") {
+    return <MonthEditor value={current} onCommit={finish} onCancel={cancel} />;
+  }
+
+  return (
+    <Input
+      autoFocus
+      type={c.editInputType ?? "text"}
+      defaultValue={initial ?? current}
+      onFocus={(e) => {
+        const el = e.currentTarget;
+        // Gõ ký tự để thay → con trỏ cuối; mở bằng Enter/nhấp → chọn hết như Excel.
+        if (initial != null) el.setSelectionRange(el.value.length, el.value.length);
+        else el.select();
+      }}
+      className="h-7"
+      onBlur={(e) => finish(e.target.value, "none")}
+      onKeyDown={(e) => {
+        const val = (e.target as HTMLInputElement).value;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          finish(val, e.shiftKey ? "none" : "down");
+        } else if (e.key === "Tab") {
+          e.preventDefault();
+          finish(val, e.shiftKey ? "left" : "right");
+        } else if (e.key === "Escape") cancel();
+      }}
+    />
+  );
+}
+
+/** Ô sửa tháng (mm/yyyy → "yyyy-mm"). */
+function MonthEditor({ value, onCommit, onCancel }: { value: string; onCommit: (v: string, move: EditMove) => void; onCancel: () => void }) {
+  const [v, setV] = React.useState(value);
+  const ref = React.useRef(v);
+  React.useEffect(() => {
+    ref.current = v;
+  }, [v]);
+  return (
+    <div
+      onBlur={(e) => {
+        // chỉ lưu khi focus rời hẳn khỏi ô (không phải chuyển giữa các phần tử con)
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onCommit(ref.current, "none");
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onCommit(ref.current, "down");
+        else if (e.key === "Tab") {
+          e.preventDefault();
+          onCommit(ref.current, e.shiftKey ? "left" : "right");
+        } else if (e.key === "Escape") onCancel();
+      }}
+    >
+      <MonthInput autoFocus value={v} onChange={setV} className="h-7" />
+    </div>
+  );
+}
+
+function DateEditor({ value, onCommit, onCancel }: { value: string; onCommit: (v: string, move: EditMove) => void; onCancel: () => void }) {
+  const [v, setV] = React.useState(value);
+  const ref = React.useRef(v);
+  React.useEffect(() => {
+    ref.current = v;
+  }, [v]);
+  return (
+    <div
+      onKeyDown={(e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          onCommit(ref.current, e.shiftKey ? "left" : "right");
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          onCommit(ref.current, "down");
+        }
+      }}
+    >
+      <DateInput autoFocus value={v} onChange={setV} onCommit={(iso) => onCommit(iso, "none")} onCancel={onCancel} className="[&_input]:h-7" />
+    </div>
   );
 }
 

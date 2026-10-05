@@ -8,8 +8,11 @@ import { UserMenu } from "@/components/shell/user-menu";
 
 export default async function AppLayout({
   children,
+  modal,
 }: {
   children: React.ReactNode;
+  /** Slot popup (@modal) — Task/Campaign/SBU mở dạng popup đè lên trang hiện tại. */
+  modal: React.ReactNode;
 }) {
   const user = await requireUser();
 
@@ -60,6 +63,7 @@ export default async function AppLayout({
           </div>
         </header>
         <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 md:p-6">{children}</main>
+        {modal}
       </div>
     </div>
   );

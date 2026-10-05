@@ -11,6 +11,9 @@ import { StatCard } from "@/components/stat-card";
 import { buttonVariants } from "@/components/ui/button";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { calendarToken } from "@/lib/services/ics";
+import { listTasksScoped } from "@/lib/services/task-lists";
+import { MyTasksTabs } from "./my-tasks-tabs";
 import { QuickAddTask } from "./task/quick-add-task";
 import { TaskRow } from "./task/task-row";
 
@@ -36,6 +39,9 @@ export default async function DashboardPage() {
   const thisWeek = mine.filter((t) => t.dueDate && t.dueDate > tomorrow && t.dueDate <= weekEnd);
   const noDueDate = mine.filter((t) => !t.dueDate);
   const blocked = mine.filter((t) => t.status === "blocked");
+
+  // Cho Kanban/Lịch: việc của tôi đang mở + vừa xong (để cột "Xong" có dữ liệu).
+  const { rows: boardRows } = await listTasksScoped(db, { userId: user.id, sbuId: null, today }, { view: "mine", limit: 1000 });
 
   const collabRows = await db
     .select({ task: tasks })
@@ -77,47 +83,70 @@ export default async function DashboardPage() {
         <StatCard label="Đang bị chặn" value={blocked.length} icon={Ban} tone={blocked.length ? "warn" : "muted"} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <div className="space-y-6">
-          <Section
-            title="Cần làm hôm nay"
-            count={todayList.length}
-            tone={overdue.length ? "crit" : undefined}
-            empty="Tuyệt — không có việc nào trễ hạn hoặc đến hạn hôm nay."
-          >
-            {todayList.map((t) => (
-              <TaskRow key={t.id} task={t} today={today} />
-            ))}
-          </Section>
+      <MyTasksTabs
+        today={today}
+        userName={user.fullName}
+        icsUrl={`/api/export/ics?user=${user.id}&token=${calendarToken(user.id)}`}
+        tasks={boardRows.map((t) => ({
+          id: t.id,
+          code: t.code,
+          title: t.title,
+          type: t.type,
+          status: t.status,
+          priority: t.priority,
+          assigneeId: t.assigneeId,
+          dueDate: t.dueDate,
+          campaignId: t.campaignId,
+          blockedReason: t.blockedReason,
+          sourceType: t.sourceType,
+          channel: t.channel,
+        }))}
+        list={
+          <>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <div className="space-y-6">
+              <Section
+                title="Cần làm hôm nay"
+                count={todayList.length}
+                tone={overdue.length ? "crit" : undefined}
+                empty="Tuyệt — không có việc nào trễ hạn hoặc đến hạn hôm nay."
+              >
+                {todayList.map((t) => (
+                  <TaskRow key={t.id} task={t} today={today} />
+                ))}
+              </Section>
 
-          <Section title="Sắp tới (7 ngày)" count={upcoming.length} empty="Không có việc nào trong 7 ngày tới.">
-            {upcoming.map((t) => (
-              <TaskRow key={t.id} task={t} today={today} />
-            ))}
-          </Section>
+              <Section title="Sắp tới (7 ngày)" count={upcoming.length} empty="Không có việc nào trong 7 ngày tới.">
+                {upcoming.map((t) => (
+                  <TaskRow key={t.id} task={t} today={today} />
+                ))}
+              </Section>
 
-          {noDueDate.length > 0 && (
-            <Section title="Chưa có hạn" count={noDueDate.length} empty="">
-              {noDueDate.map((t) => (
-                <TaskRow key={t.id} task={t} today={today} />
-              ))}
-            </Section>
-          )}
-        </div>
+              {noDueDate.length > 0 && (
+                <Section title="Chưa có hạn" count={noDueDate.length} empty="">
+                  {noDueDate.map((t) => (
+                    <TaskRow key={t.id} task={t} today={today} />
+                  ))}
+                </Section>
+              )}
+            </div>
 
-        <div className="space-y-6">
-          <Section title="Tôi đang phối hợp" count={collabRows.length} empty="Chưa phối hợp task nào.">
-            {collabRows.map((r) => (
-              <TaskRow key={r.task.id} task={r.task} today={today} compact />
-            ))}
-          </Section>
-          <Section title="Tôi đang theo dõi" count={watchRows.length} empty="Chưa theo dõi task nào.">
-            {watchRows.map((r) => (
-              <TaskRow key={r.task.id} task={r.task} today={today} compact />
-            ))}
-          </Section>
-        </div>
-      </div>
+            <div className="space-y-6">
+              <Section title="Tôi đang phối hợp" count={collabRows.length} empty="Chưa phối hợp task nào.">
+                {collabRows.map((r) => (
+                  <TaskRow key={r.task.id} task={r.task} today={today} compact />
+                ))}
+              </Section>
+              <Section title="Tôi đang theo dõi" count={watchRows.length} empty="Chưa theo dõi task nào.">
+                {watchRows.map((r) => (
+                  <TaskRow key={r.task.id} task={r.task} today={today} compact />
+                ))}
+              </Section>
+            </div>
+          </div>
+          </>
+        }
+      />
     </div>
   );
 }

@@ -1,5 +1,15 @@
 import type { GridColumn } from "./types";
 
+/** Ngày xuất ra file luôn dd/mm/yyyy (kể cả cột ngày giờ → dd/mm/yyyy). */
+function exportValue(kind: string, raw: unknown): unknown {
+  if (raw instanceof Date) return raw.toISOString().slice(0, 10).split("-").reverse().join("/");
+  if ((kind === "date" || kind === "datetime") && typeof raw === "string") {
+    const m = /^(d{4})-(d{2})-(d{2})/.exec(raw);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  return raw;
+}
+
 /** Xuất đúng các dòng đang lọc + cột đang hiện (SPEC Mục 16.1). */
 export function rowsToCsv<Row>(
   rows: Row[],
@@ -17,7 +27,7 @@ export function rowsToCsv<Row>(
           const raw = c.accessor(r);
           if (c.kind === "enum" && c.enumLabels && typeof raw === "string")
             return esc(c.enumLabels[raw] ?? raw);
-          return esc(raw instanceof Date ? raw.toISOString() : raw);
+          return esc(exportValue(c.kind, raw));
         })
         .join(","),
     )
@@ -56,9 +66,7 @@ export async function downloadXlsx<Row>(
             o[c.field] =
               c.kind === "enum" && c.enumLabels && typeof raw === "string"
                 ? (c.enumLabels[raw] ?? raw)
-                : raw instanceof Date
-                  ? raw.toISOString().slice(0, 10)
-                  : (raw as unknown);
+                : exportValue(c.kind, raw);
           }
           return o;
         }),

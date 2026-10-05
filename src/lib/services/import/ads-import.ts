@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { adsCampaigns, adsEcomProducts, adsMetrics, sbus } from "@/lib/db/schema";
+import { adsCampaigns, adsEcomProducts, adsMetrics, sbus, users } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { ECOM_PRODUCTS } from "@/lib/ads-metrics";
 import { upsertAdsCampaign, upsertAdsMetric, upsertEcomProduct, type UpsertAdsMetricInput } from "../ads";
@@ -318,6 +318,7 @@ async function planMonth(db: DB, sheets: Record<string, ParsedRow[]>): Promise<A
 const CAMPAIGN_NUMS: NumSpec[] = [
   { col: "spend", label: "Chi phí" },
   { col: "spend_with_vat", label: "Chi phí gồm VAT" },
+  { col: "planned_budget", label: "NS kế hoạch" },
   { col: "messages", label: "Tin nhắn" },
   { col: "reach", label: "Người tiếp cận" },
   { col: "impressions", label: "Lượt hiển thị" },
@@ -326,11 +327,18 @@ const CAMPAIGN_NUMS: NumSpec[] = [
   { col: "engagements", label: "Tương tác" },
   { col: "reactions", label: "Cảm xúc" },
 ];
-const CAMPAIGN_FIELD: Record<string, string> = { spend_with_vat: "spendWithVat" };
+const CAMPAIGN_FIELD: Record<string, string> = { spend_with_vat: "spendWithVat", planned_budget: "plannedBudget" };
 
 async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise<AdsImportPlan> {
   const sbuByCode = await loadSbus(db);
   const parsed = sheets.REQUEST ?? [];
+  // Người chạy: khớp theo họ tên hoặc email (không phân biệt hoa/thường).
+  const userRows = await db.select({ id: users.id, fullName: users.fullName, email: users.email }).from(users).where(eq(users.active, true));
+  const userByKey = new Map<string, string>();
+  for (const u of userRows) {
+    userByKey.set(u.fullName.trim().toLowerCase(), u.id);
+    userByKey.set(u.email.trim().toLowerCase(), u.id);
+  }
   const months = [...new Set(parsed.map((r) => parseMonthCell(r.data.month)).filter((x): x is string => !!x))];
   const existing = months.length ? await db.select().from(adsCampaigns).where(inArray(adsCampaigns.period, months)) : [];
   const keyOf = (sbuId: string, period: string, name: string) => `${sbuId}|${period}|${name.trim().toLowerCase()}`;
@@ -351,6 +359,9 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
     const name = (r.data.campaign_name ?? "").trim();
     if (!name) errors.push("Thiếu campaign_name");
     const nums = readNumbers(r, CAMPAIGN_NUMS, errors);
+    const runnerText = (r.data.runner ?? "").trim();
+    const runnerId = runnerText ? userByKey.get(runnerText.toLowerCase()) : undefined;
+    if (runnerText && !runnerId) errors.push(`runner không khớp người dùng nào: "${runnerText}" (dùng họ tên hoặc email)`);
     const target = `${period ? MONTH_NAME(period) : "?"} · ${code || "?"} · ${name || "?"}`;
 
     const ex = sbuId && period && name ? existingByKey.get(keyOf(sbuId, period, name)) : undefined;
@@ -365,6 +376,7 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
     const fields: Record<string, string | null> = {};
     for (const [col, v] of Object.entries(nums)) if (col !== "spend") fields[CAMPAIGN_FIELD[col] ?? col] = v;
     if (r.data.misa_request_url) fields.misaRequestUrl = r.data.misa_request_url;
+    if (runnerId) fields.runnerId = runnerId;
     ops.push({ type: "campaign", id: ex?.id, sbuId, period, campaignName: name, fields, spend: nums.spend });
     rows.push({
       rowNumber: r.rowNumber,

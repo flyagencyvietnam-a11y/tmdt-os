@@ -1,14 +1,19 @@
 "use server";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   addMediaDeliverable,
   createMediaShoot,
   generateRecurringShoots,
+  updateMediaDeliverable,
+  updateMediaShoot,
   updateShootStatus,
   type AddDeliverableInput,
   type CreateShootInput,
+  type UpdateDeliverableInput,
+  type UpdateShootInput,
 } from "@/lib/services/media";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -66,6 +71,32 @@ export async function updateShootStatusAction(id: string, status: string): Promi
   if (!user) return { ok: false, error: "Không có quyền." };
   try {
     await updateShootStatus(db, id, status as never, user.id);
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function updateMediaShootAction(id: string, patch: UpdateShootInput): Promise<Result> {
+  const user = await requireEditor();
+  if (!user) return { ok: false, error: "Không có quyền." };
+  try {
+    await updateMediaShoot(db, id, patch, user.id);
+    revalidatePath("/quay-chup");
+    revalidatePath("/task");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function updateMediaDeliverableAction(id: string, patch: UpdateDeliverableInput): Promise<Result> {
+  const user = await requireEditor();
+  if (!user) return { ok: false, error: "Không có quyền." };
+  try {
+    await updateMediaDeliverable(db, id, patch, user.id);
+    revalidatePath("/quay-chup");
+    revalidatePath("/task");
     return { ok: true, data: undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };

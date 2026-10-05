@@ -1,6 +1,5 @@
 "use client";
 
-import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { CalendarDays, Columns3, List as ListIcon, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -13,8 +12,11 @@ import { LoadMore, ScopeChips, useUrlParam } from "@/components/scope-chips";
 import { TASK_VIEW_LABEL, type TaskView } from "@/lib/task-view";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { cn } from "@/lib/utils";
-import { createTaskAction, updateTaskAction } from "./actions";
-import { KanbanColumn } from "./kanban-column";
+import { createTaskAction } from "./actions";
+import { TaskKanban } from "./task-kanban";
+import { useSessionState } from "@/lib/use-session-state";
+import { DateInput } from "@/components/ui/date-input";
+import { isTaskOverdue } from "./task-style";
 import { TaskCalendar } from "./task-calendar";
 import { TaskGrid } from "./task-grid";
 import { todayVnDayStr } from "@/lib/time";
@@ -33,14 +35,6 @@ export interface TaskItem {
   sourceType: string;
   channel: string | null;
 }
-
-const STATUSES = [
-  { key: "todo", label: "Cần làm" },
-  { key: "in_progress", label: "Đang làm" },
-  { key: "in_review", label: "Chờ duyệt" },
-  { key: "blocked", label: "Bị chặn" },
-  { key: "done", label: "Xong" },
-] as const;
 
 export function TaskBoard({
   tasks,
@@ -71,11 +65,10 @@ export function TaskBoard({
   icsUrl?: string;
 }) {
   const router = useRouter();
-  const [view, setView] = React.useState<"list" | "kanban" | "calendar">("list");
+  // Chế độ xem (Danh sách/Kanban/Lịch) được nhớ theo tab: mở task rồi quay lại vẫn đúng chế độ đang xem.
+  const [view, setView] = useSessionState<"list" | "kanban" | "calendar">("task:layout", "list");
   const url = useUrlParam();
   const [createOpen, setCreateOpen] = React.useState(false);
-  const [pending, start] = React.useTransition();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const today = todayVnDayStr();
 
   const userName = (id: string | null) => users.find((u) => u.id === id)?.fullName ?? "—";
@@ -83,29 +76,7 @@ export function TaskBoard({
   // Phạm vi (view / người phụ trách / giới hạn) đã được SERVER lọc; bảng bên dưới lọc mịn thêm trên số đã tải.
   const visible = tasks;
 
-  const overdueCount = visible.filter((t) => t.dueDate && t.dueDate < today && t.status !== "done" && t.status !== "cancelled").length;
-
-  function move(id: string, status: string) {
-    start(async () => {
-      let blockedReason: string | undefined;
-      if (status === "blocked") {
-        blockedReason = window.prompt("Lý do bị chặn:") ?? undefined;
-        if (!blockedReason) return;
-      }
-      const res = await updateTaskAction(id, { status: status as never, blockedReason });
-      if (res.ok) router.refresh();
-      else toast.error(res.error);
-    });
-  }
-
-  function onDragEnd(e: DragEndEvent) {
-    const taskId = e.active.id as string;
-    const newStatus = e.over?.id as string | undefined;
-    if (!newStatus) return;
-    const t = tasks.find((x) => x.id === taskId);
-    if (!t || t.status === newStatus) return;
-    move(taskId, newStatus);
-  }
+  const overdueCount = visible.filter((t) => isTaskOverdue(t, today)).length;
 
   return (
     <div className="space-y-3">
@@ -166,23 +137,7 @@ export function TaskBoard({
       </div>
 
       {view === "list" && <TaskGrid rows={visible} users={users} campaigns={campaigns} canEdit canAssignOthers={canAssignOthers} />}
-      {view === "kanban" && (
-        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-          <div className="grid gap-3 md:grid-cols-5">
-            {STATUSES.map((col) => (
-              <KanbanColumn
-                key={col.key}
-                id={col.key}
-                label={col.label}
-                items={visible.filter((t) => t.status === col.key)}
-                userName={userName}
-                today={today}
-                disabled={pending}
-              />
-            ))}
-          </div>
-        </DndContext>
-      )}
+      {view === "kanban" && <TaskKanban tasks={visible} userName={userName} today={today} />}
       {view === "calendar" && <TaskCalendar tasks={visible} icsUrl={icsUrl} />}
 
       <LoadMore shown={visible.length} total={total} step={pageSize} />
@@ -282,7 +237,7 @@ function CreateTaskDialog({
               />
             </F>
             <F label="Hạn">
-              <Input type="date" value={f.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+              <DateInput value={f.dueDate} onChange={(v) => set("dueDate", v)} />
             </F>
             <F label="Campaign (tuỳ chọn)">
               <SimpleSelect

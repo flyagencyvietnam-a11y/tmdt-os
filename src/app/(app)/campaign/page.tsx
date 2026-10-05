@@ -1,7 +1,7 @@
-import { desc, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, notInArray, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { campaigns, tasks } from "@/lib/db/schema";
+import { campaigns, tasks, users } from "@/lib/db/schema";
 import { overdueSqlFragment } from "@/lib/services/tasks";
 import { todayVnDayStr } from "@/lib/time";
 import { CampaignList } from "./campaign-list";
@@ -17,8 +17,11 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
   // Mặc định ẩn campaign đã xong/huỷ để danh sách chỉ còn những gì đang cần theo dõi.
   const scope = scopeParam === "all" ? "all" : "current";
   const today = todayVnDayStr();
-  const [rows, [{ all, closed }], taskStats] = await Promise.all([
-    scope === "all" ? db.select().from(campaigns).orderBy(desc(campaigns.startDate)) : db.select().from(campaigns).where(notInArray(campaigns.status, ["done", "cancelled"])).orderBy(desc(campaigns.startDate)),
+  const [rows, [{ all, closed }], taskStats, allUsers] = await Promise.all([
+    // Mặc định theo thời gian diễn ra: campaign bắt đầu sớm nhất lên trước.
+    scope === "all"
+      ? db.select().from(campaigns).where(isNull(campaigns.deletedAt)).orderBy(asc(campaigns.startDate), asc(campaigns.endDate))
+      : db.select().from(campaigns).where(and(isNull(campaigns.deletedAt), notInArray(campaigns.status, ["done", "cancelled"]))).orderBy(asc(campaigns.startDate), asc(campaigns.endDate)),
     db.select({ all: sql<number>`count(*)::int`, closed: sql<number>`(count(*) filter (where ${campaigns.status} in ('done','cancelled')))::int` }).from(campaigns).where(isNull(campaigns.deletedAt)),
     db
       .select({
@@ -30,6 +33,7 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
       .from(tasks)
       .where(isNull(tasks.deletedAt))
       .groupBy(tasks.campaignId),
+    db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
   ]);
 
   const statsByCampaign = new Map(taskStats.filter((s) => s.campaignId).map((s) => [s.campaignId as string, s]));
@@ -59,12 +63,16 @@ export default async function CampaignPage({ searchParams }: { searchParams: Pro
             startDate: c.startDate,
             endDate: c.endDate,
             status: c.status,
+            ownerId: c.ownerId,
             taskTotal: total,
             taskDone: done,
             progressPct: total > 0 ? Math.round((done / total) * 100) : null,
             overdueCount: Number(s?.overdue ?? 0),
           };
         })}
+        users={allUsers}
+        currentUserId={user.id}
+        today={today}
         canEdit={user.role === "admin" || user.role === "manager"}
       />
     </div>

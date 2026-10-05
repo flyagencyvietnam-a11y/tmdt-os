@@ -1,6 +1,8 @@
 "use client";
 
-import { CalendarPlus, Coins, MessageCircle, Pencil, Target } from "lucide-react";
+import { CalendarPlus, Coins, MessageCircle, Target } from "lucide-react";
+import { useSessionState } from "@/lib/use-session-state";
+import { DateInput } from "@/components/ui/date-input";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, Line as RLine, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -12,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { upsertAdsMetricAction } from "./actions";
+import { InlineNum, useMetricSaver } from "./ads-inline";
 import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle, Sparkline } from "./charts";
 import { aggregate, change, derive, fmt, fmtMoney, nextWeek, num, spendOf, weekLabel, weekShort, type MetricRow, type SbuLite } from "./shared";
 
@@ -37,8 +40,9 @@ interface RowDef {
  */
 export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: MetricRow[]; sbus: SbuLite[]; canManage: boolean; weeks: string[] }) {
   const router = useRouter();
-  const [range, setRange] = React.useState<(typeof RANGES)[number]>(8);
-  const [metric, setMetric] = React.useState<WeekMetric>("spend");
+  const saveMetric = useMetricSaver();
+  const [range, setRange] = useSessionState<(typeof RANGES)[number]>("ads:week:range", 8);
+  const [metric, setMetric] = useSessionState<WeekMetric>("ads:week:metric", "spend");
   const [extraWeeks, setExtraWeeks] = React.useState<string[]>([]);
   const [editing, setEditing] = React.useState<{ row: MetricRow | null; sbuId: string | null; label: string; week: string } | null>(null);
 
@@ -162,7 +166,7 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
           <div className="mr-auto">
             <h3 className="text-sm font-semibold">Bảng theo dõi tuần — {METRIC_LABEL[metric]}</h3>
             <p className="text-xs text-muted-foreground">
-              Ô càng đậm = càng cao trong hàng{metric === "costPerMess" ? " (đỏ: chi phí cao là xấu)" : ""}. {canManage ? "Bấm vào ô để sửa số." : ""}
+              Ô càng đậm = càng cao trong hàng{metric === "costPerMess" ? " (đỏ: chi phí cao là xấu)" : ""}. {canManage ? "Bấm vào ô để sửa số ngay trên bảng (Enter xuống dòng, Tab sang tuần kế)." : ""}
             </p>
           </div>
           <Segmented value={metric} onChange={setMetric} options={(Object.keys(METRIC_LABEL) as WeekMetric[]).map((k) => ({ value: k, label: METRIC_LABEL[k] }))} />
@@ -198,20 +202,26 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
                       const v = vals[i];
                       const editable = canManage && rd.target;
                       const src = rd.target ? rd.pick(inWeek(w))[0] ?? null : null;
+                      const inline = !!editable && metric !== "costPerMess";
+                      const rawField = metric === "messages" ? "messages" : rd.target?.sbuId ? "centerOrderBudget" : "budget";
+                      const shown = v == null ? <span className="text-muted-foreground/50">{editable ? "＋" : "—"}</span> : metric === "messages" ? fmt(v) : fmtMoney(v);
                       return (
                         <td
                           key={w}
                           style={rd.strong ? undefined : heatStyle(v, min, max, metric === "costPerMess")}
-                          className={cn("group whitespace-nowrap px-2 py-1.5 text-right tabular-nums", editable && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
-                          onClick={() => editable && setEditing({ row: src, sbuId: rd.target!.sbuId, label: rd.label, week: w })}
+                          className={cn("group whitespace-nowrap px-2 py-1.5 text-right tabular-nums", editable && !inline && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
+                          onClick={() => editable && !inline && setEditing({ row: src, sbuId: rd.target!.sbuId, label: rd.label, week: w })}
                           title={src && spendOf(src) != null ? `Ngân sách ${fmt(spendOf(src))} · ${fmt(src.messages)} mess` : undefined}
                         >
-                          {v == null ? (
-                            <span className="text-muted-foreground/50">{editable ? <Pencil className="ml-auto h-3 w-3 opacity-0 group-hover:opacity-60" /> : "—"}</span>
-                          ) : metric === "messages" ? (
-                            fmt(v)
+                          {inline ? (
+                            <InlineNum
+                              value={src?.[rawField as "budget" | "centerOrderBudget" | "messages"] ?? null}
+                              display={shown}
+                              title={`Sửa ${metric === "messages" ? "số mess" : "ngân sách"} — ${rd.label}, tuần ${weekLabel(w)}`}
+                              onSave={(val) => saveMetric(src, { line: rd.target!.sbuId ? "b2c_center" : "b2c_system", periodType: "week", period: w, sbuId: rd.target!.sbuId }, rawField as "budget", val)}
+                            />
                           ) : (
-                            fmtMoney(v)
+                            shown
                           )}
                         </td>
                       );
@@ -274,7 +284,7 @@ function AddWeekButton({ suggested, onAdd }: { suggested?: string; onAdd: (week:
             <DialogTitle>Thêm tuần báo cáo</DialogTitle>
             <DialogDescription>Tuần tính từ Thứ 7 đến hết Thứ 6. Chọn ngày Thứ 7 bắt đầu tuần.</DialogDescription>
           </DialogHeader>
-          <Input type="date" value={val} onChange={(e) => setVal(e.target.value)} />
+          <DateInput value={val} onChange={setVal} />
           {val && !isSaturday && <p className="text-xs text-red-600">Ngày này không phải Thứ 7.</p>}
           {isSaturday && <p className="text-xs text-muted-foreground">Tuần {weekLabel(val)}</p>}
           <Button

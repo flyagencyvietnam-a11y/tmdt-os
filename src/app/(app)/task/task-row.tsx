@@ -1,5 +1,6 @@
 "use client";
 
+import { Repeat } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -9,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { updateTaskAction } from "./actions";
+import { isTaskOverdue, isTaskRecurring, ROW_TONE_CLASS } from "./task-style";
 
 export interface TaskRowData {
   id: string;
@@ -17,6 +19,7 @@ export interface TaskRowData {
   status: string;
   priority: string;
   dueDate: string | null;
+  sourceType?: string | null;
 }
 
 const PRIORITY_LABEL: Record<string, string> = { urgent: "Gấp", high: "Cao", medium: "TB", low: "Thấp" };
@@ -24,7 +27,8 @@ const PRIORITY_LABEL: Record<string, string> = { urgent: "Gấp", high: "Cao", m
 export function TaskRow({ task, today, compact }: { task: TaskRowData; today: string; compact?: boolean }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
-  const overdue = !!task.dueDate && task.dueDate < today && task.status !== "done" && task.status !== "cancelled";
+  const overdue = isTaskOverdue(task, today);
+  const recurring = isTaskRecurring(task);
 
   function toggleDone(checked: boolean) {
     start(async () => {
@@ -35,11 +39,14 @@ export function TaskRow({ task, today, compact }: { task: TaskRowData; today: st
   }
 
   return (
-    <div className={cn("group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40", overdue && "bg-red-500/[0.03]")}>
+    <div className={cn("group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40", overdue ? ROW_TONE_CLASS.overdue : recurring && ROW_TONE_CLASS.recurring)}>
       <Checkbox checked={task.status === "done"} onCheckedChange={(v) => toggleDone(v === true)} disabled={pending} />
       <span className={cn("h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[task.priority] ?? "bg-muted-foreground/30")} title={`Ưu tiên: ${PRIORITY_LABEL[task.priority] ?? task.priority}`} />
       <Link href={`/task/${task.id}`} className="min-w-0 flex-1">
-        <span className={cn("block truncate text-sm group-hover:text-brand", task.status === "done" && "text-muted-foreground line-through")}>{task.title}</span>
+        <span className={cn("flex items-center gap-1.5 truncate text-sm group-hover:text-brand", task.status === "done" && "text-muted-foreground line-through")}>
+          {recurring && <Repeat className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" aria-label="Việc lặp lại" />}
+          <span className="truncate">{task.title}</span>
+        </span>
         {!compact && <span className="block text-[11px] text-muted-foreground">{task.code}</span>}
       </Link>
       {task.status === "blocked" && (
@@ -67,7 +74,7 @@ function DueLabel({ due, today, overdue }: { due: string; today: string; overdue
       title={fmtDate(due)}
       className={cn(
         "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
-        overdue ? "bg-red-500/10 text-red-600 dark:text-red-400" : diff === 0 ? "bg-brand/10 text-brand" : "text-muted-foreground",
+        overdue ? "bg-red-600 text-white" : diff === 0 ? "bg-brand/10 text-brand" : "text-muted-foreground",
       )}
     >
       {label}

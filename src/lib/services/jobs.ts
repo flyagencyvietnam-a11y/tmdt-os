@@ -3,6 +3,7 @@
  * Mỗi hàm idempotent trong ngày (dedupeKey). Gọi từ cron hoặc nút "chạy ngay" của admin.
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
+import { fmtDate } from "@/lib/format";
 import type { DB } from "@/lib/db";
 import { tasks, users } from "@/lib/db/schema";
 import { diffDaysStr, todayVnDayStr } from "@/lib/time";
@@ -121,7 +122,7 @@ export async function runOverdueMorning(db: DB, now = new Date()): Promise<JobRe
         userId: uid,
         kind: "overdue",
         title: `Bạn có ${list.length} task trễ hạn`,
-        body: list.map((t) => `- ${t.title} (hạn ${t.dueDate})`).join("\n"),
+        body: list.map((t) => `- ${t.title} (hạn ${fmtDate(t.dueDate)})`).join("\n"),
         dedupeKey: `overdue:${uid}:${today}`,
       })
     )
@@ -131,7 +132,7 @@ export async function runOverdueMorning(db: DB, now = new Date()): Promise<JobRe
       await sendMail({
         to,
         subject: `[MKT OS] ${list.length} task trễ hạn`,
-        text: list.map((t) => `- ${t.title} (hạn ${t.dueDate})`).join("\n"),
+        text: list.map((t) => `- ${t.title} (hạn ${fmtDate(t.dueDate)})`).join("\n"),
       });
       emailsSent++;
     }
@@ -154,7 +155,7 @@ export async function runEscalateToManagers(db: DB, now = new Date()): Promise<J
   const created = await notifyMany(db, managers, {
     kind: "escalation",
     title: `${stale.length} task trễ hạn >= 2 ngày làm việc`,
-    body: stale.map((t) => `- ${t.title} (hạn ${t.dueDate})`).join("\n"),
+    body: stale.map((t) => `- ${t.title} (hạn ${fmtDate(t.dueDate)})`).join("\n"),
     dedupeKey: `escalation:${week}`,
   });
   return { job: "escalate-managers", createdNotifications: created, affected: stale.length };
@@ -182,7 +183,7 @@ export async function runDailyDigest(db: DB, now = new Date()): Promise<JobResul
     ]
       .filter(Boolean)
       .join("\n\n");
-    const r = await sendMail({ to: u.email, subject: `[MKT OS] Tóm tắt công việc ${today}`, text });
+    const r = await sendMail({ to: u.email, subject: `[MKT OS] Tóm tắt công việc ${fmtDate(today)}`, text });
     if (r.sent) emailsSent++;
   }
   return { job: "daily-digest", createdNotifications: 0, affected: activeUsers.length, emailsSent };
@@ -199,7 +200,7 @@ export async function runWeeklySummary(db: DB, now = new Date()): Promise<JobRes
     .limit(1);
   const created = await notifyMany(db, managers, {
     kind: "digest_weekly",
-    title: `Tổng kết tuần (${today})`,
+    title: `Tổng kết tuần (${fmtDate(today)})`,
     body: openTask ? "Xem Dashboard quản lý để biết chi tiết tải công việc." : "Không có task mở.",
     dedupeKey: `weekly:${today}`,
   });

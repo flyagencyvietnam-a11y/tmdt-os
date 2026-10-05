@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { sbus } from "@/lib/db/schema";
-import { computeAlert, listMonitoringItems, nextDueDate } from "@/lib/services/monitoring";
+import { computeAlert, lastCheckNotes, listMonitoringItems, listPhotoMeta, nextDueDate } from "@/lib/services/monitoring";
 import { MonitoringView } from "./monitoring-view";
 import { PageHeader } from "@/components/shell/page-header";
 
@@ -15,14 +15,19 @@ export default async function MonitoringPage() {
   const user = await requireUser();
   if (!canSee(user.role, "monitoring")) redirect("/khong-co-quyen");
 
-  const [items, allSbus] = await Promise.all([
+  const [items, allSbus, photos, checks] = await Promise.all([
     listMonitoringItems(db),
-    db.select({ id: sbus.id, code: sbus.code }).from(sbus).where(eq(sbus.active, true)),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, region: sbus.region }).from(sbus).where(eq(sbus.active, true)).orderBy(asc(sbus.code)),
+    listPhotoMeta(db),
+    lastCheckNotes(db),
   ]);
+
+  const photosByItem = new Map<string, typeof photos>();
+  for (const p of photos) (photosByItem.get(p.itemId) ?? photosByItem.set(p.itemId, []).get(p.itemId)!).push(p);
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Giám sát thay mới định kỳ" description="POSM, bảng hiệu, OOH, Google Maps, quầy tư vấn, phòng thi — cảnh báo khi quá hạn/sắp đến hạn và tự giao việc." />
+      <PageHeader title="Giám sát hạng mục" description="Theo dõi từng SBU: mở một SBU để xem hiện trạng POSM, bảng hiệu, OOH, Google Maps… kèm ảnh chụp thực tế, ngày rà soát và cảnh báo khi quá hạn." />
       <MonitoringView
         items={items.map((i) => ({
           id: i.id,
@@ -35,8 +40,11 @@ export default async function MonitoringPage() {
           photoUrl: i.photoUrl,
           alert: computeAlert(i),
           nextDue: nextDueDate(i),
+          checkCount: checks.get(i.id)?.n ?? 0,
+          photos: (photosByItem.get(i.id) ?? []).map((p) => ({ id: p.id, caption: p.caption, bytes: p.bytes, width: p.width, height: p.height, createdAt: p.createdAt.toISOString() })),
         }))}
         sbus={allSbus}
+        canEdit={user.role === "admin" || user.role === "manager" || user.role === "member"}
         canManage={user.role === "admin" || user.role === "manager"}
       />
     </div>

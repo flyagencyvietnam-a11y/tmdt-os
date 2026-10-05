@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { monitoringItems, sbus, tasks, type MonitoringItem } from "@/lib/db/schema";
+import { monitoringChecks, monitoringItems, monitoringPhotos, sbus, tasks, type MonitoringItem } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { createTask, updateTask } from "./tasks";
 import { addDaysStr, todayVnDayStr } from "@/lib/time";
@@ -82,11 +82,149 @@ export async function markMonitoringRefreshed(
       updatedBy: actorId,
     })
     .where(eq(monitoringItems.id, id));
+  // Nhật ký rà soát: mỗi lần ghi nhận = 1 dòng (kể cả "đã rà review Google Maps ngày …").
+  await db.insert(monitoringChecks).values({ itemId: id, checkedOn: input.lastUpdatedDate, note: input.note ?? null, createdBy: actorId });
   // Đã cập nhật -> nếu có task đang mở gắn với mục này thì đóng lại.
   if (item.lastTaskId) {
     await updateTask(db, item.lastTaskId, { status: "done" }, actorId, { trackManualEdit: false }).catch(() => {});
   }
   await writeAudit(db, { actorId, entity: "monitoring_items", entityId: id, action: "UPDATE", changes: { lastUpdatedDate: input.lastUpdatedDate } });
+}
+
+export interface UpdateMonitoringInput {
+  title?: string;
+  kind?: MonitoringItem["kind"];
+  currentStateNote?: string | null;
+  cycleMonths?: number;
+  photoUrl?: string | null;
+  lastUpdatedDate?: string | null;
+}
+
+export async function updateMonitoringItem(db: DB, id: string, patch: UpdateMonitoringInput, actorId: string | null) {
+  const set: Partial<typeof monitoringItems.$inferInsert> = { updatedBy: actorId };
+  if (patch.title !== undefined) set.title = patch.title;
+  if (patch.kind !== undefined) set.kind = patch.kind;
+  if (patch.currentStateNote !== undefined) set.currentStateNote = patch.currentStateNote;
+  if (patch.cycleMonths !== undefined) set.cycleMonths = Math.max(1, Math.round(patch.cycleMonths));
+  if (patch.photoUrl !== undefined) set.photoUrl = patch.photoUrl;
+  if (patch.lastUpdatedDate !== undefined) set.lastUpdatedDate = patch.lastUpdatedDate;
+  await db.update(monitoringItems).set(set).where(eq(monitoringItems.id, id));
+  await writeAudit(db, { actorId, entity: "monitoring_items", entityId: id, action: "UPDATE", changes: patch as Record<string, unknown> });
+}
+
+export async function deleteMonitoringItem(db: DB, id: string, actorId: string | null) {
+  // Ảnh + nhật ký rà soát xoá theo (ON DELETE CASCADE). Task cảnh báo cũ giữ nguyên.
+  await db.delete(monitoringItems).where(eq(monitoringItems.id, id));
+  await writeAudit(db, { actorId, entity: "monitoring_items", entityId: id, action: "DELETE" });
+}
+
+/** Thêm nhanh nhiều hạng mục cùng loại cho 1 SBU (mỗi tên 1 dòng). Bỏ qua tên trống / đã có sẵn. */
+export async function bulkCreateMonitoringItems(
+  db: DB,
+  input: { sbuId: string; kind: MonitoringItem["kind"]; titles: string[]; cycleMonths?: number },
+  actorId: string | null,
+): Promise<number> {
+  const existing = await db.select({ title: monitoringItems.title }).from(monitoringItems).where(eq(monitoringItems.sbuId, input.sbuId));
+  const have = new Set(existing.map((e) => e.title.trim().toLowerCase()));
+  const seen = new Set<string>();
+  const titles = input.titles
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => {
+      const k = t.toLowerCase();
+      if (have.has(k) || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  if (titles.length === 0) return 0;
+  const rows = await db
+    .insert(monitoringItems)
+    .values(titles.map((title) => ({ sbuId: input.sbuId, kind: input.kind, title, cycleMonths: input.cycleMonths ?? 12, createdBy: actorId })))
+    .returning({ id: monitoringItems.id });
+  for (const r of rows) await writeAudit(db, { actorId, entity: "monitoring_items", entityId: r.id, action: "CREATE" });
+  return rows.length;
+}
+
+export interface PhotoMeta {
+  id: string;
+  itemId: string;
+  caption: string | null;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  createdAt: Date;
+}
+
+/** Siêu dữ liệu ảnh (KHÔNG kèm nội dung ảnh) để trang liệt kê nhẹ. */
+export async function listPhotoMeta(db: DB): Promise<PhotoMeta[]> {
+  return db
+    .select({
+      id: monitoringPhotos.id,
+      itemId: monitoringPhotos.itemId,
+      caption: monitoringPhotos.caption,
+      bytes: monitoringPhotos.bytes,
+      width: monitoringPhotos.width,
+      height: monitoringPhotos.height,
+      createdAt: monitoringPhotos.createdAt,
+    })
+    .from(monitoringPhotos)
+    .orderBy(monitoringPhotos.createdAt);
+}
+
+export async function addMonitoringPhoto(
+  db: DB,
+  input: { itemId: string; mime: string; data: Buffer; thumb: Buffer; width?: number | null; height?: number | null; caption?: string | null },
+  actorId: string | null,
+) {
+  const [row] = await db
+    .insert(monitoringPhotos)
+    .values({
+      itemId: input.itemId,
+      mime: input.mime,
+      data: input.data,
+      thumb: input.thumb,
+      width: input.width ?? null,
+      height: input.height ?? null,
+      bytes: input.data.length,
+      caption: input.caption ?? null,
+      createdBy: actorId,
+    })
+    .returning({ id: monitoringPhotos.id });
+  return row;
+}
+
+export async function getMonitoringPhotoBytes(db: DB, id: string, size: "thumb" | "full") {
+  const [row] = await db
+    .select({ mime: monitoringPhotos.mime, data: size === "thumb" ? monitoringPhotos.thumb : monitoringPhotos.data })
+    .from(monitoringPhotos)
+    .where(eq(monitoringPhotos.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function updatePhotoCaption(db: DB, id: string, caption: string | null) {
+  await db.update(monitoringPhotos).set({ caption }).where(eq(monitoringPhotos.id, id));
+}
+
+export async function deleteMonitoringPhoto(db: DB, id: string) {
+  await db.delete(monitoringPhotos).where(eq(monitoringPhotos.id, id));
+}
+
+export async function listMonitoringChecks(db: DB, itemId: string, limit = 30) {
+  return db.select().from(monitoringChecks).where(eq(monitoringChecks.itemId, itemId)).orderBy(desc(monitoringChecks.checkedOn), desc(monitoringChecks.createdAt)).limit(limit);
+}
+
+/** Số lần rà soát gần nhất của mỗi hạng mục (cho danh sách). */
+export async function lastCheckNotes(db: DB): Promise<Map<string, { checkedOn: string; note: string | null; n: number }>> {
+  const rows = await db
+    .select({
+      itemId: monitoringChecks.itemId,
+      n: sql<number>`count(*)::int`,
+      checkedOn: sql<string>`max(${monitoringChecks.checkedOn})`,
+    })
+    .from(monitoringChecks)
+    .groupBy(monitoringChecks.itemId);
+  return new Map(rows.map((r) => [r.itemId, { checkedOn: r.checkedOn, note: null, n: Number(r.n) }]));
 }
 
 /**

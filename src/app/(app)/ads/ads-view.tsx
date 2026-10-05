@@ -4,6 +4,7 @@ import * as React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
 import { todayVnDayStr } from "@/lib/time";
+import { useSessionState } from "@/lib/use-session-state";
 import { computeAdsAlerts, type AdsAlert } from "./alerts";
 import { DisbursementPanel } from "./disbursement-panel";
 import { MonthPicker, QuarterPicker } from "./ads-ui";
@@ -29,6 +30,7 @@ export function AdsView({
   metrics,
   sbus,
   campaigns,
+  users,
   ecomProducts,
   disbursementPlan,
   canManage,
@@ -39,6 +41,7 @@ export function AdsView({
   metrics: MetricRow[];
   sbus: SbuLite[];
   campaigns: CampaignRow[];
+  users: { id: string; fullName: string }[];
   ecomProducts: EcomProductRow[];
   disbursementPlan: DisbursementRow[];
   canManage: boolean;
@@ -48,11 +51,12 @@ export function AdsView({
 }) {
   const months = React.useMemo(() => [...new Set(metrics.filter((m) => m.periodType === "month").map((m) => m.period))].sort(), [metrics]);
   // Mặc định: tháng gần nhất CÓ dữ liệu (đầu tháng mới thường chưa có số).
-  const [month, setMonth] = React.useState(() => months[months.length - 1] ?? currentMonth);
-  const [tab, setTab] = React.useState<Tab>("overview");
-  const [mode, setMode] = React.useState<"month" | "quarter">("month");
+  // Tab / tháng / quý đang xem được nhớ theo tab trình duyệt (Back quay về đúng chỗ).
+  const [month, setMonth] = useSessionState<string>("ads:month", months[months.length - 1] ?? currentMonth);
+  const [tab, setTab] = useSessionState<Tab>("ads:tab", "overview");
+  const [mode, setMode] = useSessionState<"month" | "quarter">("ads:mode", "month");
   const quarters = React.useMemo(() => [...new Set(months.map(quarterKey))].sort(), [months]);
-  const [quarter, setQuarter] = React.useState(() => quarterKey(months[months.length - 1] ?? currentMonth));
+  const [quarter, setQuarter] = useSessionState<string>("ads:quarter", quarterKey(months[months.length - 1] ?? currentMonth));
 
   // Tổng quan: 1 tháng hoặc 1 quý (cộng 3 dòng tháng — không bao giờ cộng từ dữ liệu tuần).
   const range: OverviewRange = React.useMemo(() => {
@@ -129,7 +133,7 @@ export function AdsView({
       </TabsContent>
 
       <TabsContent value="request" className="pt-4">
-        <RequestsView campaigns={campaigns} sbus={sbus} canManage={canManage} />
+        <RequestsView campaigns={campaigns} sbus={sbus} users={users} canManage={canManage} />
       </TabsContent>
 
       <TabsContent value="disbursement" className="pt-4">

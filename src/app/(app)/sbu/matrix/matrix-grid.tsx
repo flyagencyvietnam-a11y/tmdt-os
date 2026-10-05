@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { MonthInput } from "@/components/ui/date-input";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -45,12 +47,7 @@ export function MatrixGrid({
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <label className="text-sm text-muted-foreground">Kỳ:</label>
-        <input
-          type="month"
-          value={month}
-          onChange={(e) => changeMonth(e.target.value)}
-          className="rounded-md border px-2 py-1 text-sm"
-        />
+        <MonthInput value={month} onChange={changeMonth} className="h-8 w-28" />
       </div>
       <div className="overflow-x-auto rounded-xl border bg-card shadow-xs">
         <table className="w-full border-collapse text-left text-sm">
@@ -92,9 +89,9 @@ export function MatrixGrid({
                   return (
                     <td key={s.id} className="px-2 py-2 text-center">
                       {cell?.taskId ? (
-                        <a href={`/task/${cell.taskId}`} className="hover:opacity-80">
+                        <Link href={`/task/${cell.taskId}`} className="hover:opacity-80">
                           {content}
-                        </a>
+                        </Link>
                       ) : (
                         content
                       )}

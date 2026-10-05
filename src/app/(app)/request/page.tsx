@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, isNull, notInArray, or, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { requests, sbus } from "@/lib/db/schema";
+import { requests, sbus, tasks, users } from "@/lib/db/schema";
 import { RequestBoard } from "./request-board";
 import { CheckCircle2, Inbox, Loader, Sparkles } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
@@ -25,7 +25,13 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
   const scoped = scope === "all" ? base : and(base, or(notInArray(requests.status, ["done", "rejected"]), gte(sql`coalesce(${requests.completedDate}, ${requests.updatedAt}::date)`, since)));
 
   const [rows, [{ n }], [agg]] = await Promise.all([
-    db.select().from(requests).where(scoped).orderBy(desc(requests.receivedDate)).limit(limit),
+    db
+      .select({ r: requests, executorId: tasks.assigneeId })
+      .from(requests)
+      .leftJoin(tasks, eq(tasks.id, requests.taskId))
+      .where(scoped)
+      .orderBy(sql`${requests.committedDate} asc nulls last`, desc(requests.receivedDate))
+      .limit(limit),
     db.select({ n: sql<number>`count(*)::int` }).from(requests).where(scoped),
     // Thẻ thống kê tính trên TOÀN BỘ request (không phụ thuộc phạm vi đang xem).
     db
@@ -39,7 +45,10 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
       .where(base),
   ]);
 
-  const allSbus = await db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus);
+  const [allSbus, allUsers] = await Promise.all([
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus),
+    db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
+  ]);
 
   const stats = { total: Number(agg.total), new: Number(agg.new), inProgress: Number(agg.inProgress), done: Number(agg.done) };
   const total = Number(n);
@@ -63,8 +72,9 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
         ]}
       />
       <RequestBoard
-        requests={rows.map((r) => ({
+        requests={rows.map(({ r, executorId }) => ({
           id: r.id,
+          executorId: executorId ?? r.acceptedById,
           code: r.code,
           receivedDate: r.receivedDate,
           requesterName: r.requesterName,
@@ -76,6 +86,7 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
           desiredDate: r.desiredDate,
         }))}
         sbus={allSbus}
+        users={allUsers}
         canManage={user.role === "admin" || user.role === "manager"}
       />
       <LoadMore shown={rows.length} total={total} step={PAGE_SIZE} />

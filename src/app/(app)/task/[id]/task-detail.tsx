@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, History, ListChecks, MessageSquare, Repeat } from "lucide-react";
+import { DateInput } from "@/components/ui/date-input";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -15,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { todayVnDayStr } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { useInRouteModal } from "@/components/shell/route-modal";
 import { addCommentAction, toggleChecklistItemAction, updateTaskAction } from "../actions";
 
 interface TaskFull {
@@ -111,6 +113,7 @@ export function TaskDetail({
   canAssignOthers: boolean;
 }) {
   const router = useRouter();
+  const inModal = useInRouteModal();
   const [pending, start] = React.useTransition();
   const [commentText, setCommentText] = React.useState("");
   const [showActivity, setShowActivity] = React.useState(false);
@@ -155,9 +158,16 @@ export function TaskDetail({
 
   return (
     <div className="space-y-4">
-      <Link href="/task" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3.5 w-3.5" /> Tất cả task
-      </Link>
+      {!inModal && (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          // Quay lại ĐÚNG trang trước đó (giữ nguyên Kanban/lọc/vị trí); chỉ khi mở thẳng bằng link mới về danh sách.
+          onClick={() => (window.history.length > 1 ? router.back() : router.push("/task"))}
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Quay lại
+        </button>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-4">
@@ -352,10 +362,10 @@ export function TaskDetail({
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Bắt đầu">
-              <Input type="date" defaultValue={task.startDate ?? ""} onChange={(e) => patch({ startDate: e.target.value || null })} />
+              <DateInput value={task.startDate ?? ""} onChange={(v) => patch({ startDate: v || null })} />
             </Field>
             <Field label="Hạn">
-              <Input type="date" defaultValue={task.dueDate ?? ""} className={cn(overdueDays > 0 && "border-red-400 text-red-700 dark:text-red-400")} onChange={(e) => patch({ dueDate: e.target.value || null })} />
+              <DateInput value={task.dueDate ?? ""} className={cn(overdueDays > 0 && "[&_input]:border-red-400 [&_input]:text-red-700 dark:[&_input]:text-red-400")} onChange={(v) => patch({ dueDate: v || null })} />
             </Field>
           </div>
 

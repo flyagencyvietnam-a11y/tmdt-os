@@ -1,6 +1,8 @@
 "use client";
 
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ExternalLink, List as ListIcon, Newspaper, Pencil, Plus, Upload, X } from "lucide-react";
+import { useSessionState } from "@/lib/use-session-state";
+import { DateInput } from "@/components/ui/date-input";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -103,9 +105,9 @@ export function ContentCalendarView({
 }) {
   const router = useRouter();
   const [dialog, setDialog] = React.useState<{ mode: "create" } | { mode: "edit"; id: string } | null>(() => (initialOpenId && items.some((i) => i.id === initialOpenId) ? { mode: "edit", id: initialOpenId } : null));
-  const [view, setView] = React.useState<"list" | "calendar">("list");
-  const [brandFilter, setBrandFilter] = React.useState<string[]>([]);
-  const [channelFilter, setChannelFilter] = React.useState<string[]>([]);
+  const [view, setView] = useSessionState<"list" | "calendar">("content:view", "list");
+  const [brandFilter, setBrandFilter] = useSessionState<string[]>("content:brands", []);
+  const [channelFilter, setChannelFilter] = useSessionState<string[]>("content:channels", []);
   const [pending, start] = React.useTransition();
 
   const brandCode = React.useCallback((id: string) => brands.find((b) => b.id === id)?.code ?? "", [brands]);
@@ -549,7 +551,7 @@ function ContentDialog({
               <TagMultiSelect value={f.channels} onChange={(v) => set("channels", v)} options={channelOptions} placeholder="Chọn 1 hoặc nhiều kênh" primaryHint="Kênh chính" />
             </F>
             <F label="Ngày đăng *">
-              <Input type="date" value={f.publishDate} onChange={(e) => set("publishDate", e.target.value)} />
+              <DateInput value={f.publishDate} onChange={(v) => set("publishDate", v)} />
             </F>
             <F label="Người phụ trách">
               <SimpleSelect value={f.ownerId} onValueChange={(v) => set("ownerId", v ?? "")} placeholder="Chọn người" options={users.map((u) => ({ value: u.id, label: u.fullName ?? "" }))} />

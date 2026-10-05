@@ -866,4 +866,24 @@ Lưu ý: phê duyệt chính thức vẫn qua email theo cơ chế đã ban hàn
 
 ---
 
+## PHỤ LỤC D - ĐIỀU CHỈNH SAU PHẢN HỒI TEAM MKT (10/2026)
+
+Team MKT đã dùng thật và phản hồi 13 điểm; các quyết định sau đây là nguồn sự thật mới (đè lên mô tả cũ ở các mục liên quan).
+
+1. **Việc của tôi** có đủ 3 cách xem như Tất cả task: Danh sách, Kanban (kéo-thả đổi trạng thái), Lịch. Cách xem được nhớ theo tab trình duyệt.
+2. **Kéo-thả Kanban không được mở task.** Task/Campaign/SBU chi tiết mở dạng **popup** đè lên trang đang xem (URL vẫn đổi, F5 ra trang đầy đủ); đóng popup = quay về đúng trang, đúng chế độ xem/bộ lọc.
+3. **Request có cột "Người thực hiện"** = người phụ trách task sinh ra khi nhận request (admin/manager đổi được ngay trên bảng).
+4. **Màu cảnh báo trên mọi nơi hiện task** (bảng, Kanban, Lịch, Việc của tôi): trễ hạn = đỏ toàn dòng/toàn thẻ; việc lặp lại (`source_type = recurring`) = màu tím riêng + biểu tượng lặp. Trễ hạn ưu tiên hơn màu việc lặp. Request quá hạn cam kết và request ads vượt ngân sách kế hoạch cũng tô đỏ.
+5. **Back quay về đúng chỗ cũ:** bộ lọc/sắp xếp/nhóm/ô tìm/nhóm thu gọn/vị trí cuộn của bảng, tab đang xem (Ads, Content, Gantt, Giám sát…) được nhớ theo tab trình duyệt (sessionStorage). Có nút "Đặt lại" để về mặc định.
+6. **Sắp xếp mặc định theo thời gian diễn ra:** Task theo hạn (tăng dần), Campaign theo ngày bắt đầu (tăng dần), Request theo hạn cam kết, Content theo ngày đăng, Quay chụp theo ngày quay. Ô trống luôn xuống cuối.
+7. **Campaign bắt buộc có 1 owner** (`campaigns.owner_id`): form tạo yêu cầu chọn owner; danh sách có cột Owner (đổi ngay trên bảng), thẻ "Chưa có owner" và thao tác chọn nhiều → gán owner hàng loạt. Các campaign nạp trước đó chưa có owner (file gốc không ghi) — **[CẦN XÁC NHẬN] chủ sản phẩm chỉ định owner**, không tự đoán.
+8. **Định dạng ngày thống nhất dd/mm/yyyy** ở mọi nơi hiển thị, ô nhập (`DateInput`, không dùng `<input type="date">` vì hiển thị theo ngôn ngữ trình duyệt), file xuất CSV/XLSX, lịch, thông báo/email do hệ thống sinh. Giá trị lưu trong DB vẫn là ISO `yyyy-mm-dd`. Tháng dạng mm/yyyy (`MonthInput`).
+9. **Ads ▸ Theo request** thêm **Ngân sách kế hoạch** (`ads_campaigns.planned_budget`) và **Người chạy** (`ads_campaigns.runner_id`); có % chi tiêu so với kế hoạch (đỏ khi vượt 100%). Template import request có thêm cột `planned_budget`, `runner`.
+10. **Mọi bảng số liệu sửa trực tiếp kiểu Excel:** bấm ô để chọn, gõ để sửa, Enter/Tab/mũi tên di chuyển, Esc huỷ, Delete xoá ô, Ctrl+C/V (dán nhiều ô từ Excel). **"+ Cột"** ở cuối hàng tiêu đề để tự thêm cột (văn bản/số/ngày/danh sách) cho cả phòng — lưu ở `grid_custom_columns`/`grid_custom_values` (không đổi schema bảng nghiệp vụ). Bảng Ads (tuần/tháng/B2C) sửa số ngay trong ô; Quay chụp chuyển sang bảng sửa trực tiếp (đổi ngày quay → dời task Quay/Chuẩn bị theo).
+11. **Danh sách Campaign trực quan:** màu theo loại (dải đầu dòng + nhãn), nhãn trạng thái/giai đoạn (Sắp/Đang diễn ra/Đã kết thúc), thanh thời gian có vạch "hôm nay", thanh tiến độ, huy hiệu trễ hạn, thẻ tóm tắt đầu trang.
+12. **Danh sách SBU có chỉ số:** số campaign liên quan, tiến độ task (xong/tổng), task trễ hạn, tiến độ hạng mục SBU của kỳ hiện tại, request đang mở, cảnh báo giám sát.
+13. **Giám sát quản lý theo SBU:** danh sách SBU (tóm tắt cảnh báo) → mở từng SBU để xem từng hạng mục (Standee, Poster, Decal cửa kính, Bảng hiệu, OOH, Google Maps…) với **hiện trạng đang hiển thị**, **ảnh thực tế**, ngày rà soát/chu kỳ/hạn kế tiếp, lịch sử rà soát (`monitoring_checks`). Ảnh (`monitoring_photos`) được **nén ngay trên trình duyệt** (cạnh dài ≤ 1600px, WebP, thường 100–300KB, tối đa 12 ảnh/hạng mục) kèm ảnh thu nhỏ ~360px; trang liệt kê chỉ tải ảnh thu nhỏ. Google Maps ghi nhận rà review định kỳ như các hạng mục khác (có ô link Google Maps).
+
+---
+
 *Hết tài liệu. Khi có câu hỏi chưa rõ, agent ghi lại thành danh sách "Câu hỏi mở" gửi chủ sản phẩm, không tự suy đoán các mục có thẻ [CẦN XÁC NHẬN].*

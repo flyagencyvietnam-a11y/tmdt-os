@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { deleteAdsCampaignAction, rollupCampaignsAction, upsertAdsCampaignAction } from "./actions";
+import { monthLabel } from "./shared";
 
 interface CampaignRow {
   id: string;
@@ -57,7 +58,7 @@ export function CampaignsDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            Chiến dịch Facebook — {sbuCode} · {period}
+            Chiến dịch Facebook — {sbuCode} · {monthLabel(period)}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">

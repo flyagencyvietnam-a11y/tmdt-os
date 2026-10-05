@@ -1,6 +1,7 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
+import { DateInput } from "@/components/ui/date-input";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -91,7 +92,7 @@ export function AiAssistView({ users, configured }: { users: { id: string; fullN
                       {r.notes && <p className="mt-1 text-xs text-muted-foreground">{r.notes}</p>}
                     </td>
                     <td className="px-2 py-1.5">
-                      <Input className="h-8 w-32" type="date" value={r.dueDate ?? ""} onChange={(e) => updateRow(i, { dueDate: e.target.value || null })} />
+                      <DateInput className="w-36 [&_input]:h-8" value={r.dueDate ?? ""} onChange={(v) => updateRow(i, { dueDate: v || null })} />
                     </td>
                     <td className="px-2 py-1.5">
                       <SimpleSelect

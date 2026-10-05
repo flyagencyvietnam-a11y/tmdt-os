@@ -144,6 +144,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ kind: st
         rows: [
           { note: "Mỗi dòng = 1 chiến dịch Facebook của 1 trung tâm trong 1 tháng (file báo cáo ads TT). Khoá: (month, sbu_code, campaign_name) — nạp lại cùng khoá là cập nhật." },
           { note: "spend bắt buộc khi chiến dịch MỚI; chiến dịch đã có thì để trống spend = giữ số cũ. spend_with_vat = chi phí gồm VAT." },
+          { note: "planned_budget = ngân sách KẾ HOẠCH của request; runner = người chạy ads (họ tên hoặc email đúng như trong hệ thống). Ô trống = giữ nguyên." },
           { note: "messages = tin nhắn, reach = người tiếp cận, impressions = lượt hiển thị, conversations = cuộc trò chuyện, comments, engagements = lượt tương tác, reactions = cảm xúc." },
           { note: "misa_request_url = link request duyệt chi trên MISA. Nạp xong KHÔNG tự cộng dồn lên số tháng — dùng nút “Cộng dồn vào tháng” ở tab Theo tháng khi cần (tránh ghi đè số đã sửa tay)." },
           { note: "Ví dụ: month 09/2026 | sbu_code VTS | campaign_name Khai giảng IELTS | spend 1500000 | messages 25 | reach 12000" },
@@ -157,6 +158,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ kind: st
           { header: "campaign_name*", key: "campaign_name", width: 34 },
           { header: "spend*", key: "spend", width: 14 },
           { header: "spend_with_vat", key: "spend_with_vat", width: 16 },
+          { header: "planned_budget", key: "planned_budget", width: 16 },
+          { header: "runner", key: "runner", width: 18 },
           { header: "messages", key: "messages", width: 10 },
           { header: "reach", key: "reach", width: 12 },
           { header: "impressions", key: "impressions", width: 12 },

@@ -13,7 +13,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { DataGrid, type GridColumn } from "@/components/data-grid";
 import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
-import { acceptRequestAction, createRequestAction, updateRequestStatusAction } from "./actions";
+import { ROW_TONE_CLASS } from "../task/task-style";
+import { DateInput } from "@/components/ui/date-input";
+import { acceptRequestAction, assignRequestExecutorAction, createRequestAction, updateRequestStatusAction } from "./actions";
 import { todayVnDayStr } from "@/lib/time";
 
 interface RequestItem {
@@ -22,12 +24,17 @@ interface RequestItem {
   receivedDate: string;
   requesterName: string;
   requesterSbuId: string | null;
+  /** Người thực hiện = người phụ trách task sinh ra khi nhận request. */
+  executorId: string | null;
   requestType: string;
   description: string;
   status: string;
   committedDate: string | null;
   desiredDate: string | null;
 }
+
+// Mặc định: hạn cam kết gần nhất lên trước (ô trống xuống cuối), cùng hạn thì request mới hơn trước.
+const INITIAL_VIEW = { sorts: [{ field: "committedDate", direction: "asc" as const }, { field: "receivedDate", direction: "desc" as const }] };
 
 const TYPE_LABEL: Record<string, string> = {
   design: "Thiết kế",
@@ -62,14 +69,28 @@ const STATUS_COLORS: Record<string, TagColor> = {
 export function RequestBoard({
   requests,
   sbus,
+  users,
   canManage,
 }: {
   requests: RequestItem[];
   sbus: { id: string; code: string; name: string }[];
+  users: { id: string; fullName: string }[];
   canManage: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
+
+  const today = todayVnDayStr();
+  const executorName = React.useCallback((id: string | null) => users.find((u) => u.id === id)?.fullName ?? "", [users]);
+  const onEditCell = React.useCallback(
+    async (rowId: string, field: string, raw: string) => {
+      if (field !== "executorId") return;
+      const res = await assignRequestExecutorAction(rowId, raw);
+      if (res.ok) router.refresh();
+      else toast.error(res.error);
+    },
+    [router],
+  );
 
   const sbuLabel = React.useCallback(
     (id: string | null) => {
@@ -82,6 +103,7 @@ export function RequestBoard({
   const columns: GridColumn<RequestItem>[] = React.useMemo(
     () => [
       { field: "code", header: "Mã", kind: "text", accessor: (r) => r.code, defaultWidth: 100, groupable: false },
+      { field: "receivedDate", header: "Ngày nhận", kind: "date", accessor: (r) => r.receivedDate, cell: (r) => fmtDate(r.receivedDate), defaultWidth: 105, groupable: false },
       { field: "requesterName", header: "Người yêu cầu", kind: "text", accessor: (r) => r.requesterName, defaultWidth: 160, groupable: false },
       {
         field: "requesterSbuId",
@@ -113,6 +135,20 @@ export function RequestBoard({
             {r.description}
           </span>
         ),
+      },
+      {
+        field: "executorId",
+        header: "Người thực hiện",
+        kind: "enum",
+        accessor: (r) => r.executorId ?? "",
+        cell: (r) => executorName(r.executorId) || <span className="text-muted-foreground">Chưa giao</span>,
+        enumOptions: users.map((u) => ({ value: u.id, label: u.fullName })),
+        filterOptions: users.map((u) => ({ value: u.id, label: u.fullName })),
+        editable: canManage,
+        editKind: "select",
+        editOptions: users.map((u) => ({ value: u.id, label: u.fullName })),
+        editValue: (r) => r.executorId ?? "",
+        defaultWidth: 150,
       },
       {
         field: "committedDate",
@@ -147,7 +183,7 @@ export function RequestBoard({
           ] as GridColumn<RequestItem>[])
         : []),
     ],
-    [sbus, sbuLabel, canManage],
+    [sbus, sbuLabel, canManage, users, executorName],
   );
 
   return (
@@ -163,7 +199,9 @@ export function RequestBoard({
         columns={columns}
         rows={requests}
         getRowId={(r) => r.id}
-        initialView={{ sorts: [{ field: "receivedDate", direction: "desc" }] }}
+        initialView={INITIAL_VIEW}
+        onEditCell={canManage ? onEditCell : undefined}
+        rowClassName={(r) => (r.committedDate && r.committedDate < today && !["done", "rejected"].includes(r.status) ? ROW_TONE_CLASS.overdue : undefined)}
         emptyText="Chưa có request."
       />
 
@@ -188,7 +226,7 @@ function RequestActions({ request: r }: { request: RequestItem }) {
   if (r.status === "new") {
     return (
       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <Input type="date" className="h-7 w-28 text-xs" value={committedDate} onChange={(e) => setCommittedDate(e.target.value)} />
+        <DateInput className="w-32 [&_input]:h-7 [&_input]:text-xs" value={committedDate} onChange={setCommittedDate} />
         <Button
           size="sm"
           disabled={pending}
@@ -272,7 +310,7 @@ function CreateRequestDialog({
             <Textarea rows={3} value={f.description} onChange={(e) => set("description", e.target.value)} />
           </Fld>
           <Fld label="Ngày mong muốn">
-            <Input type="date" value={f.desiredDate} onChange={(e) => set("desiredDate", e.target.value)} />
+            <DateInput value={f.desiredDate} onChange={(v) => set("desiredDate", v)} />
           </Fld>
           <p className="text-xs text-muted-foreground">
             Không nhập thông tin cá nhân học viên/phụ huynh.

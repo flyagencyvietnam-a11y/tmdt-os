@@ -15,6 +15,8 @@ const schema = z.object({
   type: z.enum(["brand_theme", "product_gtm", "business_program", "rebrand", "data_program", "internal_program", "other"]),
   startDate: z.string().min(1),
   endDate: z.string().min(1),
+  /** Mỗi campaign PHẢI có 1 người chịu trách nhiệm (campaign owner). */
+  ownerId: z.string().uuid("Chọn người chịu trách nhiệm (owner) của campaign."),
   tagline: z.string().optional(),
   objective: z.string().optional(),
   heroActivity: z.string().optional(),
@@ -42,11 +44,16 @@ export async function createCampaignAction(input: z.infer<typeof schema>) {
     revalidatePath("/campaign");
     return { ok: true as const, id: row.id };
   } catch (e) {
-    return { ok: false as const, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+    return { ok: false as const, error: firstIssue(e) };
   }
 }
 
 const updateSchema = schema.partial().extend({ id: z.string().uuid(), status: z.string().optional() });
+
+function firstIssue(e: unknown): string {
+  if (e instanceof z.ZodError) return e.issues[0]?.message ?? "Dữ liệu không hợp lệ.";
+  return e instanceof Error ? e.message : "Lỗi không xác định.";
+}
 
 export async function updateCampaignAction(input: z.infer<typeof updateSchema>) {
   const user = await requireManagerLike();
@@ -63,7 +70,7 @@ export async function updateCampaignAction(input: z.infer<typeof updateSchema>) 
     revalidatePath(`/campaign/${id}`);
     return { ok: true as const };
   } catch (e) {
-    return { ok: false as const, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+    return { ok: false as const, error: firstIssue(e) };
   }
 }
 
@@ -84,6 +91,6 @@ export async function duplicateCampaignAction(input: z.infer<typeof duplicateSch
     revalidatePath("/campaign");
     return { ok: true as const, id: created.id };
   } catch (e) {
-    return { ok: false as const, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+    return { ok: false as const, error: firstIssue(e) };
   }
 }

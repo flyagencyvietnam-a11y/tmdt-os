@@ -114,6 +114,8 @@ export interface SavedViewLike {
 /** Mô tả một cột cho grid (kèm cách lấy giá trị, format, kiểu để chọn toán tử). */
 export interface GridColumn<Row> {
   field: string;
+  /** Có giá trị = cột do người dùng tự thêm ("+ Cột") — id của định nghĩa cột. */
+  customId?: string;
   header: string;
   kind: FieldKind;
   /** Lấy giá trị thô để lọc/sắp xếp/gom nhóm. */

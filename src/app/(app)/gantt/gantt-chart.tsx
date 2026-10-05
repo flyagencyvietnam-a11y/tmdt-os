@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useSessionState } from "@/lib/use-session-state";
 import * as React from "react";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { cn } from "@/lib/utils";
@@ -63,9 +64,9 @@ export function GanttChart({
   users: Lite[];
 }) {
   const router = useRouter();
-  const [zoom, setZoom] = React.useState<"week" | "month">("week");
-  const [campaignFilter, setCampaignFilter] = React.useState("all");
-  const [assigneeFilter, setAssigneeFilter] = React.useState("all");
+  const [zoom, setZoom] = useSessionState<"week" | "month">("gantt:zoom", "week");
+  const [campaignFilter, setCampaignFilter] = useSessionState<string>("gantt:campaign", "all");
+  const [assigneeFilter, setAssigneeFilter] = useSessionState<string>("gantt:assignee", "all");
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const pxPerDay = zoom === "week" ? 36 : 14;

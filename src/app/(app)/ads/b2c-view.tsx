@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { upsertAdsMetricAction } from "./actions";
 import { CampaignsDialog } from "./campaigns-dialog";
 import { EffBadge, F, Preview } from "./ads-ui";
+import { InlineNum, useMetricSaver } from "./ads-inline";
 import { MetricEditDialog } from "./metric-edit-dialog";
 import { axisProps, ChartCard, ChartTooltip, gridProps } from "./charts";
 import { CenterTrendTable } from "./center-trend";
@@ -246,6 +247,9 @@ function TotalsTable({
 }) {
   const desc = [...months].reverse();
   const total = b2cSummary(metrics, months);
+  const saveMetric = useMetricSaver();
+  const sysRow = (p: string) => metrics.find((m) => m.line === "b2c_system" && m.periodType === "month" && m.period === p && !m.sbuId) ?? null;
+  const saveSys = (p: string, field: "budget" | "leads" | "newStudents") => (v: string | null) => saveMetric(sysRow(p), { line: "b2c_system", periodType: "month", period: p, sbuId: null }, field, v);
   return (
     <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
       <header className="border-b px-4 py-3">
@@ -281,11 +285,17 @@ function TotalsTable({
                     </td>
                   ) : (
                     <>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmtMoney(s.systemSpend)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        <InlineNum disabled={!canManage} value={sysRow(p)?.budget} display={fmtMoney(s.systemSpend)} onSave={saveSys(p, "budget")} title="Sửa NS Hệ thống của tháng" />
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmtMoney(s.centerSpend)}</td>
                       <td className="px-3 py-2 text-right font-medium tabular-nums">{fmtMoney(s.totalSpend)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmt(s.leads)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmt(s.newStudents)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        <InlineNum disabled={!canManage} value={sysRow(p)?.leads} display={fmt(s.leads)} onSave={saveSys(p, "leads")} title="Sửa Lead tổng B2C của tháng" />
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        <InlineNum disabled={!canManage} value={sysRow(p)?.newStudents} display={fmt(s.newStudents)} onSave={saveSys(p, "newStudents")} title="Sửa HVM tổng B2C của tháng" />
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(s.cpl)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(s.cac)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{fmtPct(s.cvr)}</td>
@@ -483,10 +493,12 @@ function CenterDetailTable({
   onEdit: (s: SbuLite) => void;
   onCampaigns: (sbuId: string) => void;
 }) {
+  const saveMetric = useMetricSaver();
   const data = sbus.map((s) => {
     const r = rows(s.id);
     return { s, r: r[0] ?? null, d: der(r), p: der(prevRows(s.id)) };
   });
+  const saveCenter = (s: SbuLite, r: MetricRow | null, field: "centerOrderBudget" | "hoTopupBudget" | "leads" | "newStudents") => (v: string | null) => saveMetric(r, { line: "b2c_center", periodType: "month", period: month, sbuId: s.id }, field, v);
   const maxSpend = Math.max(1, ...data.map((x) => x.d.spend ?? 0));
   const total = der(sbus.flatMap((s) => rows(s.id)));
 
@@ -521,8 +533,12 @@ function CenterDetailTable({
                   <td className="px-3 py-2 font-medium" title={s.name}>
                     {s.code}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmt(r?.centerOrderBudget)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{fmt(r?.hoTopupBudget)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                    <InlineNum disabled={!canManage} value={r?.centerOrderBudget} display={r?.centerOrderBudget ? fmt(r.centerOrderBudget) : "—"} onSave={saveCenter(s, r, "centerOrderBudget")} title="Sửa NS Trung tâm order" />
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                    <InlineNum disabled={!canManage} value={r?.hoTopupBudget} display={r?.hoTopupBudget ? fmt(r.hoTopupBudget) : "—"} onSave={saveCenter(s, r, "hoTopupBudget")} title="Sửa NS P.MKT chạy thêm" />
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
@@ -531,8 +547,12 @@ function CenterDetailTable({
                       <span className="font-medium tabular-nums">{fmtMoney(d.spend)}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(d.leads)}</td>
-                  <td className={cn("px-3 py-2 text-right tabular-nums", d.spend && d.newStudents === 0 && "font-semibold text-red-600 dark:text-red-400")}>{fmt(d.newStudents)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    <InlineNum disabled={!canManage} value={r?.leads} display={fmt(d.leads)} onSave={saveCenter(s, r, "leads")} title="Sửa Lead (ads riêng của TT)" />
+                  </td>
+                  <td className={cn("px-3 py-2 text-right tabular-nums", d.spend && d.newStudents === 0 && "font-semibold text-red-600 dark:text-red-400")}>
+                    <InlineNum disabled={!canManage} value={r?.newStudents} display={fmt(d.newStudents)} onSave={saveCenter(s, r, "newStudents")} title="Sửa HVM (ads riêng của TT)" />
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {fmtMoney(d.cpl)}
                     {cplUp != null && cplUp > 0.25 && <span className="ml-1 text-[11px] font-semibold text-red-600 dark:text-red-400" title="CPL tăng mạnh so với tháng trước">▲{Math.round(cplUp * 100)}%</span>}
