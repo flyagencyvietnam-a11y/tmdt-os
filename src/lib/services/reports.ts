@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { isFanOutSbu } from "@/lib/sbu-kinds";
 import type { DB } from "@/lib/db";
 import {
@@ -16,18 +16,49 @@ import {
 import { buildXlsx, type XlsxSheetSpec } from "@/lib/export-xlsx";
 import { overdueSqlFragment } from "./tasks";
 import { getManagerIds, notifyMany } from "./notifications";
-import { monthBounds, todayVnDayStr } from "@/lib/time";
+import { monthBounds, todayVnDayStr, vnDayBoundsUtc } from "@/lib/time";
 
 /** SPEC Mục 12.2/12.3 — các chỉ số Dashboard quản lý, dùng chung cho trang /bao-cao và báo cáo xuất định kỳ. */
 export async function computeManagementMetrics(db: DB, period: string) {
   const today = todayVnDayStr();
 
-  const overdueRows = await db
-    .select({ assigneeId: tasks.assigneeId, title: tasks.title, dueDate: tasks.dueDate })
-    .from(tasks)
-    .where(and(isNull(tasks.deletedAt), overdueSqlFragment(today)));
-  const allUsers = await db.select({ id: users.id, fullName: users.fullName }).from(users);
-  const userName = (id: string | null) => allUsers.find((u) => u.id === id)?.fullName ?? "(chưa giao)";
+  // Tỷ lệ đúng hạn (Mục 12.3) — trong tháng của `period` (YYYY-MM), theo người và theo loại task.
+  const [monthStart, monthEnd] = monthBounds(`${period}-01`);
+  const [monthFrom] = vnDayBoundsUtc(monthStart);
+  const [, monthTo] = vnDayBoundsUtc(monthEnd);
+
+  // Các truy vấn độc lập nhau → chạy song song (mỗi truy vấn là 1 vòng tới DB; trước đây chạy tuần tự + 1 truy vấn / campaign).
+  const [overdueRows, allUsers, campaignRows, campaignTaskAgg, activeSbus, allCatalog, statuses, requestRows, doneThisMonth, allRules] = await Promise.all([
+    db
+      .select({ assigneeId: tasks.assigneeId })
+      .from(tasks)
+      .where(and(isNull(tasks.deletedAt), overdueSqlFragment(today))),
+    db.select({ id: users.id, fullName: users.fullName }).from(users),
+    db.select().from(campaigns).where(isNull(campaigns.deletedAt)),
+    db
+      .select({
+        campaignId: tasks.campaignId,
+        total: sql<number>`count(*)::int`,
+        done: sql<number>`(count(*) filter (where ${tasks.status} in ('done','cancelled')))::int`,
+        overdue: sql<number>`(count(*) filter (where ${overdueSqlFragment(today)}))::int`,
+      })
+      .from(tasks)
+      .where(and(isNull(tasks.deletedAt), isNotNull(tasks.campaignId)))
+      .groupBy(tasks.campaignId),
+    db.select().from(sbus).where(eq(sbus.active, true)),
+    db.select({ id: sbuCatalogItems.id }).from(sbuCatalogItems),
+    db.select().from(sbuItemStatus).where(eq(sbuItemStatus.period, period)),
+    db.select({ status: requests.status, receivedDate: requests.receivedDate, completedDate: requests.completedDate }).from(requests).where(isNull(requests.deletedAt)),
+    // Chỉ task hoàn thành TRONG tháng (không kéo toàn bộ task đã xong từ trước đến giờ).
+    db
+      .select({ assigneeId: tasks.assigneeId, type: tasks.type, dueDate: tasks.dueDate, completedAt: tasks.completedAt, recurringRuleId: tasks.recurringRuleId })
+      .from(tasks)
+      .where(and(isNull(tasks.deletedAt), eq(tasks.status, "done"), gte(tasks.completedAt, monthFrom), lt(tasks.completedAt, monthTo))),
+    db.select({ id: recurringRules.id, name: recurringRules.name }).from(recurringRules),
+  ]);
+
+  const userNameById = new Map(allUsers.map((u) => [u.id, u.fullName]));
+  const userName = (id: string | null) => (id ? userNameById.get(id) : undefined) ?? "(chưa giao)";
   const overdueByPersonMap = new Map<string, number>();
   for (const r of overdueRows) {
     const name = userName(r.assigneeId);
@@ -35,23 +66,18 @@ export async function computeManagementMetrics(db: DB, period: string) {
   }
   const overdueByPerson = [...overdueByPersonMap.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
 
-  const campaignRows = await db.select().from(campaigns).where(isNull(campaigns.deletedAt));
-  const campaignProgress: { code: string; name: string; status: string; total: number; done: number; overdue: number; pctDone: number }[] = [];
-  for (const c of campaignRows) {
-    const cTasks = await db.select({ status: tasks.status, dueDate: tasks.dueDate }).from(tasks).where(and(eq(tasks.campaignId, c.id), isNull(tasks.deletedAt)));
-    const total = cTasks.length;
-    const done = cTasks.filter((t) => t.status === "done" || t.status === "cancelled").length;
-    const overdue = cTasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== "done" && t.status !== "cancelled").length;
-    campaignProgress.push({ code: c.code, name: c.name, status: c.status, total, done, overdue, pctDone: total ? Math.round((done / total) * 100) : 0 });
-  }
+  const aggByCampaign = new Map(campaignTaskAgg.map((a) => [a.campaignId, a]));
+  const campaignProgress: { code: string; name: string; status: string; total: number; done: number; overdue: number; pctDone: number }[] = campaignRows.map((c) => {
+    const a = aggByCampaign.get(c.id);
+    const total = Number(a?.total ?? 0);
+    const done = Number(a?.done ?? 0);
+    const overdue = Number(a?.overdue ?? 0);
+    return { code: c.code, name: c.name, status: c.status, total, done, overdue, pctDone: total ? Math.round((done / total) * 100) : 0 };
+  });
 
-  const allSbus = (await db.select().from(sbus).where(eq(sbus.active, true))).filter(isFanOutSbu);
-  const allCatalog = await db.select({ id: sbuCatalogItems.id }).from(sbuCatalogItems);
-  const statuses = await db.select().from(sbuItemStatus).where(eq(sbuItemStatus.period, period));
   const sbuRows: { code: string; name: string; totalCatalogItems: number; done: number; pctDone: number }[] = [];
-  for (const s of allSbus) {
-    const mine = statuses.filter((st) => st.sbuId === s.id);
-    const done = mine.filter((st) => st.status === "done").length;
+  for (const s of activeSbus.filter(isFanOutSbu)) {
+    const done = statuses.filter((st) => st.sbuId === s.id && st.status === "done").length;
     sbuRows.push({
       code: s.code,
       name: s.name,
@@ -61,7 +87,6 @@ export async function computeManagementMetrics(db: DB, period: string) {
     });
   }
 
-  const requestRows = await db.select({ status: requests.status, receivedDate: requests.receivedDate, completedDate: requests.completedDate }).from(requests).where(isNull(requests.deletedAt));
   const requestStats = {
     total: requestRows.length,
     new: requestRows.filter((r) => r.status === "new").length,
@@ -70,12 +95,6 @@ export async function computeManagementMetrics(db: DB, period: string) {
     overdue: requestRows.filter((r) => r.status !== "done" && r.status !== "rejected" && r.receivedDate < today).length,
   };
 
-  // Tỷ lệ đúng hạn (Mục 12.3) — trong tháng của `period` (YYYY-MM), theo người và theo loại task.
-  const [monthStart, monthEnd] = monthBounds(`${period}-01`);
-  const doneThisMonth = await db
-    .select({ assigneeId: tasks.assigneeId, type: tasks.type, dueDate: tasks.dueDate, completedAt: tasks.completedAt, recurringRuleId: tasks.recurringRuleId })
-    .from(tasks)
-    .where(and(isNull(tasks.deletedAt), eq(tasks.status, "done")));
   const inMonth = doneThisMonth.filter((t) => t.completedAt && todayVnDayStr(t.completedAt) >= monthStart && todayVnDayStr(t.completedAt) <= monthEnd);
   const onTime = (t: (typeof inMonth)[number]) => !t.dueDate || !t.completedAt || todayVnDayStr(t.completedAt) <= t.dueDate;
 
@@ -97,7 +116,6 @@ export async function computeManagementMetrics(db: DB, period: string) {
   const onTimeByType = [...onTimeByTypeMap.entries()].map(([type, a]) => ({ type, total: a.total, pct: a.total ? Math.round((a.onTime / a.total) * 100) : 0 }));
 
   const recurringDone = inMonth.filter((t) => t.recurringRuleId);
-  const allRules = await db.select({ id: recurringRules.id, name: recurringRules.name }).from(recurringRules);
   const recurringByRuleMap = new Map<string, { total: number; onTime: number }>();
   for (const t of recurringDone) {
     const agg = recurringByRuleMap.get(t.recurringRuleId!) ?? { total: 0, onTime: 0 };

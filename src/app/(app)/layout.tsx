@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth/session";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { listNotifications, unreadCount } from "@/lib/services/notifications";
+import { listNotificationsWithUnread } from "@/lib/services/notifications";
 import { NotificationBell } from "@/components/shell/notification-bell";
 import { BrandMark, MobileNav, SidebarNav } from "@/components/shell/sidebar-nav";
 import { UserMenu } from "@/components/shell/user-menu";
@@ -16,13 +16,10 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
 
-  let notifItems: Awaited<ReturnType<typeof listNotifications>> = [];
+  let notifItems: Awaited<ReturnType<typeof listNotificationsWithUnread>>["items"] = [];
   let unread = 0;
   try {
-    [notifItems, unread] = await Promise.all([
-      listNotifications(db, user.id, { limit: 12 }),
-      unreadCount(db, user.id),
-    ]);
+    ({ items: notifItems, unread } = await listNotificationsWithUnread(db, user.id, 12));
   } catch {
     // DB chưa sẵn sàng — vẫn render shell
   }

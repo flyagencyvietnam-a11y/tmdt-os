@@ -27,11 +27,26 @@ export default async function DashboardPage() {
   const tomorrow = addDaysStr(today, 1);
   const weekEnd = addDaysStr(today, 7);
 
-  const mine = await db
+  // 4 truy vấn độc lập nhau → chạy song song (trước đây nối đuôi nhau).
+  const [mine, { rows: boardRows }, collabRows, watchRows] = await Promise.all([
+    db
     .select()
     .from(tasks)
     .where(and(isNull(tasks.deletedAt), eq(tasks.assigneeId, user.id), inArray(tasks.status, [...OPEN_STATUSES])))
-    .orderBy(asc(tasks.dueDate), asc(tasks.priority));
+    .orderBy(asc(tasks.dueDate), asc(tasks.priority)),
+    // Cho Kanban/Lịch: việc của tôi đang mở + vừa xong (để cột "Xong" có dữ liệu).
+    listTasksScoped(db, { userId: user.id, sbuId: null, today }, { view: "mine", limit: 1000 }),
+    db
+      .select({ task: tasks })
+      .from(taskCollaborators)
+      .innerJoin(tasks, eq(tasks.id, taskCollaborators.taskId))
+      .where(and(eq(taskCollaborators.userId, user.id), isNull(tasks.deletedAt), inArray(tasks.status, [...OPEN_STATUSES]))),
+    db
+      .select({ task: tasks })
+      .from(taskWatchers)
+      .innerJoin(tasks, eq(tasks.id, taskWatchers.taskId))
+      .where(and(eq(taskWatchers.userId, user.id), isNull(tasks.deletedAt))),
+  ]);
 
   const overdue = mine.filter((t) => t.dueDate && t.dueDate < today);
   const dueToday = mine.filter((t) => t.dueDate === today);
@@ -39,21 +54,6 @@ export default async function DashboardPage() {
   const thisWeek = mine.filter((t) => t.dueDate && t.dueDate > tomorrow && t.dueDate <= weekEnd);
   const noDueDate = mine.filter((t) => !t.dueDate);
   const blocked = mine.filter((t) => t.status === "blocked");
-
-  // Cho Kanban/Lịch: việc của tôi đang mở + vừa xong (để cột "Xong" có dữ liệu).
-  const { rows: boardRows } = await listTasksScoped(db, { userId: user.id, sbuId: null, today }, { view: "mine", limit: 1000 });
-
-  const collabRows = await db
-    .select({ task: tasks })
-    .from(taskCollaborators)
-    .innerJoin(tasks, eq(tasks.id, taskCollaborators.taskId))
-    .where(and(eq(taskCollaborators.userId, user.id), isNull(tasks.deletedAt), inArray(tasks.status, [...OPEN_STATUSES])));
-
-  const watchRows = await db
-    .select({ task: tasks })
-    .from(taskWatchers)
-    .innerJoin(tasks, eq(tasks.id, taskWatchers.taskId))
-    .where(and(eq(taskWatchers.userId, user.id), isNull(tasks.deletedAt)));
 
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Ho_Chi_Minh" }).format(new Date()));
   const greeting = hour < 11 ? "Chào buổi sáng" : hour < 14 ? "Chào buổi trưa" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";

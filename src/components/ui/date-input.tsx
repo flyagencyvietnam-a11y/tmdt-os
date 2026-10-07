@@ -2,6 +2,7 @@
 
 import { CalendarDays } from "lucide-react";
 import * as React from "react";
+import { MAX_SANE_YEAR, MIN_SANE_YEAR } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,6 +28,7 @@ export function dmyToIso(text: string): string | null {
   else return null;
   if (!/^\d{1,2}$/.test(d) || !/^\d{1,2}$/.test(mo) || !/^\d{2}$|^\d{4}$/.test(y)) return null;
   const yy = y.length === 2 ? 2000 + Number(y) : Number(y);
+  if (yy < MIN_SANE_YEAR || yy > MAX_SANE_YEAR) return null; // chặn gõ nhầm năm (vd. 1020)
   const dt = new Date(Date.UTC(yy, Number(mo) - 1, Number(d)));
   if (dt.getUTCFullYear() !== yy || dt.getUTCMonth() !== Number(mo) - 1 || dt.getUTCDate() !== Number(d)) return null;
   return `${String(yy).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;

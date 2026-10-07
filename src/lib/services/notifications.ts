@@ -170,3 +170,17 @@ export async function markAllRead(db: DB, userId: string) {
 }
 
 export { todayVnDayStr };
+
+/** Danh sách thông báo + tổng số chưa đọc trong 1 truy vấn (cửa sổ `count() over ()` tính trước LIMIT) — dùng cho layout để bớt 1 vòng tới DB. */
+export async function listNotificationsWithUnread(db: DB, userId: string, limit = 12) {
+  const rows = await db
+    .select({
+      n: notifications,
+      unread: sql<number>`(count(*) filter (where ${notifications.readAt} is null)) over ()`,
+    })
+    .from(notifications)
+    .where(and(eq(notifications.userId, userId), eq(notifications.channel, "in_app")))
+    .orderBy(desc(notifications.createdAt))
+    .limit(limit);
+  return { items: rows.map((r) => r.n), unread: rows.length ? Number(rows[0].unread) : 0 };
+}

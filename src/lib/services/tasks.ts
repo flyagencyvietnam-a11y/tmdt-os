@@ -25,7 +25,7 @@ import { createConfirmationToken } from "./confirmation-tokens";
 import { ServiceError } from "./errors";
 import { notify } from "./notifications";
 import { sendMail } from "@/lib/email";
-import { todayVnDayStr } from "@/lib/time";
+import { isSaneDayStr, MAX_SANE_YEAR, MIN_SANE_YEAR, todayVnDayStr } from "@/lib/time";
 
 /** SPEC Mục 3.3 / 11.4 — assignee `center_contributor` nhận thêm email kèm magic link. */
 async function maybeSendCenterContributorLink(db: DB, assigneeId: string, task: Task) {
@@ -112,12 +112,20 @@ export interface CreateTaskInput {
   checklist?: string[];
 }
 
+/** Chặn ngày bắt đầu/hạn có năm bất thường (gõ nhầm) — dữ liệu xấu làm trục Gantt dài hàng nghìn năm. */
+function assertSaneDates(d: { startDate?: string | null; dueDate?: string | null }) {
+  for (const v of [d.startDate, d.dueDate]) {
+    if (v && !isSaneDayStr(v)) throw new ServiceError(`Ngày "${v}" không hợp lệ (năm phải từ ${MIN_SANE_YEAR} đến ${MAX_SANE_YEAR}).`, "DATE_INVALID");
+  }
+}
+
 export async function createTask(
   db: DB,
   input: CreateTaskInput,
   actorId: string | null,
 ): Promise<Task> {
   if (!input.title?.trim()) throw new ServiceError("Tiêu đề bắt buộc.", "TITLE_REQUIRED");
+  assertSaneDates(input);
   const code = await nextTaskCode(db);
   const values: NewTask = {
     code,
@@ -231,6 +239,7 @@ export async function updateTask(
   actorId: string | null,
   opts: { trackManualEdit?: boolean; ignoreDependencies?: boolean } = {},
 ): Promise<Task> {
+  assertSaneDates(patch);
   const [before] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
   if (!before) throw new ServiceError("Không tìm thấy task.", "NOT_FOUND");
 

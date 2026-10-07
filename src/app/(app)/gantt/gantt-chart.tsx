@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { fmtDate } from "@/lib/format";
 import { useSessionState } from "@/lib/use-session-state";
 import * as React from "react";
 import { SimpleSelect } from "@/components/ui/simple-select";
@@ -47,6 +49,9 @@ function dayDate(n: number): Date {
   return new Date(n * 86400000);
 }
 
+/** Phạm vi trục Gantt quanh hôm nay: 2 năm trước → 3 năm sau. */
+const GANTT_PAST_DAYS = 730;
+const GANTT_FUTURE_DAYS = 1095;
 const ROW_H = 34;
 /** Header 2 tầng: tháng + ngày. */
 const HEADER_H = 48;
@@ -71,7 +76,13 @@ export function GanttChart({
 
   const pxPerDay = zoom === "week" ? 36 : 14;
 
-  const visible = tasks.filter((t) => {
+  // Task có ngày quá xa hôm nay (thường do gõ nhầm năm) KHÔNG đưa lên trục — nếu không trục dài hàng nghìn ngày, trang nặng hàng chục MB.
+  const todayStr = todayVnDayStr();
+  const inRange = (d: string | null) => !d || (dayNum(d) >= dayNum(todayStr) - GANTT_PAST_DAYS && dayNum(d) <= dayNum(todayStr) + GANTT_FUTURE_DAYS);
+  const outliers = tasks.filter((t) => !(inRange(t.startDate) && inRange(t.dueDate)));
+  const plottable = outliers.length ? tasks.filter((t) => inRange(t.startDate) && inRange(t.dueDate)) : tasks;
+
+  const visible = plottable.filter((t) => {
     if (campaignFilter === "none" && t.campaignId) return false;
     if (campaignFilter !== "all" && campaignFilter !== "none" && t.campaignId !== campaignFilter) return false;
     if (assigneeFilter !== "all" && t.assigneeId !== assigneeFilter) return false;
@@ -97,6 +108,7 @@ export function GanttChart({
     return (
       <div className="space-y-3">
         <Toolbar {...{ zoom, setZoom, campaignFilter, setCampaignFilter, assigneeFilter, setAssigneeFilter, campaigns, users }} />
+        {outliers.length > 0 && <OutlierNotice tasks={outliers} />}
         <p className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">Không có task nào có ngày để hiển thị.</p>
       </div>
     );
@@ -154,6 +166,7 @@ export function GanttChart({
   return (
     <div className="space-y-3">
       <Toolbar {...{ zoom, setZoom, campaignFilter, setCampaignFilter, assigneeFilter, setAssigneeFilter, campaigns, users }} />
+      {outliers.length > 0 && <OutlierNotice tasks={outliers} />}
 
       <div ref={scrollRef} className="relative overflow-auto rounded-xl border bg-card shadow-xs" style={{ maxHeight: "72vh" }}>
         <div className="flex" style={{ width: LEFT_W + chartWidth }}>
@@ -287,6 +300,21 @@ export function GanttChart({
           <span className="h-2.5 w-2.5 rounded-[3px] ring-2 ring-red-500" /> Trễ hạn
         </span>
       </div>
+    </div>
+  );
+}
+
+function OutlierNotice({ tasks }: { tasks: GanttTask[] }) {
+  return (
+    <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+      <b>{tasks.length} task có ngày bất thường</b> (cách hôm nay quá xa, có thể gõ nhầm năm) nên không vẽ lên Gantt — bấm để sửa ngày:
+      <span className="ml-1 inline-flex flex-wrap gap-x-3 gap-y-1">
+        {tasks.map((t) => (
+          <Link key={t.id} href={`/task/${t.id}`} className="underline underline-offset-2">
+            {t.code} ({[t.startDate, t.dueDate].filter(Boolean).map((d) => fmtDate(d)).join(" → ")})
+          </Link>
+        ))}
+      </span>
     </div>
   );
 }

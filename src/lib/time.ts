@@ -341,3 +341,14 @@ export function resolveRange(range: string): {
     }
   }
 }
+
+/** Khoảng năm hợp lý cho ngày nhập tay (chặn gõ nhầm kiểu 1020 / 2206 làm hỏng Gantt, lịch, báo cáo). */
+export const MIN_SANE_YEAR = 2000;
+export const MAX_SANE_YEAR = 2100;
+
+/** "YYYY-MM-DD" có năm nằm trong khoảng hợp lý. */
+export function isSaneDayStr(dayStr: string | null | undefined): boolean {
+  if (!dayStr) return false;
+  const y = Number(dayStr.slice(0, 4));
+  return Number.isInteger(y) && y >= MIN_SANE_YEAR && y <= MAX_SANE_YEAR;
+}
