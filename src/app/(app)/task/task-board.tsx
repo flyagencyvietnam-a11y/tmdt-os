@@ -82,6 +82,16 @@ export function TaskBoard({
   const visible = tasks;
 
   const overdueCount = visible.filter((t) => isTaskOverdue(t, today)).length;
+  // Thẻ Kanban hiện thêm campaign + SBU liên quan (tra từ danh sách campaign/SBU đã có sẵn ở trang).
+  const kanbanTasks = React.useMemo(() => {
+    const camp = new Map(campaigns.map((c) => [c.id, c]));
+    const sbuById = new Map(sbus.map((s) => [s.id, s]));
+    return visible.map((t) => ({
+      ...t,
+      campaign: t.campaignId ? (camp.get(t.campaignId) ?? null) : null,
+      sbus: (t.sbuIds ?? []).map((id) => sbuById.get(id)).filter((s): s is NonNullable<typeof s> => !!s).map((s) => ({ id: s.id, code: s.code })),
+    }));
+  }, [visible, campaigns, sbus]);
 
   return (
     <div className="space-y-3">
@@ -142,7 +152,7 @@ export function TaskBoard({
       </div>
 
       {view === "list" && <TaskGrid rows={visible} users={users} campaigns={campaigns} sbus={sbus} canEdit canAssignOthers={canAssignOthers} />}
-      {view === "kanban" && <TaskKanban tasks={visible} userName={userName} today={today} />}
+      {view === "kanban" && <TaskKanban tasks={kanbanTasks} userName={userName} today={today} />}
       {view === "calendar" && <TaskCalendar tasks={visible} icsUrl={icsUrl} />}
 
       <LoadMore shown={visible.length} total={total} step={pageSize} />

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { updateTaskAction } from "./actions";
+import { TaskLinks, type TaskCampaignRef, type TaskSbuRef } from "./task-links";
 import { CARD_TONE_CLASS, taskTone } from "./task-style";
 
 export interface KanbanTask {
@@ -21,6 +22,8 @@ export interface KanbanTask {
   dueDate: string | null;
   blockedReason: string | null;
   sourceType: string;
+  campaign?: TaskCampaignRef | null;
+  sbus?: TaskSbuRef[];
 }
 
 export const KANBAN_STATUSES = [
@@ -166,6 +169,7 @@ function KanbanCard({ task, userName, today, disabled }: { task: KanbanTask; use
       >
         {task.title}
       </Link>
+      <TaskLinks campaign={task.campaign} sbus={task.sbus} className="mt-1.5" />
       {task.status === "blocked" && task.blockedReason && <p className="mt-1 line-clamp-2 rounded bg-red-500/5 px-1.5 py-1 text-[11px] text-red-700 dark:text-red-400">⛔ {task.blockedReason}</p>}
       <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
         <span className="truncate">{userName}</span>

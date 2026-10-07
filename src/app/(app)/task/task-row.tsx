@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { updateTaskAction } from "./actions";
+import { TaskLinks, type TaskCampaignRef, type TaskSbuRef } from "./task-links";
 import { isTaskOverdue, isTaskRecurring, ROW_TONE_CLASS } from "./task-style";
 
 export interface TaskRowData {
@@ -20,6 +21,9 @@ export interface TaskRowData {
   priority: string;
   dueDate: string | null;
   sourceType?: string | null;
+  /** Campaign của task (nếu có) và các SBU liên quan — hiện thành chip dưới tiêu đề. */
+  campaign?: TaskCampaignRef | null;
+  sbus?: TaskSbuRef[];
 }
 
 const PRIORITY_LABEL: Record<string, string> = { urgent: "Gấp", high: "Cao", medium: "TB", low: "Thấp" };
@@ -42,13 +46,16 @@ export function TaskRow({ task, today, compact }: { task: TaskRowData; today: st
     <div className={cn("group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40", overdue ? ROW_TONE_CLASS.overdue : recurring && ROW_TONE_CLASS.recurring)}>
       <Checkbox checked={task.status === "done"} onCheckedChange={(v) => toggleDone(v === true)} disabled={pending} />
       <span className={cn("h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[task.priority] ?? "bg-muted-foreground/30")} title={`Ưu tiên: ${PRIORITY_LABEL[task.priority] ?? task.priority}`} />
-      <Link href={`/task/${task.id}`} className="min-w-0 flex-1">
-        <span className={cn("flex items-center gap-1.5 truncate text-sm group-hover:text-brand", task.status === "done" && "text-muted-foreground line-through")}>
-          {recurring && <Repeat className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" aria-label="Việc lặp lại" />}
-          <span className="truncate">{task.title}</span>
-        </span>
-        {!compact && <span className="block text-[11px] text-muted-foreground">{task.code}</span>}
-      </Link>
+      <div className="min-w-0 flex-1">
+        <Link href={`/task/${task.id}`} className="block">
+          <span className={cn("flex items-center gap-1.5 truncate text-sm group-hover:text-brand", task.status === "done" && "text-muted-foreground line-through")}>
+            {recurring && <Repeat className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" aria-label="Việc lặp lại" />}
+            <span className="truncate">{task.title}</span>
+          </span>
+          {!compact && <span className="block text-[11px] text-muted-foreground">{task.code}</span>}
+        </Link>
+        <TaskLinks campaign={task.campaign} sbus={task.sbus} className="mt-1" />
+      </div>
       {task.status === "blocked" && (
         <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
           Bị chặn

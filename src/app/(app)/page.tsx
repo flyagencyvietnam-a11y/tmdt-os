@@ -3,7 +3,7 @@ import Link from "next/link";
 import * as React from "react";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { taskCollaborators, taskWatchers, tasks } from "@/lib/db/schema";
+import { campaigns, sbus, taskCollaborators, taskSbus, taskWatchers, tasks } from "@/lib/db/schema";
 import { addDaysStr, todayVnDayStr } from "@/lib/time";
 import { AlertTriangle, ArrowRight, Ban, CalendarCheck, CalendarClock, CalendarDays, CircleDashed } from "lucide-react";
 import { PageHeader } from "@/components/shell/page-header";
@@ -47,6 +47,25 @@ export default async function DashboardPage() {
       .innerJoin(tasks, eq(tasks.id, taskWatchers.taskId))
       .where(and(eq(taskWatchers.userId, user.id), isNull(tasks.deletedAt))),
   ]);
+
+  // Ngữ cảnh hiển thị trên thẻ: campaign + SBU liên quan của mọi task đang có mặt trên trang (2 truy vấn song song).
+  const shownIds = [...new Set([...mine.map((t) => t.id), ...boardRows.map((t) => t.id), ...collabRows.map((r) => r.task.id), ...watchRows.map((r) => r.task.id)])];
+  const campaignIds = [...new Set([...mine, ...boardRows, ...collabRows.map((r) => r.task), ...watchRows.map((r) => r.task)].map((t) => t.campaignId).filter((x): x is string => !!x))];
+  const [campaignRows, sbuLinks] = await Promise.all([
+    campaignIds.length ? db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns).where(inArray(campaigns.id, campaignIds)) : [],
+    shownIds.length
+      ? db
+          .select({ taskId: taskSbus.taskId, id: sbus.id, code: sbus.code })
+          .from(taskSbus)
+          .innerJoin(sbus, eq(sbus.id, taskSbus.sbuId))
+          .where(inArray(taskSbus.taskId, shownIds))
+          .orderBy(asc(sbus.code))
+      : [],
+  ]);
+  const campaignById = new Map(campaignRows.map((c) => [c.id, c]));
+  const sbusByTask = new Map<string, { id: string; code: string }[]>();
+  for (const l of sbuLinks) (sbusByTask.get(l.taskId) ?? sbusByTask.set(l.taskId, []).get(l.taskId)!).push({ id: l.id, code: l.code });
+  const ctx = <T extends { id: string; campaignId: string | null }>(t: T) => ({ ...t, campaign: t.campaignId ? (campaignById.get(t.campaignId) ?? null) : null, sbus: sbusByTask.get(t.id) ?? [] });
 
   const overdue = mine.filter((t) => t.dueDate && t.dueDate < today);
   const dueToday = mine.filter((t) => t.dueDate === today);
@@ -100,6 +119,8 @@ export default async function DashboardPage() {
           blockedReason: t.blockedReason,
           sourceType: t.sourceType,
           channel: t.channel,
+          campaign: ctx(t).campaign,
+          sbus: ctx(t).sbus,
         }))}
         list={
           <>
@@ -112,20 +133,20 @@ export default async function DashboardPage() {
                 empty="Tuyệt — không có việc nào trễ hạn hoặc đến hạn hôm nay."
               >
                 {todayList.map((t) => (
-                  <TaskRow key={t.id} task={t} today={today} />
+                  <TaskRow key={t.id} task={ctx(t)} today={today} />
                 ))}
               </Section>
 
               <Section title="Sắp tới (7 ngày)" count={upcoming.length} empty="Không có việc nào trong 7 ngày tới.">
                 {upcoming.map((t) => (
-                  <TaskRow key={t.id} task={t} today={today} />
+                  <TaskRow key={t.id} task={ctx(t)} today={today} />
                 ))}
               </Section>
 
               {noDueDate.length > 0 && (
                 <Section title="Chưa có hạn" count={noDueDate.length} empty="">
                   {noDueDate.map((t) => (
-                    <TaskRow key={t.id} task={t} today={today} />
+                    <TaskRow key={t.id} task={ctx(t)} today={today} />
                   ))}
                 </Section>
               )}
@@ -134,12 +155,12 @@ export default async function DashboardPage() {
             <div className="space-y-6">
               <Section title="Tôi đang phối hợp" count={collabRows.length} empty="Chưa phối hợp task nào.">
                 {collabRows.map((r) => (
-                  <TaskRow key={r.task.id} task={r.task} today={today} compact />
+                  <TaskRow key={r.task.id} task={ctx(r.task)} today={today} compact />
                 ))}
               </Section>
               <Section title="Tôi đang theo dõi" count={watchRows.length} empty="Chưa theo dõi task nào.">
                 {watchRows.map((r) => (
-                  <TaskRow key={r.task.id} task={r.task} today={today} compact />
+                  <TaskRow key={r.task.id} task={ctx(r.task)} today={today} compact />
                 ))}
               </Section>
             </div>
