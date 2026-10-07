@@ -1,6 +1,6 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { brandPerfMetrics, campaignSbus, campaigns as campaignsTable, monitoringItems, requests, sbuCatalogItems, sbuItemStatus, taskSbus, tasks } from "@/lib/db/schema";
+import { brandPerfMetrics, campaignSbus, campaigns as campaignsTable, monitoringItems, requests, sbuCatalogItems, sbuItemStatus, taskSbus, tasks, users } from "@/lib/db/schema";
 import { overdueSqlFragment } from "./tasks";
 import { computeAlert } from "./monitoring";
 
@@ -75,11 +75,13 @@ export async function getSbuStats(db: DB, today: string, hierarchyIds: Set<strin
       .where(and(isNull(requests.deletedAt), sql`${requests.status} not in ('done','rejected')`))
       .groupBy(requests.requesterSbuId),
     db.select().from(monitoringItems),
+    // Campaign qua task: chỉ tính campaign CÒN SỐNG (campaign đã xoá mà task còn trỏ tới thì không được đếm).
     db
       .selectDistinct({ sbuId: taskSbus.sbuId, campaignId: tasks.campaignId })
       .from(taskSbus)
       .innerJoin(tasks, eq(tasks.id, taskSbus.taskId))
-      .where(and(isNull(tasks.deletedAt), sql`${tasks.campaignId} is not null`)),
+      .innerJoin(campaignsTable, eq(campaignsTable.id, tasks.campaignId))
+      .where(and(isNull(tasks.deletedAt), isNull(campaignsTable.deletedAt))),
     db
       .select({ sbuId: campaignSbus.sbuId, campaignId: campaignSbus.campaignId })
       .from(campaignSbus)
@@ -146,4 +148,74 @@ export async function getSbuStats(db: DB, today: string, hierarchyIds: Set<strin
 
 export function emptySbuStats(catalogCount = 0): SbuStats {
   return { ...EMPTY, itemsApplicable: catalogCount };
+}
+
+export interface SbuCampaign {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  ownerName: string | null;
+  /** "linked" = gắn trực tiếp với SBU; "tasks" = chỉ có task gắn SBU thuộc campaign; "both" = cả hai. */
+  via: "linked" | "tasks" | "both";
+  /** Task của campaign này gắn SBU (chưa xoá): tổng / đã xong (xong + huỷ). */
+  taskTotal: number;
+  taskDone: number;
+  taskOverdue: number;
+}
+
+/**
+ * Campaign liên quan tới 1 SBU — CÙNG định nghĩa với số "Campaign" ở danh sách SBU (getSbuStats): campaign gắn trực tiếp với SBU
+ * + campaign của các task gắn SBU; campaign đã xoá không bao giờ được tính.
+ */
+export async function listSbuCampaigns(db: DB, sbuId: string, today: string): Promise<SbuCampaign[]> {
+  const [linked, viaTasks] = await Promise.all([
+    db
+      .select({ id: campaignSbus.campaignId })
+      .from(campaignSbus)
+      .innerJoin(campaignsTable, eq(campaignsTable.id, campaignSbus.campaignId))
+      .where(and(eq(campaignSbus.sbuId, sbuId), isNull(campaignsTable.deletedAt))),
+    db
+      .select({
+        id: tasks.campaignId,
+        total: sql<number>`count(*)::int`,
+        done: sql<number>`(count(*) filter (where ${tasks.status} in ('done','cancelled')))::int`,
+        overdue: sql<number>`(count(*) filter (where ${overdueSqlFragment(today)}))::int`,
+      })
+      .from(taskSbus)
+      .innerJoin(tasks, eq(tasks.id, taskSbus.taskId))
+      .innerJoin(campaignsTable, eq(campaignsTable.id, tasks.campaignId))
+      .where(and(eq(taskSbus.sbuId, sbuId), isNull(tasks.deletedAt), isNull(campaignsTable.deletedAt)))
+      .groupBy(tasks.campaignId),
+  ]);
+  const linkedIds = new Set(linked.map((l) => l.id));
+  const taskStats = new Map(viaTasks.filter((t) => t.id).map((t) => [t.id as string, t]));
+  const ids = [...new Set([...linkedIds, ...taskStats.keys()])];
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({
+      id: campaignsTable.id,
+      code: campaignsTable.code,
+      name: campaignsTable.name,
+      status: campaignsTable.status,
+      startDate: campaignsTable.startDate,
+      endDate: campaignsTable.endDate,
+      ownerName: users.fullName,
+    })
+    .from(campaignsTable)
+    .leftJoin(users, eq(users.id, campaignsTable.ownerId))
+    .where(and(inArray(campaignsTable.id, ids), isNull(campaignsTable.deletedAt)))
+    .orderBy(asc(campaignsTable.startDate));
+  return rows.map((r) => {
+    const t = taskStats.get(r.id);
+    return {
+      ...r,
+      via: linkedIds.has(r.id) ? (t ? "both" : "linked") : "tasks",
+      taskTotal: Number(t?.total ?? 0),
+      taskDone: Number(t?.done ?? 0),
+      taskOverdue: Number(t?.overdue ?? 0),
+    } as SbuCampaign;
+  });
 }

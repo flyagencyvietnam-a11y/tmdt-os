@@ -61,7 +61,7 @@ export function TaskRow({ task, today, compact }: { task: TaskRowData; today: st
           Bị chặn
         </Badge>
       )}
-      {task.dueDate && <DueLabel due={task.dueDate} today={today} overdue={overdue} />}
+      {task.dueDate && <DueLabel due={task.dueDate} today={today} overdue={overdue} closed={task.status === "done" || task.status === "cancelled"} />}
     </div>
   );
 }
@@ -73,15 +73,16 @@ const PRIORITY_DOT: Record<string, string> = {
   low: "bg-slate-300 dark:bg-slate-600",
 };
 
-function DueLabel({ due, today, overdue }: { due: string; today: string; overdue: boolean }) {
+function DueLabel({ due, today, overdue, closed }: { due: string; today: string; overdue: boolean; closed: boolean }) {
   const diff = Math.round((Date.parse(due) - Date.parse(today)) / 86_400_000);
-  const label = diff === 0 ? "Hôm nay" : diff === 1 ? "Ngày mai" : diff < 0 ? `Trễ ${-diff} ngày` : diff <= 7 ? `Còn ${diff} ngày` : fmtDate(due);
+  // Task đã xong/huỷ: chỉ ghi ngày hạn — không hiện "Trễ N ngày"/"Còn N ngày" (gây hiểu nhầm là còn việc).
+  const label = closed ? fmtDate(due) : diff === 0 ? "Hôm nay" : diff === 1 ? "Ngày mai" : diff < 0 ? `Trễ ${-diff} ngày` : diff <= 7 ? `Còn ${diff} ngày` : fmtDate(due);
   return (
     <span
       title={fmtDate(due)}
       className={cn(
         "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
-        overdue ? "bg-red-600 text-white" : diff === 0 ? "bg-brand/10 text-brand" : "text-muted-foreground",
+        overdue ? "bg-red-600 text-white" : !closed && diff === 0 ? "bg-brand/10 text-brand" : "text-muted-foreground",
       )}
     >
       {label}

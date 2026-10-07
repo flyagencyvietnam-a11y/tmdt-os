@@ -52,7 +52,7 @@ export default async function DashboardPage() {
   const shownIds = [...new Set([...mine.map((t) => t.id), ...boardRows.map((t) => t.id), ...collabRows.map((r) => r.task.id), ...watchRows.map((r) => r.task.id)])];
   const campaignIds = [...new Set([...mine, ...boardRows, ...collabRows.map((r) => r.task), ...watchRows.map((r) => r.task)].map((t) => t.campaignId).filter((x): x is string => !!x))];
   const [campaignRows, sbuLinks] = await Promise.all([
-    campaignIds.length ? db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns).where(inArray(campaigns.id, campaignIds)) : [],
+    campaignIds.length ? db.select({ id: campaigns.id, code: campaigns.code, name: campaigns.name }).from(campaigns).where(and(inArray(campaigns.id, campaignIds), isNull(campaigns.deletedAt))) : [],
     shownIds.length
       ? db
           .select({ taskId: taskSbus.taskId, id: sbus.id, code: sbus.code })
