@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertOctagon, Camera, ChevronDown, ChevronRight, CircleDashed, Clock, Plus, Table2, RefreshCcw, Search, ShieldCheck, X } from "lucide-react";
+import { AlertOctagon, Camera, ImageOff, ChevronDown, ChevronRight, CircleDashed, Clock, Plus, Table2, RefreshCcw, Search, ShieldCheck, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -18,7 +18,12 @@ import { bulkCreateMonitoringItemsAction, runMonitoringAlertsNowAction } from ".
 import { MonitoringItem } from "./monitoring-item";
 import { buildTypeGroups, ByTypeView } from "./monitoring-by-type";
 import { SystemSummary } from "./monitoring-summary";
-import { areaRank, KIND_LABELS, KIND_ORDER, type Alert, type MonitoringRow, type SbuLite } from "./monitoring-shared";
+import { isIncomplete } from "@/lib/monitoring-health";
+import { areaRank, KIND_LABELS, KIND_ORDER, rowIssues, type Alert, type MonitoringRow, type SbuLite } from "./monitoring-shared";
+
+/** Bộ lọc nhanh: theo trạng thái hạn, hoặc "thiếu ảnh/thông tin". */
+type Filter = Alert | "incomplete";
+const hasIncomplete = (i: MonitoringRow) => isIncomplete(rowIssues(i));
 
 const REGION_COLORS: Record<string, TagColor> = { KV1: "blue", KV2: "violet", KV3: "purple", KV2_KV3: "indigo", ONLINE: "emerald", RND: "slate" };
 
@@ -30,7 +35,7 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
   const router = useRouter();
   const [pending, start] = React.useTransition();
   const [open, setOpen] = useSessionState<string[]>("monitoring:open", []);
-  const [alertFilter, setAlertFilter] = useSessionState<Alert | null>("monitoring:alert", null);
+  const [alertFilter, setAlertFilter] = useSessionState<Filter | null>("monitoring:alert", null);
   const [query, setQuery] = useSessionState<string>("monitoring:q", "");
   // Cách nhóm: theo trung tâm (mặc định) hoặc theo loại hạng mục (so sánh giữa các trung tâm).
   const [groupMode, setGroupMode] = useSessionState<"sbu" | "type">("monitoring:group", "sbu");
@@ -39,11 +44,12 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
   const [adding, setAdding] = React.useState<SbuLite | null>(null);
 
   const count = (a: Alert) => items.filter((i) => i.alert === a).length;
-  const pick = (a: Alert) => setAlertFilter((p) => (p === a ? null : a));
-  const ring = (a: Alert) => (alertFilter === a ? "ring-2 ring-brand" : "");
+  const incompleteCount = items.filter(hasIncomplete).length;
+  const pick = (a: Filter) => setAlertFilter((p) => (p === a ? null : a));
+  const ring = (a: Filter) => (alertFilter === a ? "ring-2 ring-brand" : "");
 
   const q = query.trim().toLowerCase();
-  const matches = React.useCallback((i: MonitoringRow) => (!alertFilter || i.alert === alertFilter) && (!q || i.title.toLowerCase().includes(q) || (i.currentStateNote ?? "").toLowerCase().includes(q) || (KIND_LABELS[i.kind] ?? "").toLowerCase().includes(q)), [alertFilter, q]);
+  const matches = React.useCallback((i: MonitoringRow) => (!alertFilter || (alertFilter === "incomplete" ? hasIncomplete(i) : i.alert === alertFilter)) && (!q || i.title.toLowerCase().includes(q) || (i.currentStateNote ?? "").toLowerCase().includes(q) || (KIND_LABELS[i.kind] ?? "").toLowerCase().includes(q)), [alertFilter, q]);
 
   const groups = React.useMemo(() => {
     const list = sbus.map((s) => {
@@ -55,11 +61,13 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
         overdue: all.filter((i) => i.alert === "overdue").length,
         dueSoon: all.filter((i) => i.alert === "due_soon").length,
         noData: all.filter((i) => i.alert === "no_data").length,
+        incomplete: all.filter(hasIncomplete).length,
+        red: all.filter((i) => rowIssues(i).length > 0).length,
         photos: all.reduce((a, i) => a + i.photos.length, 0),
       };
     });
-    // SBU có vấn đề (quá hạn → sắp hạn) lên đầu; còn lại theo mã.
-    return list.sort((a, b) => b.overdue - a.overdue || b.dueSoon - a.dueSoon || a.sbu.code.localeCompare(b.sbu.code));
+    // SBU nhiều điểm đỏ nhất lên đầu (đỏ → quá hạn → sắp hạn); còn lại theo mã.
+    return list.sort((a, b) => b.red - a.red || b.overdue - a.overdue || b.dueSoon - a.dueSoon || a.sbu.code.localeCompare(b.sbu.code));
   }, [sbus, items, matches]);
 
   const typeGroups = React.useMemo(() => buildTypeGroups(items, matches), [items, matches]);
@@ -73,7 +81,7 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <button type="button" className="text-left" onClick={() => pick("overdue")}>
           <StatCard className={ring("overdue")} label="Quá hạn thay mới" value={count("overdue")} icon={AlertOctagon} tone={count("overdue") ? "crit" : "muted"} hint="Bấm để lọc" />
         </button>
@@ -84,7 +92,10 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
           <StatCard className={ring("ok")} label="Còn hạn" value={count("ok")} icon={ShieldCheck} tone="ok" hint="Bấm để lọc" />
         </button>
         <button type="button" className="text-left" onClick={() => pick("no_data")}>
-          <StatCard className={ring("no_data")} label="Chưa rà soát lần nào" value={count("no_data")} icon={CircleDashed} tone={count("no_data") ? "info" : "muted"} hint="Chưa có ngày cập nhật" />
+          <StatCard className={ring("no_data")} label="Chưa rà soát lần nào" value={count("no_data")} icon={CircleDashed} tone={count("no_data") ? "crit" : "muted"} hint="Chưa có ngày cập nhật" />
+        </button>
+        <button type="button" className="text-left" onClick={() => pick("incomplete")}>
+          <StatCard className={ring("incomplete")} label="Thiếu ảnh / thông tin" value={incompleteCount} icon={ImageOff} tone={incompleteCount ? "crit" : "muted"} hint="Thiếu ảnh, hiện trạng, số lượng" />
         </button>
       </div>
 
@@ -154,8 +165,8 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
         {visibleGroups.map((g) => {
           const expanded = isOpen(g.sbu.id);
           return (
-            <section key={g.sbu.id} className={cn("overflow-hidden rounded-xl border bg-card shadow-xs", g.overdue > 0 && "border-red-300 dark:border-red-500/40")}>
-              <button type="button" className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-muted/40", g.overdue > 0 && "bg-red-50/70 dark:bg-red-500/10")} onClick={() => toggle(g.sbu.id)} aria-expanded={expanded}>
+            <section key={g.sbu.id} className={cn("overflow-hidden rounded-xl border bg-card shadow-xs", g.red > 0 && "border-red-300 dark:border-red-500/40")}>
+              <button type="button" className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-muted/40", g.red > 0 && "bg-red-50/70 dark:bg-red-500/10")} onClick={() => toggle(g.sbu.id)} aria-expanded={expanded}>
                 {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 <span className="text-base font-semibold">{g.sbu.code}</span>
                 <span className="text-sm text-muted-foreground">{g.sbu.name !== g.sbu.code ? g.sbu.name : ""}</span>
@@ -168,8 +179,9 @@ export function MonitoringView({ items, sbus, canEdit, canManage }: { items: Mon
                       <span className="rounded bg-muted px-1.5 py-0.5 font-medium tabular-nums">{g.all.length} hạng mục</span>
                       {g.overdue > 0 && <span className="rounded bg-red-600 px-1.5 py-0.5 font-semibold text-white tabular-nums">{g.overdue} quá hạn</span>}
                       {g.dueSoon > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800 tabular-nums dark:bg-amber-500/20 dark:text-amber-300">{g.dueSoon} sắp hạn</span>}
-                      {g.noData > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground tabular-nums">{g.noData} chưa rà soát</span>}
-                      {g.overdue === 0 && g.dueSoon === 0 && g.noData === 0 && <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">Ổn</span>}
+                      {g.noData > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700 tabular-nums dark:bg-red-500/20 dark:text-red-300">{g.noData} chưa rà soát</span>}
+                      {g.incomplete > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700 tabular-nums dark:bg-red-500/20 dark:text-red-300">{g.incomplete} thiếu ảnh/thông tin</span>}
+                      {g.red === 0 && g.dueSoon === 0 && <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">Ổn</span>}
                       {g.photos > 0 && (
                         <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 tabular-nums text-muted-foreground">
                           <Camera className="h-3 w-3" /> {g.photos}

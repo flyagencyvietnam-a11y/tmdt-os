@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarCheck, ExternalLink, History, MoreHorizontal, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarCheck, ExternalLink, History, MoreHorizontal, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -17,10 +17,11 @@ import { fmtDate } from "@/lib/format";
 import { todayVnDayStr } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { deleteMonitoringItemAction, listMonitoringChecksAction, markMonitoringRefreshedAction, updateMonitoringItemAction } from "./actions";
-import { ALERT_LABELS, KIND_LABELS, STATE_PLACEHOLDER, type Alert, type MonitoringRow } from "./monitoring-shared";
+import { ISSUE_LABELS } from "@/lib/monitoring-health";
+import { ALERT_LABELS, KIND_LABELS, overdueDays, rowIssues, STATE_PLACEHOLDER, type Alert, type MonitoringRow } from "./monitoring-shared";
 import { PhotoStrip } from "./photo-strip";
 
-const ALERT_TAG: Record<Alert, TagColor> = { overdue: "red", due_soon: "amber", ok: "emerald", no_data: "gray" };
+const ALERT_TAG: Record<Alert, TagColor> = { overdue: "red", due_soon: "amber", ok: "emerald", no_data: "red" };
 const ALERT_ROW: Record<Alert, string> = {
   overdue: "border-red-300 bg-red-50 dark:border-red-500/40 dark:bg-red-500/10",
   due_soon: "border-amber-300 bg-amber-50/70 dark:border-amber-500/40 dark:bg-amber-500/10",
@@ -34,6 +35,10 @@ export function MonitoringItem({ item, canEdit, canManage, sbuLabel }: { item: M
   const [pending, start] = React.useTransition();
   const [checkOpen, setCheckOpen] = React.useState(false);
   const isMaps = item.kind === "google_maps";
+  // Có ≥1 vấn đề (quá hạn / chưa rà soát / thiếu ảnh / thiếu hiện trạng / thiếu số lượng) ⇒ cả thẻ tô đỏ.
+  const issues = rowIssues(item);
+  const red = issues.length > 0;
+  const lateDays = overdueDays(item);
 
   const save = (patch: Parameters<typeof updateMonitoringItemAction>[1], ok?: string) =>
     start(async () => {
@@ -45,7 +50,7 @@ export function MonitoringItem({ item, canEdit, canManage, sbuLabel }: { item: M
     });
 
   return (
-    <div className={cn("grid gap-3 rounded-xl border p-3 shadow-xs lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1.2fr)]", ALERT_ROW[item.alert], pending && "opacity-70")}>
+    <div className={cn("grid gap-3 rounded-xl border p-3 shadow-xs lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1.2fr)]", red ? ALERT_ROW.overdue : ALERT_ROW[item.alert], pending && "opacity-70")}>
       {/* Cột 1: tên + cảnh báo + lịch rà soát */}
       <div className="min-w-0 space-y-2">
         <div className="flex items-start gap-2">
@@ -59,6 +64,17 @@ export function MonitoringItem({ item, canEdit, canManage, sbuLabel }: { item: M
           <Tag color={ALERT_TAG[item.alert]}>{ALERT_LABELS[item.alert]}</Tag>
           {canEdit && <ItemMenu item={item} canManage={canManage} onSave={save} />}
         </div>
+        {red && (
+          <div role="alert" className="flex flex-wrap items-center gap-1.5 rounded-md border border-red-300 bg-red-100/70 px-2 py-1.5 text-xs text-red-800 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-semibold">Cần xử lý:</span>
+            {issues.map((k) => (
+              <span key={k} className="rounded bg-red-600 px-1.5 py-0.5 font-medium text-white">
+                {k === "overdue" && lateDays ? `Quá hạn ${lateDays} ngày` : ISSUE_LABELS[k]}
+              </span>
+            ))}
+          </div>
+        )}
         <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-0.5 text-xs">
           <dt className="text-muted-foreground">Khu vực</dt>
           <dd>
@@ -121,7 +137,7 @@ export function MonitoringItem({ item, canEdit, canManage, sbuLabel }: { item: M
           disabled={!canEdit}
           defaultValue={item.currentStateNote ?? ""}
           placeholder={STATE_PLACEHOLDER[item.kind] ?? STATE_PLACEHOLDER.other}
-          className="min-h-24 resize-y bg-background/70 text-sm"
+          className={cn("min-h-24 resize-y bg-background/70 text-sm", issues.includes("no_state") && "border-red-400 dark:border-red-500/60")}
           onBlur={(e) => e.target.value.trim() !== (item.currentStateNote ?? "") && save({ currentStateNote: e.target.value.trim() || null }, "Đã lưu hiện trạng.")}
         />
       </div>

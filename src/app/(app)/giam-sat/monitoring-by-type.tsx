@@ -4,7 +4,8 @@ import { Camera, ChevronDown, ChevronRight } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { MonitoringItem } from "./monitoring-item";
-import { areaRank, KIND_LABELS, KIND_ORDER, type MonitoringRow, type SbuLite } from "./monitoring-shared";
+import { isIncomplete } from "@/lib/monitoring-health";
+import { areaRank, KIND_LABELS, KIND_ORDER, rowIssues, type MonitoringRow, type SbuLite } from "./monitoring-shared";
 
 export interface TypeGroup {
   key: string;
@@ -55,6 +56,8 @@ export function ByTypeView({
         const overdue = g.all.filter((i) => i.alert === "overdue").length;
         const dueSoon = g.all.filter((i) => i.alert === "due_soon").length;
         const noData = g.all.filter((i) => i.alert === "no_data").length;
+        const incomplete = g.all.filter((i) => isIncomplete(rowIssues(i))).length;
+        const red = g.all.filter((i) => rowIssues(i).length > 0).length;
         const qty = g.all.reduce((a, i) => a + (i.quantity ?? 0), 0);
         const reported = g.all.filter((i) => i.quantity != null).length;
         const photos = g.all.reduce((a, i) => a + i.photos.length, 0);
@@ -63,8 +66,8 @@ export function ByTypeView({
         return (
           <React.Fragment key={g.key}>
             {kindHead && <h3 className="px-1 pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{KIND_LABELS[g.kind] ?? g.kind}</h3>}
-            <section className={cn("overflow-hidden rounded-xl border bg-card shadow-xs", overdue > 0 && "border-red-300 dark:border-red-500/40")}>
-              <button type="button" aria-expanded={expanded} onClick={() => toggle(g.key)} className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-muted/40", overdue > 0 && "bg-red-50/70 dark:bg-red-500/10")}>
+            <section className={cn("overflow-hidden rounded-xl border bg-card shadow-xs", red > 0 && "border-red-300 dark:border-red-500/40")}>
+              <button type="button" aria-expanded={expanded} onClick={() => toggle(g.key)} className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-muted/40", red > 0 && "bg-red-50/70 dark:bg-red-500/10")}>
                 {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 <span className="text-base font-semibold">{g.title}</span>
                 {g.area && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{g.area}</span>}
@@ -77,7 +80,8 @@ export function ByTypeView({
                   )}
                   {overdue > 0 && <span className="rounded bg-red-600 px-1.5 py-0.5 font-semibold tabular-nums text-white">{overdue} quá hạn</span>}
                   {dueSoon > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold tabular-nums text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">{dueSoon} sắp hạn</span>}
-                  {noData > 0 && <span className="rounded bg-muted px-1.5 py-0.5 tabular-nums text-muted-foreground">{noData} chưa rà soát</span>}
+                  {noData > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold tabular-nums text-red-700 dark:bg-red-500/20 dark:text-red-300">{noData} chưa rà soát</span>}
+                  {incomplete > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold tabular-nums text-red-700 dark:bg-red-500/20 dark:text-red-300">{incomplete} thiếu ảnh/thông tin</span>}
                   {photos > 0 && (
                     <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 tabular-nums text-muted-foreground">
                       <Camera className="h-3 w-3" /> {photos}

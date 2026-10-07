@@ -25,6 +25,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
 import type { Role } from "@/lib/auth/permissions";
+import type { NavBadge, NavBadges } from "@/lib/nav-badge";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
@@ -89,8 +90,61 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Chấm số điểm nóng ở góc trên bên phải mục menu: đỏ = quá hạn/thiếu, vàng = sắp đến hạn. */
+function BadgePill({ badge }: { badge: NavBadge }) {
+  return (
+    <span
+      title={badge.hint}
+      className={cn(
+        "pointer-events-none absolute right-1.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none tabular-nums text-white shadow-sm ring-2 ring-sidebar",
+        badge.tone === "crit" ? "bg-red-600" : "bg-amber-500",
+      )}
+    >
+      {badge.count > 99 ? "99+" : badge.count}
+      <span className="sr-only"> điểm cần chú ý: {badge.hint}</span>
+    </span>
+  );
+}
+
+/** Lần tải badge gần nhất — dùng chung giữa sidebar desktop và menu mobile để hiện ngay, khỏi nhấp nháy. */
+let lastBadges: NavBadges = {};
+
+/**
+ * Tải badge điểm nóng SAU khi trang đã hiện (không nằm trong đường render của layout — mỗi lần router.refresh sau khi sửa dữ liệu
+ * layout chạy lại, nếu badge nằm trong đó thì thêm cả chục truy vấn DB vào mọi thao tác). Cập nhật khi đổi trang, quay lại tab và mỗi 60 giây.
+ */
+function useNavBadges(): NavBadges {
+  const pathname = usePathname();
+  const [badges, setBadges] = React.useState<NavBadges>(lastBadges);
+  React.useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/nav-badges", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { badges: NavBadges };
+        lastBadges = data.badges;
+        if (alive) setBadges(data.badges);
+      } catch {
+        // mất mạng/DB chậm — giữ số cũ
+      }
+    };
+    load();
+    const onVisible = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(onVisible, 60_000);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
+  }, [pathname]);
+  return badges;
+}
+
 export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const badges = useNavBadges();
 
   return (
     <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
@@ -103,6 +157,7 @@ export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () =
             {items.map((item) => {
               const active = isActive(pathname, item.href);
               const Icon = item.icon;
+              const badge = badges?.[item.href];
               return (
                 <Link
                   key={item.href}
@@ -115,7 +170,8 @@ export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () =
                 >
                   {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-brand" />}
                   <Icon className={cn("h-4 w-4 shrink-0", active ? "text-brand" : "text-muted-foreground group-hover:text-foreground")} />
-                  <span className="flex-1 truncate">{item.label}</span>
+                  <span className={cn("flex-1 truncate", badge && "pr-5")}>{item.label}</span>
+                  {badge && <BadgePill badge={badge} />}
                 </Link>
               );
             })}

@@ -1,3 +1,6 @@
+import { monitoringIssues, type MonitoringIssue } from "@/lib/monitoring-health";
+import { diffDaysStr, todayVnDayStr } from "@/lib/time";
+
 export type Alert = "overdue" | "due_soon" | "ok" | "no_data";
 
 export interface PhotoItem {
@@ -35,6 +38,18 @@ export interface SbuLite {
 }
 
 export const ALERT_LABELS: Record<Alert, string> = { overdue: "Quá hạn", due_soon: "Sắp đến hạn", ok: "Còn hạn", no_data: "Chưa rà soát" };
+
+/** Các vấn đề cần xử lý của 1 hạng mục (quá hạn, chưa rà soát, thiếu ảnh/hiện trạng/số lượng…). Có ≥1 vấn đề ⇒ cảnh báo ĐỎ. */
+export function rowIssues(i: MonitoringRow): MonitoringIssue[] {
+  return monitoringIssues(i, i.photos.length);
+}
+
+/** Số ngày đã quá hạn (>0) của hạng mục quá hạn; null nếu chưa quá hạn / chưa có hạn. */
+export function overdueDays(i: Pick<MonitoringRow, "alert" | "nextDue">, today: string = todayVnDayStr()): number | null {
+  if (i.alert !== "overdue" || !i.nextDue) return null;
+  const d = diffDaysStr(i.nextDue, today);
+  return d > 0 ? d : null;
+}
 
 export const KIND_LABELS: Record<string, string> = {
   posm: "POSM",
