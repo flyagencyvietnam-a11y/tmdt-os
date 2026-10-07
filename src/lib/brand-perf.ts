@@ -3,11 +3,13 @@
  * có hệ thống kênh riêng; ma trận = brand × kênh × chỉ số. Chỉ số suy ra (ER, CTR, tăng trưởng follower) tính tại đây, không lưu.
  */
 
-export type ChannelKey = "meta" | "tiktok" | "youtube" | "website" | "zalo" | "other";
+export type ChannelKey = "facebook" | "instagram" | "meta" | "tiktok" | "youtube" | "website" | "zalo" | "other";
 export type MetricKey = "impressions" | "reach" | "engagements" | "videoViews" | "linkClicks" | "sessions" | "posts" | "followers" | "newFollowers";
 
-export const CHANNELS: { key: ChannelKey; label: string; short: string; color: string }[] = [
-  { key: "meta", label: "Meta (Facebook / Instagram)", short: "Meta", color: "#1877f2" },
+export const CHANNELS: { key: ChannelKey; label: string; short: string; color: string; /** Kênh cũ: còn hiển thị nếu đã có dữ liệu nhưng không cho thêm mới. */ legacy?: boolean }[] = [
+  { key: "facebook", label: "Facebook", short: "Facebook", color: "#1877f2" },
+  { key: "instagram", label: "Instagram", short: "Instagram", color: "#e1306c" },
+  { key: "meta", label: "Meta (Facebook + Instagram gộp)", short: "Meta", color: "#1877f2", legacy: true },
   { key: "tiktok", label: "TikTok", short: "TikTok", color: "#111827" },
   { key: "youtube", label: "YouTube", short: "YouTube", color: "#dc2626" },
   { key: "website", label: "Website", short: "Website", color: "#059669" },
@@ -41,6 +43,8 @@ export const METRICS: MetricDef[] = [
 
 /** Chỉ số áp dụng cho từng loại kênh — ô không áp dụng hiện "–" và không nhập được (xác định rõ ma trận kênh). */
 export const CHANNEL_METRICS: Record<ChannelKey, MetricKey[]> = {
+  facebook: ["impressions", "reach", "engagements", "videoViews", "linkClicks", "posts", "followers", "newFollowers"],
+  instagram: ["impressions", "reach", "engagements", "videoViews", "linkClicks", "posts", "followers", "newFollowers"],
   meta: ["impressions", "reach", "engagements", "videoViews", "linkClicks", "posts", "followers", "newFollowers"],
   tiktok: ["impressions", "reach", "engagements", "videoViews", "posts", "followers", "newFollowers"],
   youtube: ["impressions", "engagements", "videoViews", "linkClicks", "posts", "followers", "newFollowers"],
@@ -56,6 +60,8 @@ export type MetricValues = Partial<Record<MetricKey, number | null>>;
 export interface BrandPerfRow {
   sbuId: string;
   channel: string;
+  /** Khoá tài khoản trong (brand, kênh) — xem brand_channels.account. */
+  account: string;
   period: string;
   impressions: string | null;
   reach: string | null;
@@ -107,3 +113,35 @@ export const prevPeriod = (p: string): string => {
 };
 
 export const periodLabel = (p: string): string => `T${Number(p.slice(5, 7))}/${p.slice(0, 4)}`;
+
+/** Khớp 1 dòng số liệu với 1 kênh khai báo: cùng brand + nền tảng + tài khoản. */
+export const sameChannel = (a: { sbuId: string; channel: string; account: string }, b: { sbuId: string; channel: string; account: string }): boolean =>
+  a.sbuId === b.sbuId && a.channel === b.channel && a.account === b.account;
+
+/**
+ * Khoá tài khoản ỔN ĐỊNH sinh từ link kênh — để nạp lại danh sách kênh không tạo trùng và đổi tên hiển thị không làm mất số liệu.
+ * Facebook: tên trang (hoặc id nếu profile.php?id=, "g-<id>" cho nhóm); TikTok/Instagram/YouTube: @handle; Zalo: id; Website: tên miền + đường dẫn.
+ * Link thiếu/không nhận ra → "" (tài khoản mặc định).
+ */
+export function accountKeyFromUrl(url: string | null | undefined): string {
+  const raw = (url ?? "").trim();
+  if (!raw) return "";
+  let u: URL;
+  try {
+    u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return "";
+  }
+  const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+  const parts = u.pathname.split("/").filter(Boolean);
+  const clean = (x: string) => decodeURIComponent(x).toLowerCase();
+  if (host.endsWith("facebook.com") || host.endsWith("fb.com")) {
+    if (parts[0] === "profile.php") return u.searchParams.get("id") ?? "";
+    if (parts[0] === "groups" && parts[1]) return `g-${clean(parts[1])}`;
+    return parts[0] ? clean(parts[0]) : "";
+  }
+  if (host.endsWith("zalo.me")) return parts[0] ? clean(parts[0]) : "";
+  if (host.endsWith("tiktok.com") || host.endsWith("instagram.com") || host.endsWith("youtube.com")) return parts[0] ? clean(parts[0]) : "";
+  // Website: tên miền + đường dẫn (không query/hash)
+  return [host, ...parts.map(clean)].join("/");
+}

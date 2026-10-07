@@ -15,7 +15,7 @@ async function requireStaff() {
 }
 const fail = (e: unknown): Result => ({ ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." });
 
-export async function setBrandPerfValueAction(input: { sbuId: string; channel: string; period: string; metric: MetricKey; value: number | null }): Promise<Result> {
+export async function setBrandPerfValueAction(input: { sbuId: string; channel: string; account?: string; period: string; metric: MetricKey; value: number | null }): Promise<Result> {
   const user = await requireStaff();
   if (!user) return { ok: false, error: "Không có quyền nhập số liệu." };
   try {
@@ -39,7 +39,7 @@ export async function addBrandChannelAction(input: { sbuId: string; channel: str
   }
 }
 
-export async function updateBrandChannelAction(id: string, patch: { label?: string | null; url?: string | null }): Promise<Result> {
+export async function updateBrandChannelAction(id: string, patch: { label?: string | null; url?: string | null; active?: boolean }): Promise<Result> {
   const user = await requireStaff();
   if (!user) return { ok: false, error: "Không có quyền." };
   try {

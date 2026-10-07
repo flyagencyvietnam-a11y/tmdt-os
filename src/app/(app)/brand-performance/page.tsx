@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Brand Performance: báo cáo chỉ số thương hiệu HẰNG THÁNG (Impression, Reach, Engagement, Follower…) cho từng brand/sản phẩm,
- * theo ma trận kênh riêng của brand (Meta, TikTok, YouTube, Website, Zalo…).
+ * theo ma trận kênh riêng của brand (Facebook, Instagram, TikTok, YouTube, Website, Zalo…; mỗi tài khoản một dòng).
  */
 export default async function BrandPerformancePage() {
   const user = await requireUser();
@@ -24,14 +24,15 @@ export default async function BrandPerformancePage() {
     <div className="space-y-4">
       <PageHeader
         title="Brand Performance"
-        description="Chỉ số thương hiệu theo tháng của từng brand/sản phẩm: Impression, Reach, Engagement, Follower… trên hệ thống kênh riêng của brand (Meta, TikTok, YouTube, Website, Zalo). Bấm vào ô để nhập số ngay trên bảng."
+        description="Chỉ số thương hiệu theo tháng của từng brand/sản phẩm: Impression, Reach, Engagement, Follower… trên hệ thống kênh riêng của brand (Facebook, Instagram, TikTok, YouTube, Website, Zalo — mỗi tài khoản một dòng). Bấm vào ô để nhập số ngay trên bảng."
       />
       <BrandPerformanceView
         brands={brands.map((b) => ({ id: b.id, code: b.code, name: b.name }))}
-        channels={channels.map((c) => ({ id: c.id, sbuId: c.sbuId, channel: c.channel, label: c.label, url: c.url }))}
+        channels={channels.map((c) => ({ id: c.id, sbuId: c.sbuId, channel: c.channel, account: c.account, label: c.label, url: c.url, active: c.active }))}
         metrics={metrics.map((m) => ({
           sbuId: m.sbuId,
           channel: m.channel,
+          account: m.account,
           period: m.period,
           impressions: m.impressions,
           reach: m.reach,

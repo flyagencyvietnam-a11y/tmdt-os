@@ -14,8 +14,13 @@ export const brandChannels = pgTable(
     sbuId: uuid("sbu_id")
       .notNull()
       .references(() => sbus.id),
-    /** meta | tiktok | youtube | website | zalo | other — danh sách cố định ở lib/brand-perf.ts */
+    /** facebook | instagram | tiktok | youtube | website | zalo | other (meta = cũ, Facebook+Instagram gộp) — danh sách ở lib/brand-perf.ts */
     channel: text("channel").notNull(),
+    /**
+     * Khoá tài khoản trong cùng (brand, nền tảng) — 1 brand có thể có nhiều tài khoản cùng nền tảng (vd. 10 fanpage trung tâm).
+     * Ổn định, không hiển thị; "" = tài khoản mặc định. Số liệu (brand_perf_metrics) khớp kênh qua (sbu, channel, account).
+     */
+    account: text("account").notNull().default(""),
     /** Tên hiển thị tuỳ chọn (vd. "Fanpage VMG IELTS"). */
     label: text("label"),
     url: text("url"),
@@ -23,7 +28,7 @@ export const brandChannels = pgTable(
     sortOrder: integer("sort_order").notNull().default(0),
     ...auditColumns,
   },
-  (t) => [uniqueIndex("brand_channels_uniq").on(t.sbuId, t.channel), index("brand_channels_sbu_idx").on(t.sbuId)],
+  (t) => [uniqueIndex("brand_channels_uniq").on(t.sbuId, t.channel, t.account), index("brand_channels_sbu_idx").on(t.sbuId)],
 );
 
 export const brandPerfMetrics = pgTable(
@@ -34,6 +39,8 @@ export const brandPerfMetrics = pgTable(
       .notNull()
       .references(() => sbus.id),
     channel: text("channel").notNull(),
+    /** Khớp brand_channels.account. */
+    account: text("account").notNull().default(""),
     /** "2026-10" */
     period: text("period").notNull(),
     impressions: numeric("impressions", { precision: 14, scale: 0 }),
@@ -50,7 +57,7 @@ export const brandPerfMetrics = pgTable(
     notes: text("notes"),
     ...auditColumns,
   },
-  (t) => [uniqueIndex("brand_perf_uniq").on(t.sbuId, t.channel, t.period), index("brand_perf_period_idx").on(t.period)],
+  (t) => [uniqueIndex("brand_perf_uniq").on(t.sbuId, t.channel, t.account, t.period), index("brand_perf_period_idx").on(t.period)],
 );
 
 export type BrandChannel = typeof brandChannels.$inferSelect;

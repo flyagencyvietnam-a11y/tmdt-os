@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, Heart, Link2, Megaphone, Plus, Trash2, UserPlus } from "lucide-react";
+import { Eye, EyeOff, Heart, Link2, Megaphone, Plus, Power, Trash2, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { appliesTo, CHANNELS, CHANNEL_SHORT, clickRate, engagementRate, followerGrowth, METRICS, periodLabel, prevPeriod, sumValues, valuesOf, type BrandPerfRow, type MetricKey, type MetricValues } from "@/lib/brand-perf";
+import { appliesTo, CHANNELS, CHANNEL_SHORT, clickRate, sameChannel, engagementRate, followerGrowth, METRICS, periodLabel, prevPeriod, sumValues, valuesOf, type BrandPerfRow, type MetricKey, type MetricValues } from "@/lib/brand-perf";
 import { SERIES_COLORS } from "@/lib/reports/types";
 import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ import { InlineNum } from "../ads/ads-inline";
 import { MonthPicker } from "../ads/ads-ui";
 import { axisProps, ChartCard, ChartTooltip, gridProps } from "../ads/charts";
 import { change, fmt } from "../ads/shared";
-import { addBrandChannelAction, removeBrandChannelAction, setBrandPerfValueAction } from "./actions";
+import { addBrandChannelAction, removeBrandChannelAction, setBrandPerfValueAction, updateBrandChannelAction } from "./actions";
 
 interface Brand {
   id: string;
@@ -31,8 +31,12 @@ interface Channel {
   id: string;
   sbuId: string;
   channel: string;
+  /** Khoá tài khoản trong (brand, kênh) — số liệu khớp kênh qua (sbu, channel, account). */
+  account: string;
   label: string | null;
   url: string | null;
+  /** false = kênh ngừng sử dụng: ẩn khỏi ma trận (mặc định), số liệu cũ vẫn tính vào tổng. */
+  active: boolean;
 }
 
 const pct = (v: number | null, d = 1) => (v == null ? "—" : `${(v * 100).toLocaleString("vi-VN", { maximumFractionDigits: d })}%`);
@@ -43,21 +47,24 @@ export function BrandPerformanceView({ brands, channels, metrics, canEdit, curre
   const months = React.useMemo(() => [...new Set(metrics.map((m) => m.period))].sort(), [metrics]);
   const [period, setPeriod] = useSessionState<string>("brandperf:period", months.at(-1) ?? currentMonth);
   const prev = prevPeriod(period);
+  const [showInactive, setShowInactive] = useSessionState<boolean>("brandperf:inactive", false);
+  const inactiveCount = channels.filter((c) => !c.active).length;
 
   const chOf = React.useCallback((sbuId: string) => channels.filter((c) => c.sbuId === sbuId), [channels]);
+  /** Số liệu của 1 kênh cụ thể (đúng tài khoản) trong 1 tháng. */
   const valsOf = React.useCallback(
-    (sbuId: string, channel: string | null, p: string): MetricValues =>
-      sumValues(metrics.filter((m) => m.sbuId === sbuId && m.period === p && (channel == null || m.channel === channel)).map((r) => valuesOf(r))),
+    (c: Channel, p: string): MetricValues => sumValues(metrics.filter((m) => m.period === p && sameChannel(m, c)).map((r) => valuesOf(r))),
     [metrics],
   );
-  const brandTotal = React.useCallback((sbuId: string, p: string) => sumValues(chOf(sbuId).map((c) => valsOf(sbuId, c.channel, p))), [chOf, valsOf]);
+  // Tổng brand cộng MỌI kênh của brand (kể cả kênh ngừng sử dụng — số liệu cũ vẫn là số liệu thật).
+  const brandTotal = React.useCallback((sbuId: string, p: string) => sumValues(chOf(sbuId).map((c) => valsOf(c, p))), [chOf, valsOf]);
   const grand = React.useCallback((p: string) => sumValues(brands.map((b) => brandTotal(b.id, p))), [brands, brandTotal]);
   const cur = grand(period);
   const old = grand(prev);
 
   const saveCell = React.useCallback(
-    async (sbuId: string, channel: string, metric: MetricKey, value: string | null) => {
-      const res = await setBrandPerfValueAction({ sbuId, channel, period, metric, value: value == null ? null : Number(value) });
+    async (c: Channel, metric: MetricKey, value: string | null) => {
+      const res = await setBrandPerfValueAction({ sbuId: c.sbuId, channel: c.channel, account: c.account, period, metric, value: value == null ? null : Number(value) });
       if (res.ok) router.refresh();
       else toast.error(res.error);
     },
@@ -88,7 +95,12 @@ export function BrandPerformanceView({ brands, channels, metrics, canEdit, curre
         <span className="px-1 text-sm text-muted-foreground">Tháng báo cáo</span>
         <MonthPicker months={months} value={period} onChange={setPeriod} />
         <span className="text-xs text-muted-foreground">Số liệu nhập hằng tháng từ công cụ của từng kênh (Meta Business Suite, TikTok Studio, YouTube Studio, GA…).</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {inactiveCount > 0 && (
+            <Button size="sm" variant={showInactive ? "default" : "outline"} onClick={() => setShowInactive((v) => !v)} title="Kênh đã đóng/không còn dùng">
+              {showInactive ? <Eye className="mr-1 h-4 w-4" /> : <EyeOff className="mr-1 h-4 w-4" />} Kênh ngừng sử dụng ({inactiveCount})
+            </Button>
+          )}
           <ExportMenu kind="brand" period={period} />
         </div>
       </div>
@@ -138,10 +150,11 @@ export function BrandPerformanceView({ brands, channels, metrics, canEdit, curre
             </thead>
             <tbody>
               {brands.map((b, bi) => {
-                const chs = chOf(b.id);
+                const all = chOf(b.id);
+                const chs = showInactive ? all : all.filter((c) => c.active);
                 const t = brandTotal(b.id, period);
                 const tp = brandTotal(b.id, prev);
-                const free = CHANNELS.filter((c) => !chs.some((x) => x.channel === c.key));
+                const free = CHANNELS.filter((c) => !c.legacy);
                 return (
                   <React.Fragment key={b.id}>
                     <tr className="border-t-2 bg-muted/30">
@@ -149,10 +162,11 @@ export function BrandPerformanceView({ brands, channels, metrics, canEdit, curre
                         <span className="inline-flex items-center gap-2">
                           <span className="h-3 w-1 rounded-full" style={{ background: SERIES_COLORS[bi % SERIES_COLORS.length] }} />
                           {b.name}
+                          {all.length > 0 && <span className="rounded bg-background px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">{all.filter((c) => c.active).length} kênh{all.some((c) => !c.active) ? ` (+${all.filter((c) => !c.active).length} ngừng)` : ""}</span>}
                           {canEdit && <AddChannel sbuId={b.id} free={free.map((c) => ({ value: c.key, label: c.label }))} />}
                         </span>
                       </td>
-                      {chs.length === 0 ? (
+                      {all.length === 0 ? (
                         <td colSpan={METRICS.length + 2} className="px-3 py-2 text-xs font-normal text-muted-foreground">
                           Chưa khai báo kênh cho brand này.
                         </td>
@@ -161,30 +175,32 @@ export function BrandPerformanceView({ brands, channels, metrics, canEdit, curre
                       )}
                     </tr>
                     {chs.map((c) => {
-                      const v = valsOf(b.id, c.channel, period);
-                      const p = valsOf(b.id, c.channel, prev);
+                      const v = valsOf(c, period);
+                      const p = valsOf(c, prev);
                       const meta = CHANNELS.find((x) => x.key === c.channel);
                       return (
-                        <tr key={c.id} className="border-t hover:bg-muted/20">
+                        <tr key={c.id} className={cn("border-t hover:bg-muted/20", !c.active && "bg-muted/20 text-muted-foreground")}>
                           <td className="sticky left-0 z-10 bg-card px-3 py-1.5 pl-8">
                             <span className="group inline-flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full" style={{ background: meta?.color ?? "#64748b" }} />
+                              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: meta?.color ?? "#64748b" }} />
                               <span className="font-medium">{CHANNEL_SHORT[c.channel] ?? c.channel}</span>
-                              {c.label && <span className="text-xs text-muted-foreground">{c.label}</span>}
+                              {c.label && <span className="max-w-64 truncate text-xs text-muted-foreground" title={c.label}>{c.label}</span>}
+                              {!c.active && <span className="rounded bg-muted px-1 text-[10px] font-medium">Ngừng</span>}
                               {c.url && (
                                 <a href={c.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground" title="Mở kênh">
                                   <Link2 className="h-3 w-3" />
                                 </a>
                               )}
-                              {canEdit && <RemoveChannel id={c.id} name={`${b.name} · ${CHANNEL_SHORT[c.channel] ?? c.channel}`} />}
+                              {canEdit && <ToggleChannel id={c.id} active={c.active} />}
+                              {canEdit && <RemoveChannel id={c.id} name={`${b.name} · ${CHANNEL_SHORT[c.channel] ?? c.channel}${c.label ? ` (${c.label})` : ""}`} />}
                             </span>
                           </td>
                           {METRICS.slice(0, 3).map((m) => (
-                            <MetricCell key={m.key} channel={c.channel} metric={m.key} value={v[m.key]} canEdit={canEdit} onSave={(val) => saveCell(b.id, c.channel, m.key, val)} />
+                            <MetricCell key={m.key} channel={c.channel} metric={m.key} value={v[m.key]} canEdit={canEdit} onSave={(val) => saveCell(c, m.key, val)} />
                           ))}
                           <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{pct(engagementRate(v))}</td>
                           {METRICS.slice(3).map((m) => (
-                            <MetricCell key={m.key} channel={c.channel} metric={m.key} value={v[m.key]} canEdit={canEdit} onSave={(val) => saveCell(b.id, c.channel, m.key, val)} />
+                            <MetricCell key={m.key} channel={c.channel} metric={m.key} value={v[m.key]} canEdit={canEdit} onSave={(val) => saveCell(c, m.key, val)} />
                           ))}
                           <Delta cur={v.impressions} prev={p.impressions} />
                         </tr>
@@ -281,7 +297,6 @@ function AddChannel({ sbuId, free }: { sbuId: string; free: { value: string; lab
   const [label, setLabel] = React.useState("");
   const [url, setUrl] = React.useState("");
   const [pending, start] = React.useTransition();
-  if (free.length === 0) return null;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={<button type="button" className="inline-flex items-center gap-1 rounded-md border bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground" />}>
@@ -294,8 +309,8 @@ function AddChannel({ sbuId, free }: { sbuId: string; free: { value: string; lab
             <SimpleSelect value={channel} onValueChange={(v) => setChannel(v ?? "")} placeholder="Chọn kênh" options={free} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Tên hiển thị (tuỳ chọn)</Label>
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="vd. Fanpage VMG IELTS" className="h-8" />
+            <Label className="text-xs">Tên kênh / tên trang</Label>
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="vd. Anh Ngữ Việt Mỹ VMG - Long Thành" className="h-8" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Link kênh (tuỳ chọn)</Label>
@@ -324,6 +339,28 @@ function AddChannel({ sbuId, free }: { sbuId: string; free: { value: string; lab
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function ToggleChannel({ id, active }: { id: string; active: boolean }) {
+  const router = useRouter();
+  const [pending, start] = React.useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      title={active ? "Đánh dấu ngừng sử dụng (ẩn khỏi ma trận, giữ số liệu)" : "Dùng lại kênh này"}
+      className="rounded p-0.5 text-muted-foreground/0 hover:text-foreground group-hover:text-muted-foreground"
+      onClick={() =>
+        start(async () => {
+          const res = await updateBrandChannelAction(id, { active: !active });
+          if (res.ok) router.refresh();
+          else toast.error(res.error);
+        })
+      }
+    >
+      <Power className="h-3.5 w-3.5" />
+    </button>
   );
 }
 

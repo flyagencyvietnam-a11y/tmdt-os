@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { adsCampaigns, campaignSbus, campaigns, sbus, tasks, users } from "@/lib/db/schema";
-import { CHANNEL_LABEL, CHANNEL_METRICS, CHANNELS, engagementRate, followerGrowth, METRICS, periodLabel, prevPeriod, sumValues, valuesOf, type ChannelKey, type MetricValues } from "@/lib/brand-perf";
+import { CHANNEL_LABEL, CHANNEL_METRICS, CHANNELS, engagementRate, followerGrowth, METRICS, periodLabel, prevPeriod, sameChannel, sumValues, valuesOf, type ChannelKey, type MetricValues } from "@/lib/brand-perf";
 import { ECOM_PRODUCTS } from "@/lib/ads-metrics";
 import { SBU_KIND_LABEL, SBU_REGION_LABEL, isFanOutSbu } from "@/lib/sbu-kinds";
 import { fmtDate } from "@/lib/format";
@@ -80,12 +80,13 @@ async function buildBrand(db: DB, o: BuildOptions): Promise<ReportDoc> {
   const periods = [...new Set(metrics.map((m) => m.period))].sort();
   const period = o.period ?? periods.at(-1) ?? todayVnDayStr().slice(0, 7);
   const prev = prevPeriod(period);
-  const valsOf = (sbuId: string, channel: string | null, p: string): MetricValues => {
-    const rows = metrics.filter((m) => m.sbuId === sbuId && m.period === p && (channel == null || m.channel === channel));
+  // Số liệu của 1 kênh = đúng (brand, nền tảng, tài khoản) — 1 brand có thể có nhiều tài khoản cùng nền tảng.
+  const valsOf = (c: { sbuId: string; channel: string; account: string }, p: string): MetricValues => {
+    const rows = metrics.filter((m) => m.period === p && sameChannel(m, c));
     return sumValues(rows.map((r) => valuesOf(r as never)));
   };
   const chOf = (sbuId: string) => channels.filter((c) => c.sbuId === sbuId);
-  const brandTotal = (sbuId: string, p: string) => sumValues(chOf(sbuId).map((c) => valsOf(sbuId, c.channel, p)));
+  const brandTotal = (sbuId: string, p: string) => sumValues(chOf(sbuId).map((c) => valsOf(c, p)));
   const grand = (p: string) => sumValues(brands.map((b) => brandTotal(b.id, p)));
   const cur = grand(period);
   const old = grand(prev);
@@ -128,7 +129,13 @@ async function buildBrand(db: DB, o: BuildOptions): Promise<ReportDoc> {
       ...(kind ? { _kind: kind } : {}),
     });
     matrixRows.push(rowOf("Tất cả kênh", t, tp, "subtotal"));
-    for (const c of chs) matrixRows.push(rowOf(c.label ? `${CHANNEL_LABEL[c.channel] ?? c.channel} — ${c.label}` : (CHANNEL_LABEL[c.channel] ?? c.channel), valsOf(b.id, c.channel, period), valsOf(b.id, c.channel, prev)));
+    for (const c of chs) {
+      const v = valsOf(c, period);
+      // Kênh ngừng sử dụng chỉ hiện nếu kỳ này vẫn còn số liệu.
+      if (!c.active && Object.values(v).every((x) => x == null)) continue;
+      const name = CHANNEL_LABEL[c.channel] ?? c.channel;
+      matrixRows.push(rowOf(`${c.label ? `${name} — ${c.label}` : name}${c.active ? "" : " (ngừng)"}`, v, valsOf(c, prev)));
+    }
   }
   const matrixCols = [
     { header: "Brand / sản phẩm", key: "brand", width: 20 },
@@ -222,20 +229,21 @@ async function buildBrand(db: DB, o: BuildOptions): Promise<ReportDoc> {
     });
   }
 
-  // Ma trận KÊNH: brand nào dùng kênh nào
+  // Ma trận KÊNH: brand nào dùng kênh nào (kênh cũ "Meta gộp" chỉ hiện nếu còn brand dùng)
+  const channelCols = CHANNELS.filter((c) => !c.legacy || channels.some((x) => x.channel === c.key));
   sections.push({
     type: "table",
     title: "Hệ thống kênh của từng brand",
-    note: "Kênh nào được khai báo cho brand nào, chỉ số nào áp dụng cho kênh đó.",
+    note: "Số tài khoản đang sử dụng của từng brand trên mỗi nền tảng (● = số tài khoản; mỗi tài khoản có số liệu riêng trong ma trận ở trên).",
     columns: [
       { header: "Brand / sản phẩm", key: "brand", width: 22 },
-      ...CHANNELS.map((c) => ({ header: c.short, key: c.key, align: "center" as const, width: 14 })),
+      ...channelCols.map((c) => ({ header: c.short, key: c.key, align: "center" as const, width: 14 })),
     ],
     rows: brands.map((b) => {
       const row: Record<string, string | number | null> = { brand: b.name };
-      for (const c of CHANNELS) {
-        const found = chOf(b.id).find((x) => x.channel === c.key);
-        row[c.key] = found ? (found.label ? `● ${found.label}` : "●") : "";
+      for (const c of channelCols) {
+        const n = chOf(b.id).filter((x) => x.channel === c.key && x.active).length;
+        row[c.key] = n ? `● ${n}` : "";
       }
       return row;
     }),
@@ -243,10 +251,10 @@ async function buildBrand(db: DB, o: BuildOptions): Promise<ReportDoc> {
   sections.push({
     type: "table",
     title: "Chỉ số áp dụng theo loại kênh",
-    columns: [{ header: "Chỉ số", key: "m", width: 22 }, ...CHANNELS.map((c) => ({ header: c.short, key: c.key, align: "center" as const, width: 12 }))],
+    columns: [{ header: "Chỉ số", key: "m", width: 22 }, ...channelCols.map((c) => ({ header: c.short, key: c.key, align: "center" as const, width: 12 }))],
     rows: METRICS.map((m) => {
       const row: Record<string, string | number | null> = { m: m.label };
-      for (const c of CHANNELS) row[c.key] = CHANNEL_METRICS[c.key as ChannelKey].includes(m.key) ? "✓" : "–";
+      for (const c of channelCols) row[c.key] = CHANNEL_METRICS[c.key as ChannelKey].includes(m.key) ? "✓" : "–";
       return row;
     }),
   });

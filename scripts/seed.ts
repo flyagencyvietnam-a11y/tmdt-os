@@ -99,6 +99,8 @@ async function seedSbus(khietId: string, datId: string) {
     { code: "VMP", name: "VMP by VMG", kind: "brand", region: "BRAND", hoOwnerId: datId },
     { code: "VMT", name: "VMT", kind: "brand", region: "BRAND" },
     { code: "VMG", name: "VMG", kind: "brand", region: "BRAND" },
+    // Nhóm kênh của các trung tâm (10 fanpage + Zalo OA) — brand thứ 8, thêm 10/2026 từ file "TỔNG HỢP CÁC KÊNH DIGITAL".
+    { code: "VMG_ENGLISH", name: "VMG English", kind: "brand", region: "BRAND" },
     { code: "VMG_IELTS", name: "VMG IELTS", kind: "brand", region: "BRAND" },
     { code: "VMG_TESOL", name: "VMG TESOL", kind: "brand", region: "BRAND" },
     { code: "VMG_TRUNG", name: "VMG Tiếng Trung", kind: "brand", region: "BRAND" },
@@ -107,7 +109,7 @@ async function seedSbus(khietId: string, datId: string) {
   for (const r of rows) {
     await db.insert(schema.sbus).values(r).onConflictDoNothing({ target: schema.sbus.code });
   }
-  console.log(`sbus: ${rows.length} (Khiết phụ trách 5: VTS,PVT,NKN,TBM,TMDT — Đạt phụ trách 7: LDN,TPU,PTA,NTI,HVG,BPH,VMP — kèm 7 SBU brand)`);
+  console.log(`sbus: ${rows.length} (Khiết phụ trách 5: VTS,PVT,NKN,TBM,TMDT — Đạt phụ trách 7: LDN,TPU,PTA,NTI,HVG,BPH,VMP — kèm 8 SBU brand)`);
 }
 
 /** SPEC Mục 1.1 / 2 — 7 brand. VMT: public_name_allowed=false cho tới khi có quyết định rebrand. */
