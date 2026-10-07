@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { adsCampaigns, adsDisbursementPlan, adsEcomProducts, adsMetrics, appSettings, type AdsCampaign, type AdsMetric } from "@/lib/db/schema";
+import { adsCampaigns, adsEcomProducts, adsMetrics, adsPlans, appSettings, type AdsCampaign, type AdsMetric, type AdsPlan } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { computeAdsDerived, DEFAULT_EFFECTIVENESS_RUBRIC, type EffectivenessRubric } from "@/lib/ads-metrics";
 
@@ -98,17 +98,26 @@ export async function deleteAdsMetric(db: DB, id: string, actorId: string | null
 // Chiến dịch Facebook (grain thấp nhất, file "ads tt.xlsx")
 // ---------------------------------------------------------------------------
 
-export async function listAdsCampaigns(db: DB, filters: { sbuId?: string; period?: string } = {}) {
+export async function listAdsCampaigns(db: DB, filters: { sbuId?: string; period?: string; line?: AdsCampaign["line"] } = {}) {
   return db
     .select()
     .from(adsCampaigns)
-    .where(and(filters.sbuId ? eq(adsCampaigns.sbuId, filters.sbuId) : undefined, filters.period ? eq(adsCampaigns.period, filters.period) : undefined))
+    .where(
+      and(
+        filters.sbuId ? eq(adsCampaigns.sbuId, filters.sbuId) : undefined,
+        filters.period ? eq(adsCampaigns.period, filters.period) : undefined,
+        filters.line ? eq(adsCampaigns.line, filters.line) : undefined,
+      ),
+    )
     .orderBy(asc(adsCampaigns.period));
 }
 
 export interface UpsertAdsCampaignInput {
   id?: string;
-  sbuId: string;
+  /** Mảng của request; bỏ trống = giữ nguyên (tạo mới mặc định b2c_center). */
+  line?: AdsCampaign["line"];
+  /** Chỉ dùng ở mảng b2c_center (request của từng trung tâm). */
+  sbuId?: string | null;
   period: string;
   campaignName: string;
   misaRequestUrl?: string | null;
@@ -172,7 +181,7 @@ export async function deleteAdsCampaign(db: DB, id: string, actorId: string | nu
  * tự động chạy mỗi lần sửa 1 chiến dịch — tránh ghi đè số liệu đã sửa tay.
  */
 export async function rollupCampaignsToMetric(db: DB, sbuId: string, period: string, actorId: string | null) {
-  const campaigns = await listAdsCampaigns(db, { sbuId, period });
+  const campaigns = await listAdsCampaigns(db, { sbuId, period, line: "b2c_center" });
   const sum = (f: (c: AdsCampaign) => string | null) => campaigns.reduce((s, c) => s + (f(c) ? Number(f(c)) : 0), 0);
   const totalSpend = sum((c) => c.spend);
   const totalMessages = sum((c) => c.messages);
@@ -204,52 +213,125 @@ export async function rollupCampaignsToMetric(db: DB, sbuId: string, period: str
 }
 
 // ---------------------------------------------------------------------------
-// Kế hoạch giải ngân (sheet "Giải ngân Digital") — chỉ Mục 1 (b2c_system) +
-// Mục 3 (ecom) + Mục 5 (osir), không gồm b2c_center/b2b/vmp (đúng phạm vi gốc).
+// Kế hoạch ads theo tháng (SPEC Phụ lục D mục 21) — thay cho "kế hoạch giải ngân" cũ.
+// Thực tế / % đạt / dự báo đều suy ra ở client từ kế hoạch + ads_metrics (lib/ads-plan.ts).
 // ---------------------------------------------------------------------------
 
-export const DISBURSEMENT_LINES = ["b2c_system", "ecom", "osir"] as const;
-
-export async function listDisbursementPlan(db: DB, period?: string) {
+export async function listAdsPlans(db: DB, period?: string) {
   return db
     .select()
-    .from(adsDisbursementPlan)
-    .where(period ? eq(adsDisbursementPlan.period, period) : undefined)
-    .orderBy(asc(adsDisbursementPlan.period));
+    .from(adsPlans)
+    .where(period ? eq(adsPlans.period, period) : undefined)
+    .orderBy(asc(adsPlans.period));
 }
 
-export async function upsertDisbursementPlan(
-  db: DB,
-  input: { id?: string; line: (typeof DISBURSEMENT_LINES)[number]; period: string; plannedAmount: string; notes?: string | null },
-  actorId: string | null,
-) {
-  if (input.id) {
+/** Các trường người dùng được sửa của 1 dòng kế hoạch. Trường vắng = giữ nguyên; `null`/"" = xoá số. */
+export interface AdsPlanValues {
+  plannedBudget?: string | null;
+  targetLeads?: string | null;
+  targetNewStudents?: string | null;
+  targetMessages?: string | null;
+  targetMql?: string | null;
+  targetRevenue?: string | null;
+  targetDeals?: string | null;
+  notes?: string | null;
+}
+
+export interface UpsertAdsPlanInput extends AdsPlanValues {
+  line: AdsPlan["line"];
+  period: string;
+  /** Chỉ b2c_center (kế hoạch từng trung tâm); còn lại null. */
+  sbuId?: string | null;
+}
+
+/**
+ * Sửa tự do (không có bước chốt) nhưng ghi nhật ký audit: ai sửa, trường nào, từ → sang. Chỉ ghi đúng các trường có trong
+ * `input` nên sửa 1 ô không đè các ô khác. Khoá = (mảng, tháng, trung tâm).
+ */
+export async function upsertAdsPlan(db: DB, input: UpsertAdsPlanInput, actorId: string | null): Promise<AdsPlan> {
+  const { line, period, sbuId = null, ...rawValues } = input;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error("Tháng không hợp lệ (định dạng yyyy-mm).");
+  if (sbuId && line !== "b2c_center") throw new Error("Chỉ kế hoạch B2C Trung tâm mới gắn với trung tâm.");
+  const values: Record<string, string | null> = {};
+  for (const [k, v] of Object.entries(rawValues)) {
+    if (v === undefined) continue;
+    const t = typeof v === "string" ? v.trim() : v;
+    if (k !== "notes" && t != null && t !== "" && !/^\d+$/.test(String(t))) throw new Error("Số kế hoạch phải là số nguyên không âm.");
+    values[k] = t === "" ? null : (t as string | null);
+  }
+
+  const [existing] = await db
+    .select()
+    .from(adsPlans)
+    .where(and(eq(adsPlans.line, line), eq(adsPlans.period, period), sbuId ? eq(adsPlans.sbuId, sbuId) : isNull(adsPlans.sbuId)))
+    .limit(1);
+
+  if (existing) {
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    for (const [k, v] of Object.entries(values)) {
+      const before = (existing as Record<string, unknown>)[k] ?? null;
+      if (String(before ?? "") !== String(v ?? "")) changes[k] = { from: before, to: v };
+    }
+    if (Object.keys(changes).length === 0) return existing;
     const [row] = await db
-      .update(adsDisbursementPlan)
-      .set({ ...input, updatedBy: actorId })
-      .where(eq(adsDisbursementPlan.id, input.id))
+      .update(adsPlans)
+      .set({ ...values, updatedBy: actorId })
+      .where(eq(adsPlans.id, existing.id))
       .returning();
-    await writeAudit(db, { actorId, entity: "ads_disbursement_plan", entityId: row.id, action: "UPDATE" });
+    await writeAudit(db, { actorId, entity: "ads_plans", entityId: row.id, action: "UPDATE", changes });
     return row;
   }
   const [row] = await db
-    .insert(adsDisbursementPlan)
-    .values({ ...input, createdBy: actorId })
+    .insert(adsPlans)
+    .values({ line, period, sbuId, ...values, createdBy: actorId })
     .returning();
-  await writeAudit(db, { actorId, entity: "ads_disbursement_plan", entityId: row.id, action: "CREATE" });
+  await writeAudit(db, { actorId, entity: "ads_plans", entityId: row.id, action: "CREATE", changes: values });
   return row;
 }
 
-/** Thực tế = SUM(budget hoặc centerOrderBudget+hoTopupBudget) của mọi dòng tháng đó thuộc line (Mục 9.4: tính tại truy vấn). */
-export async function actualSpendForLine(db: DB, line: AdsMetric["line"], period: string): Promise<number> {
-  const rows = await db
+/**
+ * Sao chép kế hoạch của tháng `from` sang tháng `to` cho các mảng `lines` — chỉ tạo dòng CHƯA có ở tháng đích (không đè số đã lập).
+ * Chép ngân sách + mục tiêu; ghi chú không chép.
+ */
+export async function copyAdsPlans(db: DB, input: { lines: AdsPlan["line"][]; from: string; to: string }, actorId: string | null): Promise<number> {
+  const src = await db
     .select()
-    .from(adsMetrics)
-    .where(and(eq(adsMetrics.line, line), eq(adsMetrics.periodType, "month"), eq(adsMetrics.period, period)));
-  return rows.reduce((s, r) => {
-    const amt = r.line === "b2c_center" ? (r.centerOrderBudget ? Number(r.centerOrderBudget) : 0) + (r.hoTopupBudget ? Number(r.hoTopupBudget) : 0) : r.budget ? Number(r.budget) : 0;
-    return s + amt;
-  }, 0);
+    .from(adsPlans)
+    .where(and(eq(adsPlans.period, input.from), inArray(adsPlans.line, input.lines)));
+  const dst = await db
+    .select()
+    .from(adsPlans)
+    .where(and(eq(adsPlans.period, input.to), inArray(adsPlans.line, input.lines)));
+  const key = (p: { line: string; sbuId: string | null }) => `${p.line}|${p.sbuId ?? ""}`;
+  const have = new Set(dst.map(key));
+  let n = 0;
+  for (const p of src) {
+    if (have.has(key(p))) continue;
+    const [row] = await db
+      .insert(adsPlans)
+      .values({
+        line: p.line,
+        period: input.to,
+        sbuId: p.sbuId,
+        plannedBudget: p.plannedBudget,
+        targetLeads: p.targetLeads,
+        targetNewStudents: p.targetNewStudents,
+        targetMessages: p.targetMessages,
+        targetMql: p.targetMql,
+        targetRevenue: p.targetRevenue,
+        targetDeals: p.targetDeals,
+        createdBy: actorId,
+      })
+      .returning({ id: adsPlans.id });
+    await writeAudit(db, { actorId, entity: "ads_plans", entityId: row.id, action: "CREATE", changes: { copiedFrom: input.from } });
+    n++;
+  }
+  return n;
+}
+
+export async function deleteAdsPlan(db: DB, id: string, actorId: string | null) {
+  await db.delete(adsPlans).where(eq(adsPlans.id, id));
+  await writeAudit(db, { actorId, entity: "ads_plans", entityId: id, action: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------

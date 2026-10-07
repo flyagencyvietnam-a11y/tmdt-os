@@ -34,7 +34,10 @@ export interface SbuLite {
 
 export interface CampaignRow {
   id: string;
-  sbuId: string;
+  /** Mảng của request (mặc định b2c_center). */
+  line: Line;
+  /** Chỉ có ở request của trung tâm (b2c_center). */
+  sbuId: string | null;
   period: string;
   campaignName: string;
   spend: string;
@@ -52,11 +55,19 @@ export interface CampaignRow {
   [k: string]: unknown;
 }
 
-export interface DisbursementRow {
+/** 1 dòng kế hoạch tháng (mảng, tháng[, trung tâm]) — xem lib/db/schema/ads.ts `adsPlans`. */
+export interface PlanRow {
   id: string;
-  line: string;
+  line: Line;
   period: string;
-  plannedAmount: string;
+  sbuId: string | null;
+  plannedBudget: string | null;
+  targetLeads: string | null;
+  targetNewStudents: string | null;
+  targetMessages: string | null;
+  targetMql: string | null;
+  targetRevenue: string | null;
+  targetDeals: string | null;
   notes: string | null;
 }
 
@@ -67,7 +78,7 @@ export const LINE_LABELS: Record<Line, string> = {
   b2c_center: "B2C Trung tâm",
   ecom: "Ecom (TMĐT)",
   b2b: "B2B",
-  osir: "OSIR",
+  osir: "VMT (khảo thí)",
   vmp: "VMP (Du học)",
 };
 
@@ -145,6 +156,10 @@ export function nextWeek(sat: string): string {
 export function monthLabel(p: string, short = false): string {
   const m = Number(p.slice(5, 7));
   return short ? `T${m}` : `T${m}/${p.slice(0, 4)}`;
+}
+export function nextMonth(p: string): string {
+  const [y, m] = p.split("-").map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 export function prevMonth(p: string): string {
   const [y, m] = p.split("-").map(Number);

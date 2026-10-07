@@ -13,10 +13,13 @@ import {
   patchAdsCampaign,
   upsertAdsCampaign,
   upsertAdsMetric,
-  upsertDisbursementPlan,
+  upsertAdsPlan,
+  copyAdsPlans,
+  deleteAdsPlan,
   type UpsertAdsCampaignInput,
   type EcomProductRowInput,
   type UpsertAdsMetricInput,
+  type UpsertAdsPlanInput,
 } from "@/lib/services/ads";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -97,18 +100,34 @@ export async function rollupCampaignsAction(sbuId: string, period: string): Prom
   }
 }
 
-export async function upsertDisbursementPlanAction(input: {
-  id?: string;
-  line: "b2c_system" | "ecom" | "osir";
-  period: string;
-  plannedAmount: string;
-  notes?: string | null;
-}): Promise<Result<{ id: string }>> {
+/** Lưu 1 ô/nhiều ô của kế hoạch tháng (chỉ ghi các trường có trong `input`). */
+export async function upsertAdsPlanAction(input: UpsertAdsPlanInput): Promise<Result<{ id: string }>> {
   const user = await requireManagerLike();
-  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa." };
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa kế hoạch." };
   try {
-    const row = await upsertDisbursementPlan(db, input, user.id);
+    const row = await upsertAdsPlan(db, input, user.id);
     return { ok: true, data: { id: row.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function copyAdsPlansAction(input: { lines: UpsertAdsPlanInput["line"][]; from: string; to: string }): Promise<Result<{ copied: number }>> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa kế hoạch." };
+  try {
+    return { ok: true, data: { copied: await copyAdsPlans(db, input, user.id) } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
+  }
+}
+
+export async function deleteAdsPlanAction(id: string): Promise<Result> {
+  const user = await requireManagerLike();
+  if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được xoá." };
+  try {
+    await deleteAdsPlan(db, id, user.id);
+    return { ok: true, data: undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Lỗi không xác định." };
   }

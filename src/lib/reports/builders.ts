@@ -5,7 +5,8 @@ import { CHANNEL_LABEL, CHANNEL_METRICS, CHANNELS, engagementRate, followerGrowt
 import { ECOM_PRODUCTS } from "@/lib/ads-metrics";
 import { SBU_KIND_LABEL, SBU_REGION_LABEL, isFanOutSbu } from "@/lib/sbu-kinds";
 import { fmtDate } from "@/lib/format";
-import { listAdsMetrics, listDisbursementPlan, listEcomProducts, loadEffectivenessRubric } from "@/lib/services/ads";
+import { ADS_GROUPS } from "@/lib/ads-lines";
+import { listAdsMetrics, listAdsPlans, listEcomProducts, loadEffectivenessRubric } from "@/lib/services/ads";
 import { listBrandPerf, listBrandSbus } from "@/lib/services/brand-perf";
 import { computeManagementMetrics } from "@/lib/services/reports";
 import { getSbuStats } from "@/lib/services/sbu-overview";
@@ -272,7 +273,7 @@ async function buildBrand(db: DB, o: BuildOptions): Promise<ReportDoc> {
 async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
   const [metricsRaw, plan, ecomRows, rubric, centers, adsReq, allUsers] = await Promise.all([
     listAdsMetrics(db),
-    listDisbursementPlan(db),
+    listAdsPlans(db),
     listEcomProducts(db),
     loadEffectivenessRubric(db),
     db.select({ id: sbus.id, code: sbus.code }).from(sbus).where(eq(sbus.kind, "center")).orderBy(asc(sbus.code)),
@@ -392,15 +393,16 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
   const reqHere = adsReq.filter((r) => r.period === period);
   if (reqHere.length) {
     const codeOf = new Map((await db.select({ id: sbus.id, code: sbus.code }).from(sbus)).map((s) => [s.id, s.code]));
+    const labelOf = (r: { sbuId: string | null; line: string }) => (r.sbuId ? (codeOf.get(r.sbuId) ?? "?") : (LINE_LABELS[r.line as keyof typeof LINE_LABELS] ?? r.line));
     const nameOf = new Map(allUsers.map((u) => [u.id, u.fullName]));
     const spendSum = reqHere.reduce((a, r) => a + Number(r.spend || 0), 0);
     const planSum = reqHere.reduce((a, r) => a + (num(r.plannedBudget) ?? 0), 0);
     sections.push({
       type: "table",
       title: `Request ads — ${monthLabel(period)}`,
-      note: "Mỗi dòng = 1 chiến dịch/request ads của trung tâm; % KH = chi tiêu thực tế ÷ ngân sách kế hoạch.",
+      note: "Mỗi dòng = 1 chiến dịch/request ads (trung tâm hoặc mảng); % KH = chi tiêu thực tế ÷ ngân sách kế hoạch.",
       columns: [
-        { header: "SBU", key: "sbu", width: 10 },
+        { header: "Mảng / SBU", key: "sbu", width: 16 },
         { header: "Chiến dịch / request", key: "name", width: 44 },
         { header: "Người chạy", key: "runner", width: 18 },
         { header: "NS kế hoạch (₫)", key: "plan", format: "money" },
@@ -411,32 +413,34 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
       ],
       rows: reqHere
         .slice()
-        .sort((a, b) => (codeOf.get(a.sbuId) ?? "").localeCompare(codeOf.get(b.sbuId) ?? ""))
+        .sort((a, b) => labelOf(a).localeCompare(labelOf(b)))
         .map((r) => {
           const plan = num(r.plannedBudget);
           const mess = num(r.messages);
-          return { sbu: codeOf.get(r.sbuId) ?? "?", name: r.campaignName, runner: r.runnerId ? (nameOf.get(r.runnerId) ?? "") : "", plan, spend: Number(r.spend || 0), used: plan ? Number(r.spend || 0) / plan : null, mess, cpm: mess ? Number(r.spend || 0) / mess : null };
+          return { sbu: labelOf(r), name: r.campaignName, runner: r.runnerId ? (nameOf.get(r.runnerId) ?? "") : "", plan, spend: Number(r.spend || 0), used: plan ? Number(r.spend || 0) / plan : null, mess, cpm: mess ? Number(r.spend || 0) / mess : null };
         }),
       totals: { sbu: "Tổng", name: `${reqHere.length} request`, plan: planSum || null, spend: spendSum, used: planSum ? spendSum / planSum : null },
     });
   }
 
-  // Giải ngân
-  const planHere = plan.filter((p) => p.period === period);
+  // Kế hoạch so với thực tế theo mảng (kế hoạch = Σ ngân sách KH các dòng của mảng trong tháng)
+  const planHere = plan.filter((p) => p.period === period && p.plannedBudget != null);
   if (planHere.length) {
+    const planRows = ADS_GROUPS.map((g) => {
+      const planned = planHere.filter((p) => g.lines.includes(p.line)).reduce((acc, p) => acc + Number(p.plannedBudget), 0);
+      const actual = aggregate(metrics.filter((m) => m.periodType === "month" && g.lines.includes(m.line) && m.period === period)).spend;
+      return { line: g.label, plan: planned || null, actual: nz(actual), pct: planned && actual != null ? actual / planned : null };
+    }).filter((r) => r.plan != null);
     sections.push({
       type: "table",
-      title: `Giải ngân kế hoạch so với thực tế — ${monthLabel(period)}`,
+      title: `Kế hoạch ngân sách so với thực tế — ${monthLabel(period)}`,
       columns: [
         { header: "Mảng", key: "line", width: 26 },
         { header: "Kế hoạch (₫)", key: "plan", format: "money" },
         { header: "Thực tế (₫)", key: "actual", format: "money", heat: true },
-        { header: "% giải ngân", key: "pct", format: "pct" },
+        { header: "% đã dùng", key: "pct", format: "pct" },
       ],
-      rows: planHere.map((p) => {
-        const actual = aggregate(metrics.filter((m) => m.periodType === "month" && m.line === p.line && m.period === period)).spend;
-        return { line: LINE_LABELS[p.line as keyof typeof LINE_LABELS] ?? p.line, plan: Number(p.plannedAmount), actual: nz(actual), pct: actual != null && Number(p.plannedAmount) ? actual / Number(p.plannedAmount) : null };
-      }),
+      rows: planRows,
     });
   }
 

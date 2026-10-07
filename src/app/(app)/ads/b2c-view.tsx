@@ -219,7 +219,7 @@ export function B2cView({
           sbuId={campaignsFor.sbuId}
           sbuCode={sbus.find((s) => s.id === campaignsFor.sbuId)?.code ?? ""}
           period={campaignsFor.period}
-          campaigns={campaigns.filter((c) => c.sbuId === campaignsFor.sbuId && c.period === campaignsFor.period)}
+          campaigns={campaigns.filter((c) => c.line === "b2c_center" && c.sbuId === campaignsFor.sbuId && c.period === campaignsFor.period).map((c) => ({ ...c, sbuId: campaignsFor.sbuId }))}
           canManage={canManage}
           onOpenChange={(o) => !o && setCampaignsFor(null)}
           onDone={() => router.refresh()}

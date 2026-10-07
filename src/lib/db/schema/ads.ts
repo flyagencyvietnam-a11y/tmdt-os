@@ -84,9 +84,10 @@ export const adsCampaigns = pgTable(
   "ads_campaigns",
   {
     id: pkUuid(),
-    sbuId: uuid("sbu_id")
-      .notNull()
-      .references(() => sbus.id),
+    /** Mảng của request. Mặc định b2c_center (dữ liệu cũ toàn là request của trung tâm). */
+    line: adsLineEnum("line").notNull().default("b2c_center"),
+    /** Chỉ có nghĩa ở mảng b2c_center (request của từng trung tâm); các mảng khác để trống. */
+    sbuId: uuid("sbu_id").references(() => sbus.id),
     /** "2026-08" — tháng chạy chiến dịch. */
     period: text("period").notNull(),
     campaignName: text("campaign_name").notNull(),
@@ -106,7 +107,41 @@ export const adsCampaigns = pgTable(
     spendWithVat: numeric("spend_with_vat", { precision: 14, scale: 0 }),
     ...auditColumns,
   },
-  (t) => [index("ads_campaigns_period_idx").on(t.period), index("ads_campaigns_sbu_idx").on(t.sbuId)],
+  (t) => [index("ads_campaigns_period_idx").on(t.period), index("ads_campaigns_sbu_idx").on(t.sbuId), index("ads_campaigns_line_idx").on(t.line)],
+);
+
+/**
+ * KẾ HOẠCH ads theo tháng (SPEC Phụ lục D mục 21) — điểm bắt đầu của luồng Kế hoạch → Request → Báo cáo.
+ * Mỗi dòng = (mảng, tháng[, trung tâm]): ngân sách kế hoạch + mục tiêu theo phễu của mảng. Thực tế/tiến độ/
+ * % đạt đều SUY RA tại truy vấn từ `ads_metrics`, không lưu.
+ *
+ * Quy ước cùng số thực tế: B2C = dòng `b2c_system` (NS Hệ thống + mục tiêu Lead/HVM TỔNG cả B2C) và
+ * dòng `b2c_center` + `sbuId` (NS từng trung tâm). Các mảng còn lại 1 dòng/tháng, `sbuId` null.
+ * Sửa tự do, thay đổi ghi nhật ký audit. Thay cho `ads_disbursement_plan` (đã gộp vào đây).
+ */
+export const adsPlans = pgTable(
+  "ads_plans",
+  {
+    id: pkUuid(),
+    line: adsLineEnum("line").notNull(),
+    /** "2026-10" */
+    period: text("period").notNull(),
+    sbuId: uuid("sbu_id").references(() => sbus.id),
+    plannedBudget: numeric("planned_budget", { precision: 14, scale: 0 }),
+    targetLeads: numeric("target_leads", { precision: 10, scale: 0 }),
+    /** HVM / HV ghi danh thi / HS đăng ký DV — "lượt chuyển đổi" chung, giống ads_metrics.new_students. */
+    targetNewStudents: numeric("target_new_students", { precision: 10, scale: 0 }),
+    targetMessages: numeric("target_messages", { precision: 10, scale: 0 }),
+    targetMql: numeric("target_mql", { precision: 10, scale: 0 }),
+    targetRevenue: numeric("target_revenue", { precision: 14, scale: 0 }),
+    targetDeals: numeric("target_deals", { precision: 10, scale: 0 }),
+    notes: text("notes"),
+    ...auditColumns,
+  },
+  (t) => [
+    index("ads_plans_period_idx").on(t.period),
+    uniqueIndex("ads_plans_uniq").on(t.line, t.period, sql`coalesce(${t.sbuId}, '00000000-0000-0000-0000-000000000000')`),
+  ],
 );
 
 /**
@@ -160,4 +195,6 @@ export type AdsMetric = typeof adsMetrics.$inferSelect;
 export type NewAdsMetric = typeof adsMetrics.$inferInsert;
 export type AdsCampaign = typeof adsCampaigns.$inferSelect;
 export type NewAdsCampaign = typeof adsCampaigns.$inferInsert;
+export type AdsPlan = typeof adsPlans.$inferSelect;
+export type NewAdsPlan = typeof adsPlans.$inferInsert;
 export type AdsDisbursementPlan = typeof adsDisbursementPlan.$inferSelect;

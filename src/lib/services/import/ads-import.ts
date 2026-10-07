@@ -340,9 +340,9 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
     userByKey.set(u.email.trim().toLowerCase(), u.id);
   }
   const months = [...new Set(parsed.map((r) => parseMonthCell(r.data.month)).filter((x): x is string => !!x))];
-  const existing = months.length ? await db.select().from(adsCampaigns).where(inArray(adsCampaigns.period, months)) : [];
+  const existing = months.length ? await db.select().from(adsCampaigns).where(and(inArray(adsCampaigns.period, months), eq(adsCampaigns.line, "b2c_center"))) : [];
   const keyOf = (sbuId: string, period: string, name: string) => `${sbuId}|${period}|${name.trim().toLowerCase()}`;
-  const existingByKey = new Map(existing.map((e) => [keyOf(e.sbuId, e.period, e.campaignName), e]));
+  const existingByKey = new Map(existing.filter((e) => e.sbuId).map((e) => [keyOf(e.sbuId!, e.period, e.campaignName), e]));
 
   const rows: AdsImportPreviewRow[] = [];
   const ops: Op[] = [];

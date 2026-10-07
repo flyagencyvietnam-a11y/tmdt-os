@@ -1,4 +1,7 @@
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
+import { ADS_GROUPS, groupOfLine, type AdsGroupKey } from "@/lib/ads-lines";
+import { budgetProgress } from "@/lib/ads-plan";
+import { diffDaysStr, todayVnDayStr } from "@/lib/time";
 import {
   aggregate,
   change,
@@ -11,7 +14,7 @@ import {
   prevMonth,
   spendOf,
   weekLabel,
-  type DisbursementRow,
+  type PlanRow,
   type Line,
   type MetricRow,
   type SbuLite,
@@ -24,8 +27,10 @@ export interface AdsAlert {
   level: AlertLevel;
   title: string;
   detail: string;
-  /** Tab nên mở để xem chi tiết. */
-  tab: "month" | "week" | "disbursement";
+  /** Mục con nên mở để xem chi tiết. */
+  tab: "month" | "week" | "plan";
+  /** Mảng nên mở (bỏ trống = B2C). */
+  group?: AdsGroupKey;
 }
 
 /** Ngưỡng cảnh báo — chỉnh ở đây nếu phòng đổi chuẩn theo dõi. */
@@ -34,10 +39,6 @@ export const ALERT_THRESHOLDS = {
   costIncrease: 0.25,
   /** Chi tiêu tuần tăng hơn mức này so với tuần trước → cảnh báo. */
   weeklySpendJump: 0.3,
-  /** Giải ngân vượt kế hoạch. */
-  overPlan: 1.1,
-  /** Tháng đã qua mà giải ngân dưới mức này → cảnh báo chậm giải ngân. */
-  underPlan: 0.7,
 };
 
 const pct = (x: number) => `${x > 0 ? "+" : ""}${Math.round(x * 100)}%`;
@@ -56,7 +57,7 @@ export function computeAdsAlerts({
 }: {
   metrics: MetricRow[];
   sbus: SbuLite[];
-  plan: DisbursementRow[];
+  plan: PlanRow[];
   rubric: EffectivenessRubric;
   /** Tháng đang xem. */
   month: string;
@@ -119,28 +120,37 @@ export function computeAdsAlerts({
     const p = derive(aggregate(monthRows(line, prev)), line, rubric);
     const cplUp = change(d.cpl, p.cpl);
     if (cplUp != null && cplUp > ALERT_THRESHOLDS.costIncrease) {
-      out.push({ level: "warn", tab: "month", title: `${LINE_LABELS[line]}: CPL tăng ${pct(cplUp)}`, detail: `${fmtMoney(p.cpl)} → ${fmtMoney(d.cpl)} so với ${monthLabel(prev)}.` });
+      out.push({ level: "warn", tab: "month", group: groupOfLine(line).key, title: `${LINE_LABELS[line]}: CPL tăng ${pct(cplUp)}`, detail: `${fmtMoney(p.cpl)} → ${fmtMoney(d.cpl)} so với ${monthLabel(prev)}.` });
     }
     const cacUp = change(d.cac, p.cac);
     if (cacUp != null && cacUp > ALERT_THRESHOLDS.costIncrease) {
-      out.push({ level: "warn", tab: "month", title: `${LINE_LABELS[line]}: CAC tăng ${pct(cacUp)}`, detail: `${fmtMoney(p.cac)} → ${fmtMoney(d.cac)} so với ${monthLabel(prev)}.` });
+      out.push({ level: "warn", tab: "month", group: groupOfLine(line).key, title: `${LINE_LABELS[line]}: CAC tăng ${pct(cacUp)}`, detail: `${fmtMoney(p.cac)} → ${fmtMoney(d.cac)} so với ${monthLabel(prev)}.` });
     }
     if (d.spend && (line === "ecom" ? d.mql : d.leads) == null) {
-      out.push({ level: "info", tab: "month", title: `${LINE_LABELS[line]}: thiếu số Lead`, detail: `${monthLabel(month)} đã chi ${fmtMoney(d.spend)} nhưng chưa nhập Lead/HVM.` });
+      out.push({ level: "info", tab: "month", group: groupOfLine(line).key, title: `${LINE_LABELS[line]}: thiếu số Lead`, detail: `${monthLabel(month)} đã chi ${fmtMoney(d.spend)} nhưng chưa nhập Lead/HVM.` });
     }
   }
 
-  // --- 3. Giải ngân so với kế hoạch ---
-  for (const pl of plan.filter((x) => x.period === month)) {
-    const planned = num(pl.plannedAmount);
-    if (!planned) continue;
-    const actual = monthRows(pl.line as Line, month).reduce((s, r) => s + (spendOf(r) ?? 0), 0);
-    const ratio = actual / planned;
-    const label = LINE_LABELS[pl.line as Line] ?? pl.line;
-    if (ratio > ALERT_THRESHOLDS.overPlan) {
-      out.push({ level: "crit", tab: "disbursement", title: `${label}: vượt kế hoạch giải ngân (${Math.round(ratio * 100)}%)`, detail: `Thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)} trong ${monthLabel(month)}.` });
-    } else if (month < currentMonth && ratio < ALERT_THRESHOLDS.underPlan) {
-      out.push({ level: "warn", tab: "disbursement", title: `${label}: giải ngân chậm (${Math.round(ratio * 100)}%)`, detail: `${monthLabel(month)} đã kết thúc, thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)}.` });
+  // --- 3. Kế hoạch tháng: vượt/chậm so với kế hoạch, chưa lập kế hoạch (rà theo từng mảng) ---
+  const today = todayVnDayStr();
+  for (const g of ADS_GROUPS) {
+    const rows = metrics.filter((m) => m.periodType === "month" && g.lines.includes(m.line) && m.period === month);
+    const planRows = plan.filter((p) => g.lines.includes(p.line) && p.period === month && num(p.plannedBudget) != null);
+    const planned = planRows.length ? planRows.reduce((s, p) => s + (num(p.plannedBudget) ?? 0), 0) : null;
+    const actual = rows.length ? rows.reduce((s, r) => s + (spendOf(r) ?? 0), 0) : null;
+    const prog = budgetProgress(planned, actual, month, today);
+    const ratio = prog.used != null ? Math.round(prog.used * 100) : 0;
+    if (prog.status === "over") {
+      out.push({ level: "crit", tab: "plan", group: g.key, title: `${g.label}: vượt ngân sách kế hoạch (${ratio}%)`, detail: `Thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)} trong ${monthLabel(month)}.` });
+    } else if (prog.status === "fast") {
+      out.push({ level: "warn", tab: "plan", group: g.key, title: `${g.label}: đang đi nhanh hơn kế hoạch`, detail: `Đã dùng ${ratio}% KH, dự báo cuối ${monthLabel(month)} khoảng ${fmtMoney(prog.forecast)} / KH ${fmtMoney(planned)}.` });
+    } else if (prog.status === "slow") {
+      out.push({ level: "warn", tab: "plan", group: g.key, title: `${g.label}: giải ngân chậm (${ratio}%)`, detail: month < currentMonth ? `${monthLabel(month)} đã kết thúc, thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)}.` : `Dự báo cuối tháng ${fmtMoney(prog.forecast)} / KH ${fmtMoney(planned)}.` });
+    }
+    // Chưa lập kế hoạch cho tháng hiện tại, trong khi mảng đang chạy (đã có số liệu ở tháng nào đó).
+    if (month === currentMonth && planned == null) {
+      const active = metrics.some((m) => m.periodType === "month" && g.lines.includes(m.line));
+      if (active) out.push({ level: "info", tab: "plan", group: g.key, title: `${g.label}: chưa lập kế hoạch ${monthLabel(month)}`, detail: "Nhập ngân sách và mục tiêu tháng để theo dõi tiến độ." });
     }
   }
 
@@ -164,6 +174,17 @@ export function computeAdsAlerts({
       const r = wk(w).find((m) => m.sbuId === s.id);
       if (r && (spendOf(r) ?? 0) > 0 && !num(r.messages)) {
         out.push({ level: "warn", tab: "week", title: `${s.code}: có chi tiêu nhưng 0 mess`, detail: `Tuần ${weekLabel(w)} chi ${fmtMoney(spendOf(r))}.` });
+      }
+    }
+  }
+
+  // --- 5. Mảng bắt buộc báo tuần (cờ expectWeekly trong lib/ads-lines.ts) mà thiếu số tuần gần nhất ---
+  if (month === currentMonth) {
+    for (const g of ADS_GROUPS.filter((x) => x.expectWeekly)) {
+      const ws = [...new Set(metrics.filter((m) => m.periodType === "week" && g.lines.includes(m.line)).map((m) => m.period))].sort();
+      const latest = ws[ws.length - 1];
+      if (latest && diffDaysStr(latest, today) > 13) {
+        out.push({ level: "info", tab: "week", group: g.key, title: `${g.label}: chưa nhập số tuần gần nhất`, detail: `Tuần mới nhất đang có là ${weekLabel(latest)}.` });
       }
     }
   }

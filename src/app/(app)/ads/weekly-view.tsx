@@ -269,7 +269,7 @@ export function Segmented<T extends string | number>({ value, onChange, options 
   );
 }
 
-function AddWeekButton({ suggested, onAdd }: { suggested?: string; onAdd: (week: string) => void }) {
+export function AddWeekButton({ suggested, onAdd }: { suggested?: string; onAdd: (week: string) => void }) {
   const [open, setOpen] = React.useState(false);
   const [val, setVal] = React.useState(suggested ?? "");
   const isSaturday = val && new Date(`${val}T00:00:00Z`).getUTCDay() === 6;

@@ -37,7 +37,7 @@ export function OverviewView({
   range: OverviewRange;
   alerts: AdsAlert[];
   alertsMonthLabel: string;
-  onOpenTab: (tab: AdsAlert["tab"]) => void;
+  onOpenTab: (alert: AdsAlert) => void;
 }) {
   const isQuarter = range.kind === "quarter";
   const cur = overviewTotal(metrics, range.months);
@@ -253,7 +253,7 @@ const ALERT_STYLE = {
   info: { icon: Info, cls: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10", label: "Thiếu dữ liệu" },
 } as const;
 
-export function AlertsPanel({ alerts, onOpenTab, className, subtitle }: { alerts: AdsAlert[]; onOpenTab?: (tab: AdsAlert["tab"]) => void; className?: string; subtitle?: string }) {
+export function AlertsPanel({ alerts, onOpenTab, className, subtitle }: { alerts: AdsAlert[]; onOpenTab?: (alert: AdsAlert) => void; className?: string; subtitle?: string }) {
   const [showAll, setShowAll] = React.useState(false);
   const shown = showAll ? alerts : alerts.slice(0, 8);
   return (
@@ -274,7 +274,7 @@ export function AlertsPanel({ alerts, onOpenTab, className, subtitle }: { alerts
             const Icon = st.icon;
             return (
               <li key={i}>
-                <button type="button" onClick={() => onOpenTab?.(a.tab)} className="group flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-muted/40">
+                <button type="button" onClick={() => onOpenTab?.(a)} className="group flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-muted/40">
                   <span className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md", st.bg, st.cls)} title={st.label}>
                     <Icon className="h-3.5 w-3.5" />
                   </span>

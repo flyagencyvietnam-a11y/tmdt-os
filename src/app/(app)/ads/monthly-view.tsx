@@ -1,7 +1,7 @@
 "use client";
 
 import { Coins, Pencil, Percent, Plus, Target, UserPlus, Users } from "lucide-react";
-import { useSessionState } from "@/lib/use-session-state";
+import type { AdsGroupConfig } from "@/lib/ads-lines";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, Line as RLine, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -37,81 +37,57 @@ import {
 
 export { EffBadge, MonthPicker };
 
-/** Tab của report tháng: B2C gộp Hệ thống + Trung tâm (đúng sheet "Tổng hợp" mục 1+2) rồi 4 mảng còn lại. */
 type Tab = "b2c" | "ecom" | "b2b" | "osir" | "vmp";
-const TABS: Tab[] = ["b2c", "ecom", "b2b", "osir", "vmp"];
-const TAB_LABEL: Record<Tab, string> = { b2c: "B2C Offline", ecom: LINE_LABELS.ecom, b2b: LINE_LABELS.b2b, osir: LINE_LABELS.osir, vmp: LINE_LABELS.vmp };
-const TAB_COLOR: Record<Tab, string> = { b2c: LINE_COLORS.b2c_system, ecom: LINE_COLORS.ecom, b2b: LINE_COLORS.b2b, osir: LINE_COLORS.osir, vmp: LINE_COLORS.vmp };
 
 /**
- * Report THÁNG — 5 mảng. Xem 1 tháng chi tiết nhưng LUÔN kèm xu hướng nhiều
- * tháng. Số liệu tháng nhập riêng, không phải tổng các tuần.
+ * Báo cáo THÁNG của MỘT mảng (group). B2C gộp Hệ thống + Trung tâm (đúng sheet "Tổng hợp" mục 1+2).
+ * Xem 1 tháng chi tiết nhưng LUÔN kèm xu hướng nhiều tháng. Số liệu tháng nhập riêng, không phải tổng các tuần.
  */
 export function MonthlyView({
+  group,
   metrics,
   sbus,
   campaigns,
   ecomProducts,
   canManage,
-  months,
   month,
   onMonthChange,
   rubric,
 }: {
+  group: AdsGroupConfig;
   metrics: MetricRow[];
   sbus: SbuLite[];
   campaigns: CampaignRow[];
   ecomProducts: EcomProductRow[];
   canManage: boolean;
-  months: string[];
   month: string;
   onMonthChange: (m: string) => void;
   rubric: EffectivenessRubric;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useSessionState<Tab>("ads:month:tab", "b2c");
+  const tab = group.key as Tab;
   const [editing, setEditing] = React.useState<{ row: MetricRow | null; period: string } | null>(null);
 
   const hasRow = (t: Tab, p: string) => metrics.some((m) => m.periodType === "month" && m.line === t && m.period === p);
 
-  const toolbar = (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
-      <div className="flex flex-wrap gap-1">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors",
-              t === tab ? "bg-foreground/[0.06] font-medium text-foreground ring-1 ring-foreground/10" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: TAB_COLOR[t] }} />
-            {TAB_LABEL[t]}
-          </button>
-        ))}
+  const toolbar =
+    canManage && tab !== "b2c" ? (
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setEditing({ row: metrics.find((m) => m.periodType === "month" && m.line === tab && m.period === month) ?? null, period: month })}>
+          {hasRow(tab, month) ? <Pencil className="mr-1 h-4 w-4" /> : <Plus className="mr-1 h-4 w-4" />}
+          {hasRow(tab, month) ? "Sửa số liệu" : "Nhập số liệu"} {monthLabel(month)}
+        </Button>
       </div>
-      <div className="ml-auto flex items-center gap-2">
-        <MonthPicker months={months} value={month} onChange={onMonthChange} />
-        {canManage && tab !== "b2c" && (
-          <Button size="sm" onClick={() => setEditing({ row: metrics.find((m) => m.periodType === "month" && m.line === tab && m.period === month) ?? null, period: month })}>
-            {hasRow(tab, month) ? <Pencil className="mr-1 h-4 w-4" /> : <Plus className="mr-1 h-4 w-4" />}
-            {hasRow(tab, month) ? "Sửa số liệu" : "Nhập số liệu"}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
+    ) : null;
 
   if (tab === "b2c") {
     return (
       <div className="space-y-4">
-        {toolbar}
         <B2cView metrics={metrics} sbus={sbus} campaigns={campaigns} canManage={canManage} month={month} onMonthChange={onMonthChange} rubric={rubric} />
       </div>
     );
   }
+
 
   const line: Line = tab;
   const monthly = metrics.filter((m) => m.periodType === "month" && m.line === line);

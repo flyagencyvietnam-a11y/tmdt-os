@@ -18,7 +18,7 @@ const COPY: Record<AdsImportKind, { title: string; desc: string }> = {
   },
   month: {
     title: "Nhập Excel — Hàng tháng",
-    desc: "Số liệu tháng của 6 mảng (B2C Hệ thống = tổng B2C, B2C Trung tâm, Ecom, B2B, OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập riêng, không cộng từ tuần.",
+    desc: "Số liệu tháng của 6 mảng (B2C Hệ thống = tổng B2C, B2C Trung tâm, Ecom, B2B, VMT/OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập riêng, không cộng từ tuần.",
   },
   request: {
     title: "Nhập Excel — Theo request",
