@@ -12,9 +12,13 @@ import type { AdsImportKind, AdsImportPreviewRow } from "@/lib/services/import/a
 import { commitAdsImportAction, previewAdsImportAction } from "./actions";
 
 const COPY: Record<AdsImportKind, { title: string; desc: string }> = {
+  plan: {
+    title: "Nhập Excel — Kế hoạch tháng",
+    desc: "Ngân sách kế hoạch và mục tiêu theo phễu của từng mảng (B2C: Hệ thống + từng trung tâm). Ô trống giữ nguyên số cũ; mọi thay đổi được ghi nhật ký.",
+  },
   week: {
     title: "Nhập Excel — Hàng tuần",
-    desc: "Ngân sách / Mess / Impression theo tuần (Thứ 7 → Thứ 6) cho Hệ thống và từng trung tâm.",
+    desc: "Số liệu tuần (Thứ 7 → Thứ 6) theo mảng: ngân sách và các chỉ số tuần của mảng; B2C có thêm từng trung tâm.",
   },
   month: {
     title: "Nhập Excel — Hàng tháng",
@@ -22,7 +26,7 @@ const COPY: Record<AdsImportKind, { title: string; desc: string }> = {
   },
   request: {
     title: "Nhập Excel — Theo request",
-    desc: "Từng chiến dịch Facebook của từng trung tâm (chi phí, tin nhắn, tiếp cận, tương tác…).",
+    desc: "Từng request/chiến dịch ads (chi phí, ngân sách kế hoạch, người chạy, tin nhắn, tiếp cận, tương tác…) — của trung tâm B2C hoặc của các mảng khác.",
   },
 };
 
@@ -36,6 +40,7 @@ const ACTION_TONE = {
 
 /** Nút + hộp thoại nhập Excel theo template cho tab Tuần / Tháng / Request. */
 export function AdsImportButton({ kind, templateQuery }: { kind: AdsImportKind; templateQuery?: string }) {
+  // templateQuery: ?month=… / ?week=… / &group=… điền sẵn khung template theo kỳ và mảng đang xem.
   const [open, setOpen] = React.useState(false);
   return (
     <>

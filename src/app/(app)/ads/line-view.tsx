@@ -69,16 +69,19 @@ export function LineView({
     return next <= todayVnDayStr() ? next : latest;
   }, [groupWeeks, weeks]);
 
-  // Import: số tháng áp dụng cho mọi mảng; số tuần và request hiện chỉ có mẫu cho B2C.
-  const importKind = sub === "month" ? "month" : sub === "week" && isB2c ? "week" : sub === "request" && isB2c ? "request" : null;
+  // Import Excel: mỗi mục con có template riêng, điền sẵn khung theo mảng đang xem (?group=).
+  const importKind = sub;
+  const q = new URLSearchParams({ group: group.key });
+  if (sub === "week" && suggestedWeek) q.set("week", suggestedWeek);
+  if (sub === "month" || sub === "plan") q.set("month", month);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Segmented value={sub} onChange={onSubChange} options={SUB_ORDER.map((k) => ({ value: k, label: SUB_LABEL[k] }))} />
-        {canManage && importKind && (
+        {canManage && (
           <div className="ml-auto">
-            <AdsImportButton kind={importKind} templateQuery={importKind === "week" ? (suggestedWeek ? `week=${suggestedWeek}` : undefined) : importKind === "month" ? `month=${month}` : undefined} />
+            <AdsImportButton key={`${group.key}-${importKind}`} kind={importKind} templateQuery={q.toString()} />
           </div>
         )}
       </div>

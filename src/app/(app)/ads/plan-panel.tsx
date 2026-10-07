@@ -24,7 +24,7 @@ import { InlineNum } from "./ads-inline";
 import { b2cSummary } from "./rollups";
 import { aggregate, derive, fmt, fmtMoney, fmtPct, monthLabel, num, prevMonth, type CampaignRow, type Line, type MetricRow, type PlanRow, type SbuLite } from "./shared";
 
-const STATUS_TONE: Record<BudgetStatus, string> = {
+export const STATUS_TONE: Record<BudgetStatus, string> = {
   no_plan: "bg-muted text-muted-foreground",
   no_actual: "bg-muted text-muted-foreground",
   on_track: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400",
@@ -32,7 +32,7 @@ const STATUS_TONE: Record<BudgetStatus, string> = {
   over: "bg-red-500/12 text-red-700 dark:text-red-400",
   slow: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
 };
-const BAR_TONE: Record<BudgetStatus, string> = {
+export const BAR_TONE: Record<BudgetStatus, string> = {
   no_plan: "bg-muted-foreground/30",
   no_actual: "bg-muted-foreground/30",
   on_track: "bg-emerald-500",
@@ -49,12 +49,12 @@ const TARGET_TONE: Record<TargetStatus, string> = {
   behind: "bg-red-500/12 text-red-700 dark:text-red-400",
 };
 
-function StatusPill({ tone, children }: { tone: string; children: React.ReactNode }) {
+export function StatusPill({ tone, children }: { tone: string; children: React.ReactNode }) {
   return <span className={cn("inline-flex items-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-semibold", tone)}>{children}</span>;
 }
 
 /** Thanh tiến độ: phần đã dùng + vạch "tháng đã trôi qua đến đây". */
-function UsageBar({ used, elapsed, tone }: { used: number | null; elapsed: number; tone: string }) {
+export function UsageBar({ used, elapsed, tone }: { used: number | null; elapsed: number; tone: string }) {
   const pct = Math.min(1, Math.max(0, used ?? 0));
   return (
     <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted" title={`Đã dùng ${used != null ? Math.round(used * 100) : 0}% · tháng đã trôi ${Math.round(elapsed * 100)}%`}>

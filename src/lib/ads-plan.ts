@@ -50,8 +50,28 @@ export interface BudgetProgress {
   status: BudgetStatus;
 }
 
+/**
+ * Phần thời gian đã trôi qua trên một tập THÁNG (vd. 1 quý, hoặc chỉ các tháng đã có kế hoạch), 0..1, tính theo ngày:
+ * Σ ngày đã qua ÷ Σ ngày của các tháng đó. Tập 1 tháng = monthElapsed.
+ */
+export function rangeElapsed(months: string[], today: string): number {
+  let total = 0;
+  let done = 0;
+  for (const m of months) {
+    const [first, last] = monthBounds(`${m}-01`);
+    const days = diffDaysStr(first, last) + 1;
+    total += days;
+    done += days * monthElapsed(m, today);
+  }
+  return total ? done / total : 0;
+}
+
 export function budgetProgress(planned: number | null, actual: number | null, month: string, today: string): BudgetProgress {
-  const elapsed = monthElapsed(month, today);
+  return budgetProgressAt(planned, actual, monthElapsed(month, today));
+}
+
+/** Như budgetProgress nhưng nhận sẵn phần thời gian đã trôi (dùng cho khoảng nhiều tháng — Tổng quan theo quý). */
+export function budgetProgressAt(planned: number | null, actual: number | null, elapsed: number): BudgetProgress {
   const forecast = actual == null ? null : elapsed >= 1 ? actual : elapsed > 0.05 ? actual / elapsed : null;
   const used = planned && actual != null ? actual / planned : null;
   let status: BudgetStatus;

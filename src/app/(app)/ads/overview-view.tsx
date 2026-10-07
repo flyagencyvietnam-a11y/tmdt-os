@@ -5,10 +5,12 @@ import * as React from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DeltaBadge, StatCard } from "@/components/stat-card";
 import { cn } from "@/lib/utils";
+import type { AdsGroupKey } from "@/lib/ads-lines";
 import type { AdsAlert } from "./alerts";
+import { PlanOverview } from "./plan-overview";
 import { axisProps, ChartCard, ChartTooltip, gridProps, Sparkline } from "./charts";
 import { b2cSummary, OVERVIEW_COLORS, OVERVIEW_KEYS, OVERVIEW_LABELS, overviewAgg, overviewTotal, quarterKey, quarterLabel, quarterMonths, type OverviewAgg } from "./rollups";
-import { aggregate, change, fmt, fmtMoney, fmtPct, LINE_COLORS, LINE_LABELS, LINES, monthLabel, type MetricRow } from "./shared";
+import { aggregate, change, fmt, fmtMoney, fmtPct, LINE_COLORS, LINE_LABELS, LINES, monthLabel, type MetricRow, type PlanRow } from "./shared";
 
 /** Khoảng thời gian đang xem ở Tổng quan: 1 tháng hoặc 1 quý (= cộng 3 dòng THÁNG, không cộng từ tuần). */
 export interface OverviewRange {
@@ -30,6 +32,8 @@ export function OverviewView({
   alerts,
   alertsMonthLabel,
   onOpenTab,
+  plans,
+  onOpenGroup,
 }: {
   metrics: MetricRow[];
   /** Mọi tháng đã có số liệu. */
@@ -38,6 +42,9 @@ export function OverviewView({
   alerts: AdsAlert[];
   alertsMonthLabel: string;
   onOpenTab: (alert: AdsAlert) => void;
+  plans: PlanRow[];
+  /** Mở kế hoạch của 1 mảng (bấm 1 dòng ở bảng Kế hoạch so với thực tế). */
+  onOpenGroup: (g: AdsGroupKey) => void;
 }) {
   const isQuarter = range.kind === "quarter";
   const cur = overviewTotal(metrics, range.months);
@@ -93,6 +100,8 @@ export function OverviewView({
           hint={alerts.length ? `${crit} nghiêm trọng · ${warn} cần xem` : "Mọi chỉ số ổn"}
         />
       </div>
+
+      <PlanOverview metrics={metrics} plans={plans} range={range} onOpenGroup={onOpenGroup} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <ChartCard

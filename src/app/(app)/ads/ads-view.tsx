@@ -82,6 +82,13 @@ export function AdsView({
     setTab(g);
   };
 
+  // Từ Tổng quan mở kế hoạch của 1 mảng; ở chế độ quý thì nhảy tới tháng mới nhất của quý.
+  const openGroupPlan = (g: AdsGroupKey) => {
+    if (mode === "quarter") setMonth(range.months[range.months.length - 1]);
+    setSubs((p) => ({ ...p, [g]: "plan" }));
+    setTab(g);
+  };
+
   const showMonth = tab !== "overview" || mode === "month";
 
   return (
@@ -128,7 +135,7 @@ export function AdsView({
             </button>
           </div>
         )}
-        <OverviewView metrics={metrics} months={metricMonths} range={range} alerts={alerts} alertsMonthLabel={monthLabel(alertMonth)} onOpenTab={openAlert} />
+        <OverviewView metrics={metrics} months={metricMonths} range={range} alerts={alerts} alertsMonthLabel={monthLabel(alertMonth)} onOpenTab={openAlert} plans={plans} onOpenGroup={openGroupPlan} />
       </TabsContent>
 
       {ADS_GROUPS.map((g) => (

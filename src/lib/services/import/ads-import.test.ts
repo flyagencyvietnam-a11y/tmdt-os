@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { makeTestDb, type TestDb } from "@/lib/db/test-db";
-import { adsCampaigns, adsEcomProducts, adsMetrics, sbus, users } from "@/lib/db/schema";
+import { adsCampaigns, adsEcomProducts, adsMetrics, adsPlans, sbus, users } from "@/lib/db/schema";
 import type { DB } from "@/lib/db";
 import { buildXlsx } from "@/lib/export-xlsx";
 import { applyAdsImport, parseDayCell, parseMonthCell, parseNumberCell, planAdsImport, type AdsImportKind } from "./ads-import";
@@ -130,6 +130,73 @@ describe("import Ads từ Excel", () => {
     const all = await db.select().from(adsCampaigns);
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ spend: "1500000", messages: "15", reach: "9000" });
+  });
+
+  it("HÀNG TUẦN mở cho mảng khác: cột theo phễu của mảng, báo lỗi cột không áp dụng", async () => {
+    const headers = ["week_start*", "line", "sbu_code", "budget", "mess", "leads", "mql", "new_students", "revenue", "deals"];
+    const buf = await file("TUAN", headers, [
+      { week_start: "03/10/2026", line: "ecom", budget: 5000000, mql: 30, new_students: 2, revenue: 12000000 },
+      { week_start: "03/10/2026", line: "vmt", budget: 1000000, leads: 9 },
+      { week_start: "03/10/2026", line: "ecom", budget: 1, leads: 4 },
+      { week_start: "03/10/2026", line: "vmp", sbu_code: "VTS", budget: 1 },
+      { week_start: "03/10/2026", line: "b2b", budget: 2000000, deals: 1, mess: 7 },
+    ]);
+    const { plan } = await run("week", buf);
+    expect(plan.rows.map((r) => r.action)).toEqual(["create", "create", "error", "error", "create"]);
+    expect(plan.rows[2].errors.join()).toMatch(/leads không áp dụng cho báo cáo tuần của Ecom/);
+    expect(plan.rows[3].errors.join()).toMatch(/không dùng sbu_code/);
+    const ecom = await db.select().from(adsMetrics).where(and(eq(adsMetrics.line, "ecom"), eq(adsMetrics.periodType, "week")));
+    expect(ecom[0]).toMatchObject({ budget: "5000000", mql: "30", newStudents: "2", revenue: "12000000" });
+    const vmt = await db.select().from(adsMetrics).where(and(eq(adsMetrics.line, "osir"), eq(adsMetrics.periodType, "week")));
+    expect(vmt[0]).toMatchObject({ budget: "1000000", leads: "9" });
+  });
+
+  it("KẾ HOẠCH: ngân sách + mục tiêu theo phễu mảng; TT chỉ có ngân sách; ô trống giữ nguyên; nạp lại không nhân đôi", async () => {
+    const headers = ["month*", "line*", "sbu_code", "planned_budget", "target_leads", "target_new_students", "target_mql", "target_revenue", "target_deals", "notes"];
+    const buf = await file("KE_HOACH", headers, [
+      { month: "11/2026", line: "b2c_system", planned_budget: "60.000.000", target_leads: 220, target_new_students: 35 },
+      { month: "11/2026", line: "b2c_center", sbu_code: "VTS", planned_budget: 3000000 },
+      { month: "11/2026", line: "b2c_center", sbu_code: "VTS", target_leads: 5 },
+      { month: "11/2026", line: "ecom", planned_budget: 45000000, target_mql: 140, target_revenue: 150000000, notes: "Ra mắt EduNext" },
+      { month: "11/2026", line: "ecom", target_leads: 5 },
+      { month: "11/2026", line: "vmt", planned_budget: 22500000, target_leads: 60 },
+      { month: "11/2026", line: "vmp" },
+      { month: "13/2026", line: "b2b", planned_budget: 1 },
+    ]);
+    const { plan, applied } = await run("plan", buf);
+    expect(plan.rows.map((r) => r.action)).toEqual(["create", "create", "error", "create", "error", "create", "skip", "error"]);
+    expect(plan.rows[2].errors.join()).toMatch(/không áp dụng cho từng trung tâm/);
+    expect(plan.rows[4].errors.join()).toMatch(/target_leads không áp dụng cho Ecom/);
+    expect(applied).toMatchObject({ created: 4, skipped: 1, errors: 3 });
+    const sys = (await db.select().from(adsPlans).where(and(eq(adsPlans.line, "b2c_system"), eq(adsPlans.period, "2026-11"))))[0];
+    expect(sys).toMatchObject({ plannedBudget: "60000000", targetLeads: "220", targetNewStudents: "35" });
+    const vtsPlan = (await db.select().from(adsPlans).where(and(eq(adsPlans.line, "b2c_center"), eq(adsPlans.sbuId, vts))))[0];
+    expect(vtsPlan.plannedBudget).toBe("3000000");
+    const ecom = (await db.select().from(adsPlans).where(eq(adsPlans.line, "ecom")))[0];
+    expect(ecom).toMatchObject({ plannedBudget: "45000000", targetMql: "140", targetRevenue: "150000000", notes: "Ra mắt EduNext" });
+    expect((await db.select().from(adsPlans).where(eq(adsPlans.line, "osir")))[0].plannedBudget).toBe("22500000");
+
+    // Nạp lại: chỉ đổi ngân sách Ecom, ô trống (mục tiêu) giữ nguyên, không tạo dòng mới.
+    const again = await file("KE_HOACH", headers, [{ month: "11/2026", line: "ecom", planned_budget: 50000000 }]);
+    const r2 = await run("plan", again);
+    expect(r2.plan.rows[0].action).toBe("update");
+    const all = await db.select().from(adsPlans).where(eq(adsPlans.line, "ecom"));
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ plannedBudget: "50000000", targetMql: "140" });
+  });
+
+  it("THEO REQUEST mở cho mảng khác: không dùng sbu_code, tạo request cấp mảng", async () => {
+    const headers = ["month*", "line", "sbu_code", "campaign_name*", "spend*", "planned_budget"];
+    const buf = await file("REQUEST", headers, [
+      { month: "10/2026", line: "ecom", campaign_name: "EduNext ra mắt", spend: 3000000, planned_budget: 5000000 },
+      { month: "10/2026", line: "vmp", sbu_code: "VTS", campaign_name: "Sai", spend: 1 },
+      { month: "10/2026", line: "b2c_system", campaign_name: "Sai", spend: 1 },
+    ]);
+    const { plan } = await run("request", buf);
+    expect(plan.rows.map((r) => r.action)).toEqual(["create", "error", "error"]);
+    const rows = await db.select().from(adsCampaigns).where(eq(adsCampaigns.line, "ecom"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ sbuId: null, plannedBudget: "5000000", spend: "3000000" });
   });
 
   it("file thiếu sheet → báo lỗi rõ ràng", async () => {

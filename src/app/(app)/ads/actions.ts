@@ -70,7 +70,7 @@ export async function patchAdsCampaignAction(id: string, patch: Partial<UpsertAd
   try {
     if (patch.campaignName !== undefined && !patch.campaignName.trim()) return { ok: false, error: "Tên request không được để trống." };
     if (patch.spend !== undefined && patch.spend !== "" && !Number.isFinite(Number(patch.spend))) return { ok: false, error: "Chi tiêu phải là số." };
-    if (patch.period !== undefined && !/^d{4}-d{2}$/.test(patch.period)) return { ok: false, error: "Kỳ phải dạng tháng, vd 10/2026." };
+    if (patch.period !== undefined && !/^\d{4}-\d{2}$/.test(patch.period)) return { ok: false, error: "Kỳ phải dạng tháng, vd 10/2026." };
     await patchAdsCampaign(db, id, patch, user.id);
     return { ok: true, data: undefined };
   } catch (e) {
@@ -136,8 +136,8 @@ export async function deleteAdsPlanAction(id: string): Promise<Result> {
 export async function saveEcomProductPeriodAction(input: { period: string; periodEnd?: string | null; rows: EcomProductRowInput[] }): Promise<Result> {
   const user = await requireManagerLike();
   if (!user) return { ok: false, error: "Chỉ nhân sự Marketing được sửa." };
-  if (!/^d{4}-d{2}$/.test(input.period)) return { ok: false, error: "Kỳ không hợp lệ." };
-  if (input.periodEnd && (!/^d{4}-d{2}$/.test(input.periodEnd) || input.periodEnd < input.period)) return { ok: false, error: "Tháng kết thúc phải sau hoặc bằng tháng bắt đầu." };
+  if (!/^\d{4}-\d{2}$/.test(input.period)) return { ok: false, error: "Kỳ không hợp lệ." };
+  if (input.periodEnd && (!/^\d{4}-\d{2}$/.test(input.periodEnd) || input.periodEnd < input.period)) return { ok: false, error: "Tháng kết thúc phải sau hoặc bằng tháng bắt đầu." };
   try {
     await saveEcomProductPeriod(db, input, user.id);
     return { ok: true, data: undefined };
@@ -163,7 +163,7 @@ export async function deleteEcomProductPeriodAction(period: string): Promise<Res
 
 async function readImportForm(formData: FormData) {
   const kind = formData.get("kind");
-  if (kind !== "week" && kind !== "month" && kind !== "request") return { ok: false as const, error: "Loại import không hợp lệ." };
+  if (kind !== "week" && kind !== "month" && kind !== "request" && kind !== "plan") return { ok: false as const, error: "Loại import không hợp lệ." };
   const file = formData.get("file") as File | null;
   if (!file || typeof file === "string") return { ok: false as const, error: "Chưa chọn file." };
   if (!file.name.toLowerCase().endsWith(".xlsx")) return { ok: false as const, error: "Chỉ nhận file .xlsx (dùng đúng template)." };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ADS_GROUPS, groupOfLine } from "./ads-lines";
-import { budgetProgress, monthElapsed, plannedUnitCost, targetProgress } from "./ads-plan";
+import { budgetProgress, budgetProgressAt, monthElapsed, plannedUnitCost, rangeElapsed, targetProgress } from "./ads-plan";
 
 describe("monthElapsed", () => {
   it("tháng đã qua = 1, chưa tới = 0, giữa tháng theo ngày", () => {
@@ -59,5 +59,22 @@ describe("cấu hình mảng", () => {
     expect([...all].sort()).toEqual(["b2b", "b2c_center", "b2c_system", "ecom", "osir", "vmp"]);
     expect(groupOfLine("osir").label).toContain("VMT");
     expect(groupOfLine("b2c_center").key).toBe("b2c");
+  });
+});
+
+describe("rangeElapsed / budgetProgressAt", () => {
+  it("quý: tính theo ngày trên cả khoảng", () => {
+    const q = ["2026-10", "2026-11", "2026-12"];
+    expect(rangeElapsed(q, "2026-09-30")).toBe(0);
+    expect(rangeElapsed(q, "2027-01-01")).toBe(1);
+    expect(rangeElapsed(q, "2026-11-15")).toBeCloseTo((31 + 15) / 92);
+    expect(rangeElapsed([], "2026-11-15")).toBe(0);
+  });
+  it("khoảng 1 tháng khớp monthElapsed", () => {
+    expect(rangeElapsed(["2026-10"], "2026-10-15")).toBeCloseTo(monthElapsed("2026-10", "2026-10-15"));
+  });
+  it("budgetProgressAt cho quý dang dở", () => {
+    expect(budgetProgressAt(92_000_000, 46_000_000, 0.5).status).toBe("on_track");
+    expect(budgetProgressAt(92_000_000, 80_000_000, 0.5).status).toBe("fast");
   });
 });

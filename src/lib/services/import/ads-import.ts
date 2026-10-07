@@ -1,13 +1,14 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/lib/db";
-import { adsCampaigns, adsEcomProducts, adsMetrics, sbus, users } from "@/lib/db/schema";
+import { adsCampaigns, adsEcomProducts, adsMetrics, adsPlans, sbus, users } from "@/lib/db/schema";
+import { groupOfLine, PLAN_TARGET_COLUMN, type FunnelField } from "@/lib/ads-lines";
 import { writeAudit } from "@/lib/audit";
 import { ECOM_PRODUCTS } from "@/lib/ads-metrics";
-import { upsertAdsCampaign, upsertAdsMetric, upsertEcomProduct, type UpsertAdsMetricInput } from "../ads";
+import { upsertAdsCampaign, upsertAdsMetric, upsertAdsPlan, upsertEcomProduct, type UpsertAdsMetricInput, type UpsertAdsPlanInput } from "../ads";
 import { parseWorkbookSheets, type ParsedRow } from "./parse";
 
 /**
- * Import Excel cho module Ads — 3 loại cập nhật: HÀNG TUẦN, HÀNG THÁNG, THEO REQUEST.
+ * Import Excel cho module Ads — 4 loại: KẾ HOẠCH tháng, HÀNG TUẦN, HÀNG THÁNG, THEO REQUEST.
  * Quy ước chung (cùng nguyên tắc "import không phá dữ liệu", CLAUDE.md):
  *  - Ô TRỐNG = giữ nguyên giá trị hiện có; ô có số = ghi đè. Muốn đặt về 0 thì nhập 0.
  *  - Dòng chưa điền số nào (template điền sẵn khung) = bỏ qua, không phải lỗi.
@@ -15,9 +16,9 @@ import { parseWorkbookSheets, type ParsedRow } from "./parse";
  *  - Không có trạng thái chờ trong DB: xem trước và ghi đều đọc + kiểm tra lại file.
  */
 
-export type AdsImportKind = "week" | "month" | "request";
-export const ADS_IMPORT_SHEETS: Record<AdsImportKind, string[]> = { week: ["TUAN"], month: ["THANG", "ECOM_SP"], request: ["REQUEST"] };
-export const ADS_IMPORT_LABEL: Record<AdsImportKind, string> = { week: "Hàng tuần", month: "Hàng tháng", request: "Theo request" };
+export type AdsImportKind = "week" | "month" | "request" | "plan";
+export const ADS_IMPORT_SHEETS: Record<AdsImportKind, string[]> = { week: ["TUAN"], month: ["THANG", "ECOM_SP"], request: ["REQUEST"], plan: ["KE_HOACH"] };
+export const ADS_IMPORT_LABEL: Record<AdsImportKind, string> = { week: "Hàng tuần", month: "Hàng tháng", request: "Theo request", plan: "Kế hoạch tháng" };
 const MAX_ROWS = 500;
 
 export type ImportAction = "create" | "update" | "skip" | "error";
@@ -35,7 +36,8 @@ export interface AdsImportPreviewRow {
 
 type Op =
   | { type: "metric"; input: UpsertAdsMetricInput }
-  | { type: "campaign"; id?: string; sbuId: string; period: string; campaignName: string; fields: Record<string, string | null>; spend?: string }
+  | { type: "plan"; input: UpsertAdsPlanInput }
+  | { type: "campaign"; id?: string; line: Line; sbuId: string | null; period: string; campaignName: string; fields: Record<string, string | null>; spend?: string }
   | { type: "ecom"; period: string; periodEnd: string | null; product: string; values: { spend?: string; mql?: string; newStudents?: string; revenue?: string } };
 
 export interface AdsImportPlan {
@@ -115,10 +117,23 @@ async function loadSbus(db: DB) {
 }
 
 // ---------------------------------------------------------------------------
-// HÀNG TUẦN — sheet TUAN: week_start*, sbu_code (trống = Hệ thống), budget, mess, impression
+// HÀNG TUẦN — sheet TUAN: week_start*, line, sbu_code, budget, mess, impression, leads, mql, new_students, revenue, deals
+// Báo cáo tuần mở cho MỌI mảng (SPEC Phụ lục D mục 21). line trống: sbu_code trống = B2C Hệ thống, có sbu_code = B2C Trung tâm
+// (tương thích template cũ). Cột nào dùng được tuỳ mảng — khai báo ở `weeklyFields` trong lib/ads-lines.ts.
 // ---------------------------------------------------------------------------
 
-const WEEK_LABELS = { budget: "NS", mess: "Mess", impression: "Impression" };
+const WEEK_LABELS = { budget: "NS", mess: "Mess", impression: "Impression", leads: "Lead", mql: "MQL", new_students: "HVM/chuyển đổi", revenue: "Doanh thu", deals: "Deal" };
+
+/** Cột số của sheet TUAN → trường ads_metrics (ngân sách và impression xử lý riêng). */
+const WEEK_COLS: { col: string; field: FunnelField | "impressions" }[] = [
+  { col: "mess", field: "messages" },
+  { col: "leads", field: "leads" },
+  { col: "mql", field: "mql" },
+  { col: "new_students", field: "newStudents" },
+  { col: "revenue", field: "revenue" },
+  { col: "deals", field: "deals" },
+  { col: "impression", field: "impressions" },
+];
 
 async function planWeek(db: DB, sheets: Record<string, ParsedRow[]>): Promise<AdsImportPlan> {
   const sbuByCode = await loadSbus(db);
@@ -127,7 +142,6 @@ async function planWeek(db: DB, sheets: Record<string, ParsedRow[]>): Promise<Ad
   const existing = weeks.length ? await db.select().from(adsMetrics).where(and(eq(adsMetrics.periodType, "week"), inArray(adsMetrics.period, weeks))) : [];
   const keyOf = (line: string, period: string, sbuId: string | null) => `${line}|${period}|${sbuId ?? ""}`;
   const existingByKey = new Map(existing.map((e) => [keyOf(e.line, e.period, e.sbuId), e]));
-
   const rows: AdsImportPreviewRow[] = [];
   const ops: Op[] = [];
   const seen = new Set<string>();
@@ -139,37 +153,45 @@ async function planWeek(db: DB, sheets: Record<string, ParsedRow[]>): Promise<Ad
     else if (new Date(`${week}T00:00:00Z`).getUTCDay() !== 6) errors.push(`week_start ${r.data.week_start} không phải Thứ 7 — tuần tính từ Thứ 7 đến hết Thứ 6`);
 
     const code = (r.data.sbu_code ?? "").trim().toUpperCase();
-    const sbuId = code ? (sbuByCode.get(code) ?? null) : null;
-    if (code && !sbuId) errors.push(`sbu_code không tồn tại: ${code}`);
-    const line = code ? "b2c_center" : "b2c_system";
+    const lineRaw = (r.data.line ?? "").trim().toLowerCase();
+    const line: Line | undefined = lineRaw ? LINE_ALIAS[lineRaw] : code ? "b2c_center" : "b2c_system";
+    if (lineRaw && !line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_center, ecom, b2b, osir/vmt, vmp)`);
+    let sbuId: string | null = null;
+    if (line === "b2c_center") {
+      if (!code) errors.push("line b2c_center bắt buộc có sbu_code");
+      else if (!sbuByCode.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
+      else sbuId = sbuByCode.get(code)!;
+    } else if (line && code) errors.push(`line ${line} không dùng sbu_code`);
 
-    const nums = readNumbers(r, [{ col: "budget", label: "" }, { col: "mess", label: "" }, { col: "impression", label: "" }], errors);
-    const target = `${week ? `Tuần ${week.slice(8, 10)}/${week.slice(5, 7)}` : "?"} · ${code || "Hệ thống"}`;
+    const nums = readNumbers(r, [{ col: "budget", label: "" }, ...WEEK_COLS.map((c) => ({ col: c.col, label: "" }))], errors);
+    // Cột chỉ hợp lệ với mảng của nó (chỉ số tuần khai báo ở weeklyFields; impression chỉ B2C).
+    const allowed = new Set<string>(line ? groupOfLine(line).weeklyFields : []);
+    const values: Record<string, string> = {};
+    if (line) {
+      for (const c of WEEK_COLS) {
+        if (nums[c.col] === undefined) continue;
+        const ok = c.field === "impressions" ? groupOfLine(line).key === "b2c" : allowed.has(c.field);
+        if (!ok) errors.push(`${c.col} không áp dụng cho báo cáo tuần của ${LINE_NAME[line]}`);
+        else values[c.field] = nums[c.col];
+      }
+      if (nums.budget !== undefined) values[line === "b2c_center" ? "centerOrderBudget" : "budget"] = nums.budget;
+    }
+    const target = `${week ? `Tuần ${week.slice(8, 10)}/${week.slice(5, 7)}` : "?"} · ${line === "b2c_center" ? code || "?" : line === "b2c_system" ? "Hệ thống" : line ? LINE_NAME[line] : "?"}`;
 
     if (!errors.length && !Object.keys(nums).length) {
       rows.push({ rowNumber: r.rowNumber, sheet: "TUAN", target, summary: "chưa điền số", action: "skip", errors: [] });
       continue;
     }
-    const key = keyOf(line, week ?? "", sbuId);
-    if (!errors.length && seen.has(key)) errors.push("Trùng (tuần, đối tượng) với dòng trên trong file");
+    const key = keyOf(line ?? "", week ?? "", sbuId);
+    if (!errors.length && seen.has(key)) errors.push("Trùng (tuần, mảng/đối tượng) với dòng trên trong file");
     seen.add(key);
-    if (errors.length || !week) {
+    if (errors.length || !week || !line) {
       rows.push({ rowNumber: r.rowNumber, sheet: "TUAN", target, summary: "", action: "error", errors });
       continue;
     }
     const ex = existingByKey.get(keyOf(line, week, sbuId));
-    const input: UpsertAdsMetricInput = {
-      id: ex?.id,
-      line,
-      periodType: "week",
-      period: week,
-      sbuId,
-      // Tuần Trung tâm: 1 ô "NS (TT order + P.MKT thêm)" lưu ở centerOrderBudget, như màn nhập tuần.
-      ...(nums.budget !== undefined ? (line === "b2c_system" ? { budget: nums.budget } : { centerOrderBudget: nums.budget }) : {}),
-      ...(nums.mess !== undefined ? { messages: nums.mess } : {}),
-      ...(nums.impression !== undefined ? { impressions: nums.impression } : {}),
-    };
-    ops.push({ type: "metric", input });
+    // Tuần Trung tâm: 1 ô "NS (TT order + P.MKT thêm)" lưu ở centerOrderBudget, như màn nhập tuần.
+    ops.push({ type: "metric", input: { id: ex?.id, line, periodType: "week", period: week, sbuId, ...values } as UpsertAdsMetricInput });
     rows.push({ rowNumber: r.rowNumber, sheet: "TUAN", target, summary: summarize(nums, WEEK_LABELS), action: ex ? "update" : "create", errors: [] });
   }
   return { rows, ops };
@@ -188,9 +210,10 @@ const LINE_ALIAS: Record<string, Line> = {
   ecom: "ecom",
   b2b: "b2b",
   osir: "osir",
+  vmt: "osir",
   vmp: "vmp",
 };
-const LINE_NAME: Record<Line, string> = { b2c_system: "B2C Hệ thống (tổng B2C)", b2c_center: "B2C Trung tâm", ecom: "Ecom", b2b: "B2B", osir: "OSIR", vmp: "VMP" };
+const LINE_NAME: Record<Line, string> = { b2c_system: "B2C Hệ thống (tổng B2C)", b2c_center: "B2C Trung tâm", ecom: "Ecom", b2b: "B2B", osir: "VMT (khảo thí)", vmp: "VMP" };
 
 /** Cột số của sheet THANG → trường ads_metrics + mảng được phép dùng. */
 const MONTH_FIELDS: { col: string; field: keyof UpsertAdsMetricInput; lines: Line[]; label: string }[] = [
@@ -340,9 +363,9 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
     userByKey.set(u.email.trim().toLowerCase(), u.id);
   }
   const months = [...new Set(parsed.map((r) => parseMonthCell(r.data.month)).filter((x): x is string => !!x))];
-  const existing = months.length ? await db.select().from(adsCampaigns).where(and(inArray(adsCampaigns.period, months), eq(adsCampaigns.line, "b2c_center"))) : [];
-  const keyOf = (sbuId: string, period: string, name: string) => `${sbuId}|${period}|${name.trim().toLowerCase()}`;
-  const existingByKey = new Map(existing.filter((e) => e.sbuId).map((e) => [keyOf(e.sbuId!, e.period, e.campaignName), e]));
+  const existing = months.length ? await db.select().from(adsCampaigns).where(inArray(adsCampaigns.period, months)) : [];
+  const keyOf = (line: string, sbuId: string | null, period: string, name: string) => `${line}|${sbuId ?? ""}|${period}|${name.trim().toLowerCase()}`;
+  const existingByKey = new Map(existing.map((e) => [keyOf(e.line, e.sbuId, e.period, e.campaignName), e]));
 
   const rows: AdsImportPreviewRow[] = [];
   const ops: Op[] = [];
@@ -352,24 +375,32 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
     const period = parseMonthCell(r.data.month);
     if (!r.data.month) errors.push("Thiếu month");
     else if (!period) errors.push(`month sai định dạng: "${r.data.month}" (dùng mm/yyyy)`);
+    // line trống = request của trung tâm B2C (tương thích template cũ); mảng khác: ecom/b2b/osir(vmt)/vmp, không có sbu_code.
+    const lineRaw = (r.data.line ?? "").trim().toLowerCase();
+    const line: Line | undefined = lineRaw ? LINE_ALIAS[lineRaw] : "b2c_center";
+    if (lineRaw && !line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_center, ecom, b2b, osir/vmt, vmp)`);
+    else if (line === "b2c_system") errors.push("Request của B2C là request của TRUNG TÂM: dùng line b2c_center + sbu_code (hoặc để trống line)");
     const code = (r.data.sbu_code ?? "").trim().toUpperCase();
-    const sbuId = sbuByCode.get(code);
-    if (!code) errors.push("Thiếu sbu_code");
-    else if (!sbuId) errors.push(`sbu_code không tồn tại: ${code}`);
+    let sbuId: string | null = null;
+    if (line === "b2c_center") {
+      if (!code) errors.push("Thiếu sbu_code");
+      else if (!sbuByCode.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
+      else sbuId = sbuByCode.get(code)!;
+    } else if (line && code) errors.push(`line ${line} không dùng sbu_code`);
     const name = (r.data.campaign_name ?? "").trim();
     if (!name) errors.push("Thiếu campaign_name");
     const nums = readNumbers(r, CAMPAIGN_NUMS, errors);
     const runnerText = (r.data.runner ?? "").trim();
     const runnerId = runnerText ? userByKey.get(runnerText.toLowerCase()) : undefined;
     if (runnerText && !runnerId) errors.push(`runner không khớp người dùng nào: "${runnerText}" (dùng họ tên hoặc email)`);
-    const target = `${period ? MONTH_NAME(period) : "?"} · ${code || "?"} · ${name || "?"}`;
+    const target = `${period ? MONTH_NAME(period) : "?"} · ${line === "b2c_center" ? code || "?" : line ? LINE_NAME[line] : "?"} · ${name || "?"}`;
 
-    const ex = sbuId && period && name ? existingByKey.get(keyOf(sbuId, period, name)) : undefined;
+    const ex = line && period && name ? existingByKey.get(keyOf(line, sbuId, period, name)) : undefined;
     if (!errors.length && !ex && nums.spend === undefined) errors.push("Chiến dịch mới bắt buộc có spend (chi phí)");
-    const key = sbuId && period ? keyOf(sbuId, period, name) : "";
-    if (!errors.length && seen.has(key)) errors.push("Trùng (tháng, trung tâm, tên chiến dịch) với dòng trên trong file");
+    const key = line && period ? keyOf(line, sbuId, period, name) : "";
+    if (!errors.length && seen.has(key)) errors.push("Trùng (tháng, mảng/trung tâm, tên chiến dịch) với dòng trên trong file");
     if (key) seen.add(key);
-    if (errors.length || !sbuId || !period) {
+    if (errors.length || !line || !period) {
       rows.push({ rowNumber: r.rowNumber, sheet: "REQUEST", target, summary: "", action: "error", errors });
       continue;
     }
@@ -377,7 +408,7 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
     for (const [col, v] of Object.entries(nums)) if (col !== "spend") fields[CAMPAIGN_FIELD[col] ?? col] = v;
     if (r.data.misa_request_url) fields.misaRequestUrl = r.data.misa_request_url;
     if (runnerId) fields.runnerId = runnerId;
-    ops.push({ type: "campaign", id: ex?.id, sbuId, period, campaignName: name, fields, spend: nums.spend });
+    ops.push({ type: "campaign", id: ex?.id, line, sbuId, period, campaignName: name, fields, spend: nums.spend });
     rows.push({
       rowNumber: r.rowNumber,
       sheet: "REQUEST",
@@ -386,6 +417,94 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
       action: ex ? "update" : "create",
       errors: [],
     });
+  }
+  return { rows, ops };
+}
+
+// ---------------------------------------------------------------------------
+// KẾ HOẠCH THÁNG — sheet KE_HOACH: month*, line*, sbu_code, planned_budget, target_leads, target_new_students,
+// target_messages, target_mql, target_revenue, target_deals, notes
+// Mục tiêu nào dùng được tuỳ phễu của mảng (lib/ads-lines.ts). B2C: mục tiêu Lead/HVM TỔNG nằm ở dòng b2c_system; dòng b2c_center (từng
+// trung tâm) chỉ có planned_budget. Ô trống = giữ nguyên; ô có số = ghi đè.
+// ---------------------------------------------------------------------------
+
+const PLAN_COLS: { col: string; field: FunnelField | "plannedBudget"; label: string }[] = [
+  { col: "planned_budget", field: "plannedBudget", label: "NS KH" },
+  { col: "target_leads", field: "leads", label: "MT Lead" },
+  { col: "target_new_students", field: "newStudents", label: "MT HVM" },
+  { col: "target_messages", field: "messages", label: "MT Mess" },
+  { col: "target_mql", field: "mql", label: "MT MQL" },
+  { col: "target_revenue", field: "revenue", label: "MT Doanh thu" },
+  { col: "target_deals", field: "deals", label: "MT Deal" },
+];
+
+async function planPlan(db: DB, sheets: Record<string, ParsedRow[]>): Promise<AdsImportPlan> {
+  const sbuByCode = await loadSbus(db);
+  const parsed = sheets.KE_HOACH ?? [];
+  const months = [...new Set(parsed.map((r) => parseMonthCell(r.data.month)).filter((x): x is string => !!x))];
+  const existing = months.length ? await db.select().from(adsPlans).where(inArray(adsPlans.period, months)) : [];
+  const keyOf = (line: string, period: string, sbuId: string | null) => `${line}|${period}|${sbuId ?? ""}`;
+  const existingByKey = new Map(existing.map((e) => [keyOf(e.line, e.period, e.sbuId), e]));
+  const rows: AdsImportPreviewRow[] = [];
+  const ops: Op[] = [];
+  const seen = new Set<string>();
+
+  for (const r of parsed) {
+    const errors: string[] = [];
+    const period = parseMonthCell(r.data.month);
+    if (!r.data.month) errors.push("Thiếu month");
+    else if (!period) errors.push(`month sai định dạng: "${r.data.month}" (dùng mm/yyyy, vd. 11/2026)`);
+    const lineRaw = (r.data.line ?? "").trim().toLowerCase();
+    const line = LINE_ALIAS[lineRaw];
+    if (!lineRaw) errors.push("Thiếu line");
+    else if (!line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_center, ecom, b2b, osir/vmt, vmp)`);
+
+    const code = (r.data.sbu_code ?? "").trim().toUpperCase();
+    let sbuId: string | null = null;
+    if (line === "b2c_center") {
+      if (!code) errors.push("line b2c_center bắt buộc có sbu_code");
+      else if (!sbuByCode.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
+      else sbuId = sbuByCode.get(code)!;
+    } else if (line && code) errors.push(`line ${line} không dùng sbu_code`);
+
+    const nums = readNumbers(r, PLAN_COLS.map((c) => ({ col: c.col, label: c.label })), errors);
+    const values: Record<string, string> = {};
+    if (line) {
+      const group = groupOfLine(line);
+      // Mục tiêu theo phễu của mảng; riêng từng trung tâm B2C chỉ lập ngân sách.
+      const targetOk = (f: FunnelField) => line !== "b2c_center" && group.funnel.some((x) => x.field === f);
+      for (const c of PLAN_COLS) {
+        if (nums[c.col] === undefined) continue;
+        if (c.field === "plannedBudget") values.plannedBudget = nums[c.col];
+        else if (!targetOk(c.field)) {
+          errors.push(
+            line === "b2c_center"
+              ? `${c.col} không áp dụng cho từng trung tâm — mục tiêu Lead/HVM tổng nằm ở dòng b2c_system`
+              : `${c.col} không áp dụng cho ${LINE_NAME[line]} (phễu: ${group.funnel.map((x) => x.label).join(", ")})`,
+          );
+        } else values[PLAN_TARGET_COLUMN[c.field]] = nums[c.col];
+      }
+    }
+    const notes = (r.data.notes ?? "").trim();
+    if (notes) values.notes = notes;
+
+    const target = `${period ? MONTH_NAME(period) : "?"} · ${line ? LINE_NAME[line] : "?"}${code ? ` · ${code}` : ""}`;
+    if (!errors.length && !Object.keys(values).length) {
+      rows.push({ rowNumber: r.rowNumber, sheet: "KE_HOACH", target, summary: "chưa điền số", action: "skip", errors: [] });
+      continue;
+    }
+    const key = keyOf(line ?? "", period ?? "", sbuId);
+    if (!errors.length && seen.has(key)) errors.push("Trùng (tháng, mảng, trung tâm) với dòng trên trong file");
+    seen.add(key);
+    if (errors.length || !period || !line) {
+      rows.push({ rowNumber: r.rowNumber, sheet: "KE_HOACH", target, summary: "", action: "error", errors });
+      continue;
+    }
+    const ex = existingByKey.get(keyOf(line, period, sbuId));
+    ops.push({ type: "plan", input: { line, period, sbuId, ...values } as UpsertAdsPlanInput });
+    const labels = Object.fromEntries(PLAN_COLS.map((c) => [c.field === "plannedBudget" ? "plannedBudget" : PLAN_TARGET_COLUMN[c.field], c.label]));
+    const numVals = Object.fromEntries(Object.entries(values).filter(([k]) => k !== "notes"));
+    rows.push({ rowNumber: r.rowNumber, sheet: "KE_HOACH", target, summary: summarize(numVals, labels) + (values.notes ? " · + ghi chú" : ""), action: ex ? "update" : "create", errors: [] });
   }
   return { rows, ops };
 }
@@ -400,6 +519,7 @@ export async function planAdsImport(db: DB, kind: AdsImportKind, buf: Buffer): P
   const total = Object.values(sheets).reduce((s, x) => s + x.length, 0);
   if (total === 0) throw new Error(`Không thấy dữ liệu — file cần có sheet ${ADS_IMPORT_SHEETS[kind].join(" / ")} (dùng đúng template).`);
   if (total > MAX_ROWS) throw new Error(`File có ${total} dòng, vượt trần ${MAX_ROWS}. Tách nhỏ file.`);
+  if (kind === "plan") return planPlan(db, sheets);
   if (kind === "week") return planWeek(db, sheets);
   if (kind === "month") return planMonth(db, sheets);
   return planRequest(db, sheets);
@@ -410,11 +530,12 @@ export async function applyAdsImport(db: DB, kind: AdsImportKind, plan: AdsImpor
   const count = (a: ImportAction) => plan.rows.filter((r) => r.action === a).length;
   for (const op of plan.ops) {
     if (op.type === "metric") await upsertAdsMetric(db, op.input, actorId);
+    else if (op.type === "plan") await upsertAdsPlan(db, op.input, actorId);
     else if (op.type === "ecom") await upsertEcomProduct(db, { period: op.period, periodEnd: op.periodEnd, product: op.product, values: op.values }, actorId);
     else {
       await upsertAdsCampaign(
         db,
-        { id: op.id, sbuId: op.sbuId, period: op.period, campaignName: op.campaignName, ...(op.spend !== undefined ? { spend: op.spend } : {}), ...op.fields } as never,
+        { id: op.id, line: op.line, sbuId: op.sbuId, period: op.period, campaignName: op.campaignName, ...(op.spend !== undefined ? { spend: op.spend } : {}), ...op.fields } as never,
         actorId,
       );
     }

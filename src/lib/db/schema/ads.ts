@@ -145,25 +145,6 @@ export const adsPlans = pgTable(
 );
 
 /**
- * Kế hoạch giải ngân Digital ADS theo tháng (sheet "Giải ngân Digital") — chỉ
- * Mục 1+3+5 (không gồm NS Trung tâm order, B2B, VMP theo đúng phạm vi sheet gốc).
- * Thực tế lấy từ SUM(ads_metrics) tại truy vấn, không lưu lại ở bảng này.
- */
-export const adsDisbursementPlan = pgTable(
-  "ads_disbursement_plan",
-  {
-    id: pkUuid(),
-    line: adsLineEnum("line").notNull(),
-    /** "2026-10" */
-    period: text("period").notNull(),
-    plannedAmount: numeric("planned_amount", { precision: 14, scale: 0 }).notNull(),
-    notes: text("notes"),
-    ...auditColumns,
-  },
-  (t) => [uniqueIndex("ads_disbursement_plan_uniq").on(t.line, t.period)],
-);
-
-/**
  * Ecom (TMĐT) chia theo sản phẩm — báo cáo "VMG_Bao_cao_TMDT_theo_SP_theo_thang".
  * Một dòng = 1 sản phẩm × 1 KỲ. Kỳ thường là 1 tháng; riêng giai đoạn Test T6-T7
  * chỉ có số gộp nên `periodEnd` ≠ `period` (T6 → T7). CAC/CPMQL/ROAS suy ra tại
@@ -197,4 +178,3 @@ export type AdsCampaign = typeof adsCampaigns.$inferSelect;
 export type NewAdsCampaign = typeof adsCampaigns.$inferInsert;
 export type AdsPlan = typeof adsPlans.$inferSelect;
 export type NewAdsPlan = typeof adsPlans.$inferInsert;
-export type AdsDisbursementPlan = typeof adsDisbursementPlan.$inferSelect;
