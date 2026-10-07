@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -33,9 +34,10 @@ export function UserMenu({
         <span className="hidden max-w-40 truncate sm:inline">{fullName}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="truncate text-xs text-muted-foreground">
-          {email}
-        </DropdownMenuLabel>
+        {/* Base UI: nhãn menu bắt buộc nằm trong Group — thiếu thì mở menu là sập trang. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="truncate text-xs text-muted-foreground">{email}</DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/doi-mat-khau" />}>
           <KeyRound className="mr-2 h-4 w-4" /> Đổi mật khẩu
