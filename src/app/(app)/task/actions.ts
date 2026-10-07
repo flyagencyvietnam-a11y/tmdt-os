@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isManagerLike, isStaff } from "@/lib/auth/permissions";
+import { canAssignOthers, isStaff } from "@/lib/auth/permissions";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -29,13 +29,7 @@ async function requireSessionUser() {
 export async function createTaskAction(input: CreateTaskInput): Promise<ActionResult> {
   try {
     const user = await requireSessionUser();
-    if (
-      input.assigneeId &&
-      input.assigneeId !== user.id &&
-      !user.canAssign &&
-      user.role !== "admin" &&
-      user.role !== "manager"
-    ) {
+    if (input.assigneeId && input.assigneeId !== user.id && !canAssignOthers(user)) {
       return { ok: false, error: "Bạn chưa được cấp quyền giao task cho người khác (can_assign)." };
     }
     const task = await createTask(db, input, user.id);
@@ -63,7 +57,7 @@ export async function updateTaskAction(id: string, patch: UpdateTaskInput): Prom
 export async function bulkUpdateTasksAction(ids: string[], patch: UpdateTaskInput): Promise<ActionResult> {
   try {
     const user = await requireSessionUser();
-    if (!isManagerLike(user.role) && !user.canAssign && patch.assigneeId) {
+    if (patch.assigneeId && !canAssignOthers(user)) {
       return { ok: false, error: "Bạn chưa được cấp quyền giao task cho người khác (can_assign)." };
     }
     await bulkUpdateTasks(db, ids, patch, user.id);

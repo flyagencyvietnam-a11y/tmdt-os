@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ExternalLink, List as ListIcon, Newspaper, Pencil, Plus, Upload, X, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ExternalLink, List as ListIcon, Megaphone, Newspaper, Pencil, Plus, Upload, X, Trash2 } from "lucide-react";
 import { BulkDeleteButton } from "@/components/data-grid/bulk-delete";
 import { useSessionState } from "@/lib/use-session-state";
 import { DateInput } from "@/components/ui/date-input";
@@ -113,6 +113,7 @@ export function ContentCalendarView({
 
   const brandCode = React.useCallback((id: string) => brands.find((b) => b.id === id)?.code ?? "", [brands]);
   const userName = React.useCallback((id: string | null) => users.find((u) => u.id === id)?.fullName ?? "", [users]);
+  const campaignById = React.useMemo(() => new Map(campaigns.map((c) => [c.id, c])), [campaigns]);
   // Vị trí brand trong danh sách — fallback index khi brand chưa có màu cố định (content-colors.ts).
   const brandColorIndex = React.useMemo(() => Object.fromEntries(brands.map((b, i) => [b.id, i])), [brands]);
   const brandColor = React.useCallback((id: string) => colorForBrand(brandCode(id), brandColorIndex[id] ?? 0), [brandCode, brandColorIndex]);
@@ -146,6 +147,7 @@ export function ContentCalendarView({
       if (field === "status") patch = { status: raw };
       else if (field === "postUrl") patch = { postUrl: raw || null };
       else if (field === "ownerId") patch = { ownerId: raw || null };
+      else if (field === "campaignId") patch = { campaignId: raw || null };
       else if (field === "publishDate") patch = raw ? { publishDate: raw } : null;
       if (!patch) return;
       const res = await updateContentItemAction(rowId, patch);
@@ -198,6 +200,35 @@ export function ContentCalendarView({
         ),
         defaultWidth: 280,
         groupable: false,
+      },
+      {
+        field: "campaignId",
+        header: "Campaign",
+        kind: "enum",
+        accessor: (r) => r.campaignId ?? "",
+        cell: (r) => {
+          const c = r.campaignId ? campaignById.get(r.campaignId) : undefined;
+          if (!c) return <span className="text-muted-foreground">—</span>;
+          return (
+            <Link
+              href={`/campaign/${c.id}`}
+              onClick={(e) => e.stopPropagation()}
+              title={`${c.code} — ${c.name}`}
+              className="inline-flex max-w-full items-center gap-1 rounded-md bg-brand/10 px-1.5 py-0.5 text-[11px] font-medium text-brand hover:bg-brand/15"
+            >
+              <Megaphone className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {c.code} <span className="font-normal opacity-80">· {c.name}</span>
+              </span>
+            </Link>
+          );
+        },
+        enumOptions: campaigns.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` })),
+        editable: true,
+        editKind: "select",
+        editOptions: [{ value: "", label: "— Không gắn —" }, ...campaigns.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }))],
+        editValue: (r) => r.campaignId ?? "",
+        defaultWidth: 240,
       },
       {
         field: "brandIds",
@@ -314,7 +345,7 @@ export function ContentCalendarView({
         defaultWidth: 110,
       },
     ],
-    [brands, users, brandCode, brandColor, userName, channelOptions, pending, today, togglePublished],
+    [brands, users, campaigns, campaignById, brandCode, brandColor, userName, channelOptions, pending, today, togglePublished],
   );
 
   const editing = dialog?.mode === "edit" ? (items.find((i) => i.id === dialog.id) ?? null) : null;

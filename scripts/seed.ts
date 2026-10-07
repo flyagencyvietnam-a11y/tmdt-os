@@ -50,9 +50,9 @@ async function seedUsers() {
   });
   // SPEC Mục 15: "Khiết và Đạt (member), Trân - thiết kế (member)". Theo yêu cầu chủ sản phẩm:
   // đăng nhập bằng tên ngắn, mật khẩu trùng tên, không bắt đổi mật khẩu — MẬT KHẨU YẾU, chỉ nội bộ.
-  const khiet = await upsertUser({ email: "khiet", fullName: "Khiết", role: "member", password: "khiet", mustChangePassword: false });
-  const dat = await upsertUser({ email: "dat", fullName: "Đạt", role: "member", password: "dat", mustChangePassword: false });
-  const tran = await upsertUser({ email: "tran", fullName: "Trân", role: "member", password: "tran", mustChangePassword: false });
+  const khiet = await upsertUser({ email: "khiet", fullName: "Khiết", role: "member", canAssign: true, password: "khiet", mustChangePassword: false });
+  const dat = await upsertUser({ email: "dat", fullName: "Đạt", role: "member", canAssign: true, password: "dat", mustChangePassword: false });
+  const tran = await upsertUser({ email: "tran", fullName: "Trân", role: "member", canAssign: true, password: "tran", mustChangePassword: false });
   // Tài khoản dự phòng luôn đăng nhập được — theo yêu cầu người dùng. KHÔNG dùng
   // mật khẩu này sau khi mời người dùng thật / trước khi public ra ngoài đội.
   const fallbackAdmin = await upsertUser({

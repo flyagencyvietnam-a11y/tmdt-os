@@ -1,5 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { canAssignOthers } from "@/lib/auth/permissions";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import {
@@ -79,7 +80,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
       sbus={allSbus}
       sbuIds={myLinks.map((l) => l.sbuId)}
       currentUserId={user.id}
-      canAssignOthers={user.canAssign || user.role === "admin" || user.role === "manager"}
+      canAssignOthers={canAssignOthers(user)}
     />
   );
 }

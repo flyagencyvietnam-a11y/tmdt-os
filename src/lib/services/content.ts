@@ -253,6 +253,14 @@ export async function updateContentItem(
     );
   }
 
+  // Đổi campaign của bài → task cha + các task con cùng đổi (nếu không, task vẫn mang campaign cũ).
+  if (before.parentTaskId && patch.campaignId !== undefined && (patch.campaignId ?? null) !== (before.campaignId ?? null)) {
+    const kids = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.parentId, before.parentTaskId), isNull(tasks.deletedAt)));
+    for (const id of [before.parentTaskId, ...kids.map((k) => k.id)]) {
+      await updateTask(db, id, { campaignId: patch.campaignId ?? null }, actorId, { trackManualEdit: false });
+    }
+  }
+
   // "Đăng bài" task done ⇄ content_item.status = published (đồng bộ 2 chiều, Mục 7.2).
   // Tick "Đã đăng" nghĩa là toàn bộ quy trình đã xong — đóng luôn các task con
   // (Soạn nội dung/Thiết kế/Duyệt/Đăng bài) đang mở, không chỉ riêng task cha,

@@ -1,6 +1,6 @@
 import { eq, isNull, asc, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
-import { canSee } from "@/lib/auth/permissions";
+import { canAssignOthers, canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { campaigns, sbus, taskSbus, users } from "@/lib/db/schema";
@@ -73,7 +73,7 @@ export default async function TaskListPage({ searchParams }: { searchParams: Pro
         campaigns={allCampaigns}
         sbus={allSbus}
         currentUserId={user.id}
-        canAssignOthers={user.canAssign || user.role === "admin" || user.role === "manager"}
+        canAssignOthers={canAssignOthers(user)}
         icsUrl={`/api/export/ics?user=${user.id}&token=${calendarToken(user.id)}`}
       />
     </div>

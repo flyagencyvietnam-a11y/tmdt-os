@@ -85,6 +85,7 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
   // Giao task cho người khác vẫn cần cờ can_assign (kiểm tra riêng).
   member: {
     task: { create: "all", read: "all", update: "all", delete: "all" },
+    "task.assignOthers": { update: "all" },
     campaign: ALL,
     foundation: { create: "all", read: "all", update: "all" },
     brandKit: { read: "all" },
@@ -163,6 +164,14 @@ export const ROLE_LABELS: Record<Role, string> = {
 /** Nhóm "nhân sự Marketing HO": admin + manager + member. Dùng cho mọi kiểm tra quyền vận hành ở server action/trang. */
 export function isStaff(role: Role): boolean {
   return role === "admin" || role === "manager" || role === "member";
+}
+
+/**
+ * Được giao task cho người khác không? Toàn bộ nhân sự Marketing (admin/manager/member) LUÔN được — theo yêu cầu chủ sản phẩm 10/2026
+ * ("tất cả nhân viên đầy đủ quyền tạo task, giao việc, đổi thời gian"). Cờ `users.can_assign` chỉ còn tác dụng với vai trò ngoài nhóm này.
+ */
+export function canAssignOthers(user: { role: Role; canAssign?: boolean | null }): boolean {
+  return isStaff(user.role) || user.canAssign === true;
 }
 
 /** admin + manager — việc mang tính quản trị (xác nhận nạp dữ liệu hàng loạt, chạy cảnh báo…). */
