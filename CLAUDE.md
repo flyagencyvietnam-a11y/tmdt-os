@@ -191,10 +191,10 @@ là một app hoàn toàn mới về nghiệp vụ.
   03/09–30/11/2026, owner = Trưởng phòng Marketing) + 21 hạng mục Action Plan. Mỗi hạng mục = 1 task duy nhất: 14 task chạy qua pipeline T1
   (`importScope=T1:EDUNEXT-2026`, `externalKey=A01..A21`, có thể undo) + 7 hạng mục #11,13,15,16,17,18,19 là bài content nên là task cha của 7
   `content_items` (không sinh task con, ngày đăng = hạn hạng mục vì Lịch Content chỉ ghi tuần). Map tên: Khiết/Trân → tài khoản `khiet`/`tran`, Nghiêm →
-  `admin@vmg.local`. "Giám đốc Khu vực"/"R&D" không có tài khoản nên chỉ nằm trong mô tả task. Link Canva + thư mục media ở `campaigns.notes`;
+  `nghiem`. "Giám đốc Khu vực"/"R&D" không có tài khoản nên chỉ nằm trong mô tả task. Link Canva + thư mục media ở `campaigns.notes`;
   Sale Kit chưa có link (`[CẦN BỔ SUNG]`). Hạng mục #11 (Action Plan: Chưa bắt đầu) lệch Lịch Content (Hoàn thành) → đang theo Lịch Content (published).
 - **Đã nạp plan UpLearn Q4/2026** từ file "VMG_UpLearn_Ke_Hoach_Trien_Khai_Q4_2026": campaign `UPLEARN-Q4-2026` (product_gtm, brand UPLEARN,
-  01/10–31/12/2026, status preparing, owner Nghiêm = `admin@vmg.local`; mục tiêu go/no-go, KPI lead/CPL, ngân sách, RACI, danh mục sản phẩm, pháp lý ở các
+  01/10–31/12/2026, status preparing, owner Nghiêm = `nghiem`; mục tiêu go/no-go, KPI lead/CPL, ngân sách, RACI, danh mục sản phẩm, pháp lý ở các
   trường/ghi chú campaign) + 42 task (`importScope=T1:UPLEARN-Q4-2026`, key U01..U35 = Kế hoạch hành động, L01..L07 = Pháp lý & Tuân thủ) + 40 content
   Fanpage (`importScope=T6:UPLEARN-Q4-2026`, key UL-01..40, 1 task/bài không sinh task con). **Plan gốc KHÔNG có ngày bắt đầu/kết thúc cho đầu việc** nên
   task để trống ngày (không bịa). Long/BA/PA/"TMĐT/Vận hành" chưa có tài khoản → 21 task chưa giao, ghi người phụ trách trong mô tả + nhãn. Có 10
@@ -322,7 +322,7 @@ public/sw.js                        service worker tối giản cho Web push
 
 ## Câu hỏi mở chưa có câu trả lời (không tự đoán — hỏi chủ sản phẩm)
 
-Email thật của admin (placeholder `admin@vmg.local`; Khiết/Đạt/Trân hiện đăng nhập bằng tên ngắn `khiet`/`dat`/`tran`, mật khẩu trùng tên — yếu, chỉ nội bộ) ·
+Tài khoản Trưởng phòng đăng nhập bằng `nghiem`/`nghiem` (mật khẩu yếu, chỉ nội bộ; chưa có email thật — Khiết/Đạt/Trân hiện đăng nhập bằng tên ngắn `khiet`/`dat`/`tran`, mật khẩu trùng tên — yếu, chỉ nội bộ) ·
 dữ liệu 28 campaign + 46 hạng mục SBU catalog từ file
 `VMG_Marketing_Strategy_Operations_2026.xlsx` (chưa được cung cấp) · SLA
 request theo loại (đã hỏi — chủ sản phẩm xác nhận CHƯA CÓ, giữ mặc định

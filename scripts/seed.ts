@@ -38,17 +38,15 @@ async function upsertUser(input: {
 }
 
 async function seedUsers() {
-  if (!ADMIN_EMAIL) {
-    console.warn(
-      "[seed] SEED_ADMIN_EMAIL chưa đặt trong .env.local — dùng placeholder 'admin@vmg.local'. " +
-        "[CẦN XÁC NHẬN] email thật của Trưởng phòng Marketing trước khi dùng production (SPEC Mục 15).",
-    );
-  }
+  // Trưởng phòng Marketing đăng nhập bằng "nghiem" / "nghiem" (theo yêu cầu chủ sản phẩm 10/2026) — mật khẩu YẾU, chỉ nội bộ.
+  // SEED_ADMIN_EMAIL (nếu đặt) vẫn ghi đè tên đăng nhập.
   const admin = await upsertUser({
-    email: ADMIN_EMAIL || "admin@vmg.local",
+    email: ADMIN_EMAIL || "nghiem",
     fullName: "Trưởng phòng Marketing",
     role: "admin",
     canAssign: true,
+    password: "nghiem",
+    mustChangePassword: false,
   });
   // SPEC Mục 15: "Khiết và Đạt (member), Trân - thiết kế (member)". Theo yêu cầu chủ sản phẩm:
   // đăng nhập bằng tên ngắn, mật khẩu trùng tên, không bắt đổi mật khẩu — MẬT KHẨU YẾU, chỉ nội bộ.
@@ -70,7 +68,7 @@ async function seedUsers() {
   );
   console.warn(
     "[seed] Khiết/Đạt/Trân đăng nhập bằng 'khiet'/'dat'/'tran' (mật khẩu trùng tên) — mật khẩu YẾU, " +
-      "đổi qua Cài đặt ▸ Người dùng trước khi public ra ngoài đội. Admin vẫn là placeholder @vmg.local.",
+      "đổi qua Cài đặt ▸ Người dùng trước khi public ra ngoài đội. Trưởng phòng: 'nghiem'/'nghiem'.",
   );
   console.warn(
     "[seed] Tài khoản dự phòng 'admin' / 'admin' (full quyền, không bắt đổi mật khẩu) đã tạo theo " +
