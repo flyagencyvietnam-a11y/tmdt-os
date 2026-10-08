@@ -31,7 +31,7 @@ export interface TaskGridRow {
   sbuIds?: string[];
 }
 
-const STATUS_LABELS: Record<string, string> = {
+export const STATUS_LABELS: Record<string, string> = {
   todo: "Cần làm",
   in_progress: "Đang làm",
   in_review: "Chờ duyệt",
@@ -39,7 +39,7 @@ const STATUS_LABELS: Record<string, string> = {
   done: "Xong",
   cancelled: "Huỷ",
 };
-const STATUS_COLORS: Record<string, TagColor> = {
+export const STATUS_COLORS: Record<string, TagColor> = {
   todo: "slate",
   in_progress: "blue",
   in_review: "amber",
@@ -47,8 +47,8 @@ const STATUS_COLORS: Record<string, TagColor> = {
   done: "emerald",
   cancelled: "gray",
 };
-const PRIORITY_LABELS: Record<string, string> = { urgent: "Gấp", high: "Cao", medium: "Trung bình", low: "Thấp" };
-const PRIORITY_COLORS: Record<string, TagColor> = { urgent: "red", high: "orange", medium: "sky", low: "slate" };
+export const PRIORITY_LABELS: Record<string, string> = { urgent: "Gấp", high: "Cao", medium: "Trung bình", low: "Thấp" };
+export const PRIORITY_COLORS: Record<string, TagColor> = { urgent: "red", high: "orange", medium: "sky", low: "slate" };
 const TYPE_LABELS: Record<string, string> = {
   campaign_action: "Action plan",
   content: "Content",
@@ -360,7 +360,7 @@ export function TaskGrid({
   );
 }
 
-function BulkAssign({
+export function BulkAssign({
   ids,
   users,
   pending,

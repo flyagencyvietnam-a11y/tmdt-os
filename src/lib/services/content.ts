@@ -140,6 +140,8 @@ export async function createContentItem(
       campaignId: input.campaignId ?? null,
       brandId,
       channel,
+      // Nhóm "Content" trong Action plan của campaign (trang chi tiết campaign gom theo workstream).
+      workstream: "Content",
       sourceType: "content_item",
     },
     actorId,
