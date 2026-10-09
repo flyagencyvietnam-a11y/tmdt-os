@@ -7,7 +7,7 @@ import { overdueSqlFragment } from "./tasks";
 
 /**
  * Danh sách task có PHẠM VI + phân trang phía server — để trang /task không phải tải cả nghìn task.
- * Task đã xong/huỷ chỉ hiện trong 7 ngày gần nhất (RECENT_DAYS) ở view mặc định; quá 90 ngày thì job `archive-old-tasks`
+ * Task đã xong/huỷ không hiện ở các view làm việc (chỉ ở view "Đã xong"); quá 90 ngày thì job `archive-old-tasks`
  * đưa vào "Lưu trữ" (vẫn tra cứu được, vẫn tính vào báo cáo).
  */
 
@@ -32,20 +32,18 @@ function baseWhere(scope: TaskScope): SQL[] {
 }
 
 function viewCondition(view: TaskView, scope: TaskScope): SQL | undefined {
-  const now = scope.now ?? new Date();
-  const recentCut = new Date(now.getTime() - RECENT_DAYS * 86_400_000);
-  const recentClosed = sql`(${tasks.status} in ('done','cancelled') and ${closedAt} >= ${recentCut.toISOString()})`;
-  const active = and(isNull(tasks.archivedAt), or(isOpen, recentClosed));
+  // View làm việc chỉ có việc CHƯA xong — việc đã xong xem ở view "Đã xong".
+  const active = and(isNull(tasks.archivedAt), isOpen);
   switch (view) {
     case "focus":
-      // Việc cần chú ý: quá hạn, hạn trong FOCUS_DAYS ngày tới, đang làm dở (đang làm/chờ duyệt/bị chặn), + vừa xong gần đây.
+      // Việc cần chú ý, CHỈ việc chưa xong: quá hạn, hạn trong FOCUS_DAYS ngày tới, hoặc đang làm dở (đang làm/chờ duyệt/bị chặn).
       return and(
         isNull(tasks.archivedAt),
+        isOpen,
         or(
           overdueSqlFragment(scope.today),
-          and(isOpen, sql`${tasks.dueDate} <= ${addDaysStr(scope.today, FOCUS_DAYS)}`),
+          sql`${tasks.dueDate} <= ${addDaysStr(scope.today, FOCUS_DAYS)}`,
           sql`${tasks.status} in ('in_progress','in_review','blocked')`,
-          recentClosed,
         ),
       );
     case "active":

@@ -34,7 +34,7 @@ export default async function DashboardPage() {
     .from(tasks)
     .where(and(isNull(tasks.deletedAt), eq(tasks.assigneeId, user.id), inArray(tasks.status, [...OPEN_STATUSES])))
     .orderBy(asc(tasks.dueDate), asc(tasks.priority)),
-    // Cho Kanban/Lịch: việc của tôi đang mở + vừa xong (để cột "Xong" có dữ liệu).
+    // Cho Kanban/Lịch: việc của tôi chưa xong (việc đã xong xem ở /task?view=done).
     listTasksScoped(db, { userId: user.id, sbuId: null, today }, { view: "mine", limit: 1000 }),
     db
       .select({ task: tasks })

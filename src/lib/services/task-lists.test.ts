@@ -50,8 +50,8 @@ describe("danh sách task có phạm vi", () => {
   const titles = async (view: Parameters<typeof listTasksScoped>[2]["view"], assigneeId?: string) =>
     (await listTasksScoped(d, scope, { view, assigneeId, limit: 100 })).rows.map((r) => r.title).sort();
 
-  it("'Ưu tiên' (mặc định quản lý) = quá hạn + hạn trong 14 ngày + đang làm dở + vừa xong; ẩn việc xa/chưa hạn và xong cũ", async () => {
-    expect(await titles("focus")).toEqual(["mở của tôi", "quá hạn", "xong 5 ngày trước"].sort());
+  it("'Ưu tiên' (mặc định quản lý) = chỉ việc CHƯA xong: quá hạn + hạn trong 14 ngày + đang làm dở; không có việc đã xong, ẩn việc xa/chưa hạn", async () => {
+    expect(await titles("focus")).toEqual(["mở của tôi", "quá hạn"].sort());
   });
 
   it("việc đang làm dở luôn nằm trong 'Ưu tiên' dù hạn còn xa hoặc chưa có hạn", async () => {
@@ -61,16 +61,16 @@ describe("danh sách task có phạm vi", () => {
     await db.delete(tasks).where(eq(tasks.id, far.id));
   });
 
-  it("mặc định 'Đang làm việc' = việc mở + việc vừa xong trong 7 ngày; ẩn xong cũ", async () => {
+  it("'Đang làm việc' = chỉ việc chưa xong; không có việc đã xong", async () => {
     const t = await titles("active");
-    expect(t).toContain("xong 5 ngày trước");
+    expect(t).not.toContain("xong 5 ngày trước");
     expect(t).toContain("mở của tôi");
     expect(t).not.toContain("xong 45 ngày trước");
     expect(t).not.toContain("xong 120 ngày trước");
   });
 
   it("'Của tôi' / 'Quá hạn' / 'Tuần này' lọc đúng", async () => {
-    expect(await titles("mine")).toEqual(["mở của tôi", "quá hạn", "xong 5 ngày trước"].sort());
+    expect(await titles("mine")).toEqual(["mở của tôi", "quá hạn"].sort());
     expect(await titles("overdue")).toEqual(["quá hạn"]);
     expect(await titles("week")).toEqual(["mở của tôi"]);
   });
