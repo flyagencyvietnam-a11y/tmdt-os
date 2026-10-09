@@ -107,7 +107,6 @@ export const PERMISSIONS: Record<Role, RoleMatrix> = {
     // Chỉ task/SBU thuộc trung tâm của chính mình (lọc theo users.sbu_id ở service).
     task: { read: "sbu", update: "sbu" },
     brandKit: { read: "all" },
-    request: { create: "all", read: "sbu" },
     sbu: { read: "sbu" },
   },
 

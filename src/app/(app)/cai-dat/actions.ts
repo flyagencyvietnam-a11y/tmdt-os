@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
-import { appSettings, contentWorkflowTemplates, requestRouting } from "@/lib/db/schema";
+import { appSettings, contentWorkflowTemplates } from "@/lib/db/schema";
 import { runAllNightlyJobs, runMonitoringAlertsJob, runWeeklyReportExport, runWeeklySummary } from "@/lib/services/jobs";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -55,41 +55,6 @@ export async function updateAppSettingAction(key: string, rawValue: string): Pro
   const [before] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
   await db.update(appSettings).set({ value, updatedBy: user.id }).where(eq(appSettings.key, key));
   await writeAudit(db, { actorId: user.id, entity: "app_settings", entityId: key, action: "UPDATE", changes: { value: { from: before?.value, to: value } } });
-  revalidatePath("/cai-dat");
-  return { ok: true, data: undefined };
-}
-
-// ---------------------------------------------------------------------------
-// SPEC Mục 7.4/13.4 — định tuyến request.
-// ---------------------------------------------------------------------------
-
-const routingSchema = z.object({
-  requestType: z.enum(["design", "ads", "content", "media", "posm", "event", "consulting", "other"]),
-  sbuId: z.string().uuid().optional().or(z.literal("")),
-  assigneeId: z.string().uuid(),
-  defaultSlaDays: z.string().optional(),
-});
-
-export async function createRequestRoutingAction(input: z.infer<typeof routingSchema>): Promise<Result<{ id: string }>> {
-  const user = await requireAdmin();
-  if (!user) return { ok: false, error: "Chỉ admin được sửa định tuyến." };
-  const parsed = routingSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Dữ liệu không hợp lệ." };
-  const d = parsed.data;
-  const [row] = await db
-    .insert(requestRouting)
-    .values({ requestType: d.requestType, sbuId: d.sbuId || null, assigneeId: d.assigneeId, defaultSlaDays: d.defaultSlaDays || null, createdBy: user.id })
-    .returning();
-  await writeAudit(db, { actorId: user.id, entity: "request_routing", entityId: row.id, action: "CREATE" });
-  revalidatePath("/cai-dat");
-  return { ok: true, data: { id: row.id } };
-}
-
-export async function deleteRequestRoutingAction(id: string): Promise<Result> {
-  const user = await requireAdmin();
-  if (!user) return { ok: false, error: "Chỉ admin được sửa định tuyến." };
-  await db.delete(requestRouting).where(eq(requestRouting.id, id));
-  await writeAudit(db, { actorId: user.id, entity: "request_routing", entityId: id, action: "DELETE" });
   revalidatePath("/cai-dat");
   return { ok: true, data: undefined };
 }

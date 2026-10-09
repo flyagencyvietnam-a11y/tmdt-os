@@ -47,7 +47,7 @@ export function DashboardView({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatCard label="Task trễ hạn" value={overdueTotal} icon={AlertTriangle} tone={overdueTotal ? "crit" : "ok"} hint={overdueTotal ? `${metrics.overdueByPerson.length} người có việc trễ` : "Không có"} href="/task" />
         <StatCard label="Campaign đang theo dõi" value={metrics.campaignProgress.length} icon={Megaphone} tone="brand" href="/campaign" />
-        <StatCard label="Request đang mở" value={metrics.requestStats.inProgress + metrics.requestStats.new} icon={Inbox} tone="info" hint={`${metrics.requestStats.new} mới chưa nhận`} href="/request" />
+        <StatCard label="Request đang mở" value={metrics.requestStats.inProgress} icon={Inbox} tone="info" href="/request" />
         <StatCard label="Request trễ hạn" value={metrics.requestStats.overdue} icon={TimerOff} tone={metrics.requestStats.overdue ? "crit" : "ok"} href="/request" />
         <StatCard label="SBU theo dõi" value={metrics.sbuRows.length} icon={Building2} href="/sbu/matrix" />
       </div>

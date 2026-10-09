@@ -6,6 +6,7 @@ import {
   checklistItems,
   comments,
   contentItems,
+  requests,
   sbuCatalogItems,
   sbuItemStatus,
   taskCollaborators,
@@ -349,8 +350,28 @@ export async function updateTask(
 
   // Task đăng bài ⇄ content_item: đóng/mở task thì trạng thái "Đã đăng" của content theo (Mục 7.2).
   if (patch.status && patch.status !== before.status) await syncContentFromTask(db, after, actorId);
+  // Task sinh từ request ⇄ request: xong/huỷ task thì request theo, mở lại thì request về "Đang làm".
+  if (patch.status && patch.status !== before.status && before.sourceType === "request") await syncRequestFromTask(db, after, actorId);
 
   return after;
+}
+
+/**
+ * Đồng bộ NGƯỢC task → request (nửa còn lại của `updateRequest`): task xong → request `done`, task huỷ →
+ * request `rejected` (hiển thị "Huỷ"), mở lại → `in_progress`. Chỉ ghi thẳng lên request (không gọi
+ * `updateRequest`) nên không lặp vô hạn; `postponed` được giữ nguyên khi task còn mở.
+ */
+export async function syncRequestFromTask(db: DB, task: Pick<Task, "id" | "status">, actorId: string | null) {
+  const [req] = await db.select().from(requests).where(and(eq(requests.taskId, task.id), isNull(requests.deletedAt))).limit(1);
+  if (!req) return;
+  const next =
+    task.status === "done" ? "done" : task.status === "cancelled" ? "rejected" : req.status === "done" || req.status === "rejected" ? "in_progress" : null;
+  if (!next || next === req.status) return;
+  await db
+    .update(requests)
+    .set({ status: next, completedDate: next === "done" ? todayVnDayStr() : null, updatedBy: actorId })
+    .where(eq(requests.id, req.id));
+  await writeAudit(db, { actorId, entity: "requests", entityId: req.id, action: "UPDATE", changes: { status: { from: req.status, to: next, via: "task" } } });
 }
 
 /** Task con bước "Đăng bài" do content_item tự sinh (tiêu đề "Đăng bài: {chủ đề}"). */

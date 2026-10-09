@@ -15,7 +15,7 @@ import type { TagColor } from "@/components/data-grid/tag";
 import { fmtDate } from "@/lib/format";
 import { ROW_TONE_CLASS } from "../task/task-style";
 import { DateInput } from "@/components/ui/date-input";
-import { acceptRequestAction, assignRequestExecutorAction, createRequestAction, updateRequestStatusAction } from "./actions";
+import { assignRequestExecutorAction, createRequestAction, updateRequestAction } from "./actions";
 import { todayVnDayStr } from "@/lib/time";
 
 interface RequestItem {
@@ -24,16 +24,16 @@ interface RequestItem {
   receivedDate: string;
   requesterName: string;
   requesterSbuId: string | null;
-  /** Người thực hiện = người phụ trách task sinh ra khi nhận request. */
+  /** Người thực hiện = người phụ trách task đi kèm request. */
   executorId: string | null;
   requestType: string;
   description: string;
   status: string;
+  /** Hạn hoàn thành (cũng là hạn của task đi kèm). */
   committedDate: string | null;
-  desiredDate: string | null;
 }
 
-// Mặc định: hạn cam kết gần nhất lên trước (ô trống xuống cuối), cùng hạn thì request mới hơn trước.
+// Mặc định: hạn gần nhất lên trước (ô trống xuống cuối), cùng hạn thì request mới hơn trước.
 const INITIAL_VIEW = { sorts: [{ field: "committedDate", direction: "asc" as const }, { field: "receivedDate", direction: "desc" as const }] };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -47,34 +47,34 @@ const TYPE_LABEL: Record<string, string> = {
   other: "Khác",
 };
 
+// Request chỉ là sổ ghi nhận task được order — không có bước duyệt (SPEC Phụ lục D mục 25).
 const STATUS_LABEL: Record<string, string> = {
-  new: "Mới",
-  accepted: "Đã nhận",
-  in_progress: "Đang xử lý",
-  in_review: "Chờ duyệt",
+  in_progress: "Đang làm",
   done: "Xong",
-  rejected: "Từ chối",
   postponed: "Hoãn",
+  rejected: "Huỷ",
 };
 const STATUS_COLORS: Record<string, TagColor> = {
-  new: "red",
-  accepted: "blue",
   in_progress: "amber",
-  in_review: "violet",
   done: "emerald",
-  rejected: "gray",
   postponed: "slate",
+  rejected: "gray",
 };
+const STATUS_OPTIONS = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }));
+const TYPE_OPTIONS = Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }));
+type EditPatch = Parameters<typeof updateRequestAction>[1];
 
 export function RequestBoard({
   requests,
   sbus,
   users,
+  currentUserId,
   canManage,
 }: {
   requests: RequestItem[];
   sbus: { id: string; code: string; name: string }[];
   users: { id: string; fullName: string }[];
+  currentUserId: string;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -84,8 +84,14 @@ export function RequestBoard({
   const executorName = React.useCallback((id: string | null) => users.find((u) => u.id === id)?.fullName ?? "", [users]);
   const onEditCell = React.useCallback(
     async (rowId: string, field: string, raw: string) => {
-      if (field !== "executorId") return;
-      const res = await assignRequestExecutorAction(rowId, raw);
+      const v = raw.trim();
+      let res: Awaited<ReturnType<typeof updateRequestAction>>;
+      if (field === "executorId") res = await assignRequestExecutorAction(rowId, v);
+      else if (field === "status") res = await updateRequestAction(rowId, { status: v as NonNullable<EditPatch["status"]> });
+      else if (field === "committedDate") res = await updateRequestAction(rowId, { committedDate: v || null });
+      else if (field === "requestType") res = await updateRequestAction(rowId, { requestType: v as NonNullable<EditPatch["requestType"]> });
+      else if (field === "description") res = await updateRequestAction(rowId, { description: v });
+      else return;
       if (res.ok) router.refresh();
       else toast.error(res.error);
     },
@@ -121,15 +127,21 @@ export function RequestBoard({
         kind: "enum",
         accessor: (r) => r.requestType,
         enumLabels: TYPE_LABEL,
+        editable: canManage,
+        editKind: "select",
+        editOptions: TYPE_OPTIONS,
+        editValue: (r) => r.requestType,
         defaultWidth: 110,
       },
       {
         field: "description",
-        header: "Mô tả",
+        header: "Nội dung",
         kind: "text",
         accessor: (r) => r.description,
         defaultWidth: 280,
         groupable: false,
+        editable: canManage,
+        editValue: (r) => r.description,
         cell: (r) => (
           <span className="line-clamp-1" title={r.description}>
             {r.description}
@@ -152,10 +164,13 @@ export function RequestBoard({
       },
       {
         field: "committedDate",
-        header: "Hạn cam kết",
+        header: "Hạn",
         kind: "date",
         accessor: (r) => r.committedDate,
         cell: (r) => fmtDate(r.committedDate),
+        editable: canManage,
+        editInputType: "date",
+        editValue: (r) => r.committedDate ?? "",
         defaultWidth: 110,
         groupable: false,
       },
@@ -166,33 +181,25 @@ export function RequestBoard({
         accessor: (r) => r.status,
         enumLabels: STATUS_LABEL,
         enumColors: STATUS_COLORS,
+        editable: canManage,
+        editKind: "select",
+        editOptions: STATUS_OPTIONS,
+        editValue: (r) => r.status,
         defaultWidth: 120,
       },
-      ...(canManage
-        ? ([
-            {
-              field: "__actions",
-              header: "Thao tác",
-              kind: "text",
-              accessor: () => "",
-              sortable: false,
-              groupable: false,
-              defaultWidth: 160,
-              cell: (r) => <RequestActions request={r} />,
-            },
-          ] as GridColumn<RequestItem>[])
-        : []),
     ],
     [sbus, sbuLabel, canManage, users, executorName],
   );
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus className="mr-1 h-4 w-4" /> Request mới
-        </Button>
-      </div>
+      {canManage && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" /> Ghi nhận request
+          </Button>
+        </div>
+      )}
 
       <DataGrid
         entity="requests"
@@ -209,6 +216,8 @@ export function RequestBoard({
         open={open}
         onOpenChange={setOpen}
         sbus={sbus}
+        users={users}
+        currentUserId={currentUserId}
         onDone={() => {
           setOpen(false);
           router.refresh();
@@ -218,62 +227,19 @@ export function RequestBoard({
   );
 }
 
-function RequestActions({ request: r }: { request: RequestItem }) {
-  const router = useRouter();
-  const [pending, start] = React.useTransition();
-  const [committedDate, setCommittedDate] = React.useState(r.desiredDate ?? "");
-
-  if (r.status === "new") {
-    return (
-      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <DateInput className="w-32 [&_input]:h-7 [&_input]:text-xs" value={committedDate} onChange={setCommittedDate} />
-        <Button
-          size="sm"
-          disabled={pending}
-          onClick={() =>
-            start(async () => {
-              const res = await acceptRequestAction(r.id, committedDate);
-              if (res.ok) router.refresh();
-              else toast.error(res.error);
-            })
-          }
-        >
-          Nhận
-        </Button>
-      </div>
-    );
-  }
-  if (["accepted", "in_progress", "in_review"].includes(r.status)) {
-    return (
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={pending}
-        onClick={(e) => {
-          e.stopPropagation();
-          start(async () => {
-            const res = await updateRequestStatusAction(r.id, "done");
-            if (res.ok) router.refresh();
-            else toast.error(res.error);
-          });
-        }}
-      >
-        Đánh dấu xong
-      </Button>
-    );
-  }
-  return null;
-}
-
 function CreateRequestDialog({
   open,
   onOpenChange,
   sbus,
+  users,
+  currentUserId,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   sbus: { id: string; code: string; name: string }[];
+  users: { id: string; fullName: string }[];
+  currentUserId: string;
   onDone: () => void;
 }) {
   const [pending, start] = React.useTransition();
@@ -282,7 +248,8 @@ function CreateRequestDialog({
     requesterSbuId: "",
     requestType: "other",
     description: "",
-    desiredDate: "",
+    executorId: currentUserId,
+    committedDate: "",
   });
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
@@ -290,7 +257,7 @@ function CreateRequestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Request mới</DialogTitle>
+          <DialogTitle>Ghi nhận request</DialogTitle>
         </DialogHeader>
         <div className="space-y-2">
           <Fld label="Người yêu cầu">
@@ -306,11 +273,14 @@ function CreateRequestDialog({
           <Fld label="Loại yêu cầu">
             <SimpleSelect value={f.requestType} onValueChange={(v) => v && set("requestType", v)} options={Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))} />
           </Fld>
-          <Fld label="Mô tả">
+          <Fld label="Nội dung">
             <Textarea rows={3} value={f.description} onChange={(e) => set("description", e.target.value)} />
           </Fld>
-          <Fld label="Ngày mong muốn">
-            <DateInput value={f.desiredDate} onChange={(v) => set("desiredDate", v)} />
+          <Fld label="Người thực hiện">
+            <SimpleSelect value={f.executorId} onValueChange={(v) => v && set("executorId", v)} options={users.map((u) => ({ value: u.id, label: u.fullName }))} />
+          </Fld>
+          <Fld label="Hạn (tuỳ chọn)">
+            <DateInput value={f.committedDate} onChange={(v) => set("committedDate", v)} />
           </Fld>
           <p className="text-xs text-muted-foreground">
             Không nhập thông tin cá nhân học viên/phụ huynh.
@@ -326,16 +296,17 @@ function CreateRequestDialog({
                   requesterSbuId: f.requesterSbuId || null,
                   requestType: f.requestType as never,
                   description: f.description,
-                  desiredDate: f.desiredDate || null,
+                  executorId: f.executorId || null,
+                  committedDate: f.committedDate || null,
                 });
                 if (res.ok) {
-                  toast.success("Đã gửi request.");
+                  toast.success("Đã ghi nhận request và tạo task.");
                   onDone();
                 } else toast.error(res.error);
               })
             }
           >
-            Gửi request
+            Ghi nhận request
           </Button>
         </div>
       </DialogContent>

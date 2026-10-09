@@ -11,7 +11,7 @@ import { sbus } from "./sbus";
 import { tasks } from "./tasks";
 import { users } from "./users";
 
-/** SPEC Mục 4.2 / 7.4 `requests` — yêu cầu từ phòng ban, trung tâm. */
+/** SPEC Mục 4.2 / 7.4 `requests` — sổ ghi nhận task được order (không có bước duyệt, Phụ lục D mục 25). */
 export const requests = pgTable(
   "requests",
   {
@@ -32,7 +32,7 @@ export const requests = pgTable(
     acceptedById: uuid("accepted_by_id").references(() => users.id),
     committedDate: date("committed_date"),
     completedDate: date("completed_date"),
-    status: requestStatusEnum("status").notNull().default("new"),
+    status: requestStatusEnum("status").notNull().default("in_progress"),
     deliverableUrl: text("deliverable_url"),
     rejectReason: text("reject_reason"),
     taskId: uuid("task_id").references(() => tasks.id),
@@ -49,22 +49,6 @@ export const requests = pgTable(
       .on(t.importScope, t.externalKey)
       .where(sql`${t.externalKey} is not null and ${t.deletedAt} is null`),
   ],
-);
-
-/** SPEC Mục 7.4 — định tuyến request: (request_type, sbu_id tuỳ chọn) -> assignee. */
-export const requestRouting = pgTable(
-  "request_routing",
-  {
-    id: pkUuid(),
-    requestType: requestTypeEnum("request_type").notNull(),
-    sbuId: uuid("sbu_id").references(() => sbus.id),
-    assigneeId: uuid("assignee_id")
-      .notNull()
-      .references(() => users.id),
-    defaultSlaDays: text("default_sla_days"),
-    ...auditColumns,
-  },
-  (t) => [index("request_routing_type_idx").on(t.requestType, t.sbuId)],
 );
 
 export type Request = typeof requests.$inferSelect;

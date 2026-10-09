@@ -188,7 +188,7 @@ Bảng phụ thuộc task: `task_collaborators`, `task_sbus` (một task liên q
 `media_shoots`: `code`, `shoot_date`, `location`, `sbu_id` nullable, `brand_id` nullable, `purpose`, `crew text`, `equipment text`, `script_url`, `status` (`planned` | `prepared` | `shot` | `editing` | `done` | `cancelled`), `notes`. `media_deliverables`: `shoot_id`, `deliverable_type` (video ngắn, ảnh, reel, phỏng vấn...), `quantity`, `channel`, `brand_id`, `campaign_id`, `editor_id`, `due_date`, `result_url`.
 
 #### `requests` (yêu cầu từ phòng ban, trung tâm)
-`code` (`REQ-0001`), `received_date`, `source_channel` (`misa` | `email` | `zalo` | `direct` | `meeting` | `other`), `requester_name`, `requester_sbu_id`, `request_type` (`design` | `ads` | `content` | `media` | `posm` | `event` | `consulting` | `other`), `sbu_group` (Online/Offline x Inbound/Outbound), `description`, `reference_url` (MISA hoặc brief), `priority`, `desired_date`, `in_scope` (`yes` | `no` | `needs_review`), `accepted_by_id`, `committed_date`, `completed_date`, `status` (`new` | `accepted` | `in_progress` | `in_review` | `done` | `rejected` | `postponed`), `deliverable_url`, `reject_reason`, `task_id`. Khi request chuyển `accepted`, tự sinh task (mục 7.4).
+`code` (`REQ-0001`), `received_date`, `source_channel` (`misa` | `email` | `zalo` | `direct` | `meeting` | `other`), `requester_name`, `requester_sbu_id`, `request_type` (`design` | `ads` | `content` | `media` | `posm` | `event` | `consulting` | `other`), `sbu_group` (Online/Offline x Inbound/Outbound), `description`, `reference_url` (MISA hoặc brief), `priority`, `desired_date`, `in_scope` (`yes` | `no` | `needs_review`), `accepted_by_id`, `committed_date`, `completed_date`, `status` (`new` | `accepted` | `in_progress` | `in_review` | `done` | `rejected` | `postponed`), `deliverable_url`, `reject_reason`, `task_id`. **(Đã đơn giản hoá 10/2026, Phụ lục D mục 25):** request chỉ là bản GHI NHẬN một task được order, không có bước tiếp nhận/duyệt; chỉ dùng `in_progress` (Đang làm) | `done` | `postponed` | `rejected` (hiển thị "Huỷ"); `new`/`accepted`/`in_review`, `in_scope`, `reject_reason` còn trong schema nhưng không dùng. Tạo request là sinh ngay task (mục 7.4).
 
 #### `sbu_catalog_items` và `sbu_item_status` (ma trận SBU)
 `sbu_catalog_items`: `code` (`OI-01`...), `group` (`online_inbound` | `online_outbound` | `offline_inbound` | `offline_outbound` | `cross`), `title`, `description`, `ho_plan boolean`, `ho_execute boolean`, `ho_control boolean`, `center_role text`, `cycle text`, `priority`, `reference_text`, `default_recurring_rule_id` nullable. Seed từ sheet `3_SBU_Marketing` của file Excel.
@@ -338,7 +338,7 @@ Mỗi `media_shoot` sinh:
 Hỗ trợ **tạo tự động lịch quay định kỳ**: nhập ngày đợt 1 và số đợt, hệ thống tạo các `media_shoot` cách nhau 14 ngày. Có thể dời từng đợt.
 
 ### 7.4 Từ Request [MVP]
-Khi request chuyển sang `accepted`: sinh 1 task `request`, giao cho người được định tuyến (bảng `request_routing`: `request_type` + `sbu_id` tùy chọn đến `assignee_id`, ví dụ thiết kế đến designer), hạn là `committed_date`. [CẦN XÁC NHẬN] SLA mặc định theo loại request; chưa có SLA thì bắt buộc người tiếp nhận nhập `committed_date`. Trạng thái request đồng bộ hai chiều với task (task `done` thì request `done`).
+Khi nhân sự thêm request: sinh NGAY 1 task `request`, người phụ trách là người thực hiện nhân sự chọn (mặc định chính người thêm), hạn là `committed_date` (tuỳ chọn). Không có bước tiếp nhận/duyệt và không có định tuyến (`request_routing` đã bỏ). Trạng thái request đồng bộ hai chiều với task (task `done` thì request `done` và ngược lại; mở lại thì về `in_progress`).
 
 ### 7.5 Từ Nhịp điều phối Brand Campaign hàng tháng [MVP]
 Seed sẵn các quy tắc lặp theo cơ chế 6 mốc (Phụ lục C). Quy tắc sinh task trước hạn đủ để người liên quan kịp chuẩn bị.
@@ -422,7 +422,7 @@ Bảng và lịch theo từng brand (tab theo brand), mỗi dòng là một `con
 Lịch các đợt quay chụp (mặc định 2 tuần/đợt), danh sách đợt và deliverable, trạng thái, người dựng, hạn.
 
 ### 9.8 Request [MVP]
-Danh sách có bộ lọc (SBU, loại, trạng thái, trễ hạn), biểu mẫu tạo request (cho cả `center_contributor`), thống kê: tổng, theo trạng thái, theo loại, tỷ lệ trễ hạn, ngoài phạm vi HO, thời gian xử lý trung bình, nhóm theo SBU. **Mục đích kép:** vận hành request và thu thập dữ liệu để chủ sản phẩm chốt giải pháp phân tầng dịch vụ (hiện chưa chốt), nên các thống kê này quan trọng hơn vẻ ngoài.
+Danh sách có bộ lọc (SBU, loại, trạng thái, trễ hạn), biểu mẫu thêm request (nhân sự Marketing tự thêm và tự sửa người thực hiện/hạn/trạng thái ngay trên bảng; `center_contributor` không còn gửi request), thống kê: tổng, đang làm, xong, trễ hạn, theo loại, nhóm theo SBU. **Mục đích kép:** vận hành request và thu thập dữ liệu để chủ sản phẩm chốt giải pháp phân tầng dịch vụ (hiện chưa chốt), nên các thống kê này quan trọng hơn vẻ ngoài.
 
 ---
 
@@ -497,8 +497,8 @@ Mỗi dòng có cột khóa do người dùng đặt (ví dụ `action_code` ho�
 | Đổi trạng thái, đổi hạn, đổi người | Người phụ trách, người theo dõi | App | Ngay |
 | Task bị chặn (`blocked`) | Quản lý, người theo dõi | App + email | Ngay |
 | Task phụ thuộc: tiền nhiệm xong | Người phụ trách task sau | App | Ngay |
-| Request mới | Người định tuyến hoặc admin | App + email | Ngay |
-| Request gần trễ hạn cam kết | Người tiếp nhận | App | 1 ngày trước |
+| ~~Request mới~~ | (bỏ 10/2026 — request tự sinh task, người thực hiện nhận thông báo giao việc như task thường) | | |
+| Request gần trễ hạn cam kết | Người thực hiện | App | 1 ngày trước |
 | Import hoàn tất / có lỗi | Người nạp | App | Ngay |
 | **Tóm tắt hằng ngày** | Mọi nhân sự | Email | 08:00 mỗi ngày làm việc: trễ hạn, hôm nay, ngày mai |
 | **Tóm tắt hằng tuần** | Quản lý | Email | Sáng thứ Hai: tải, trễ hạn theo người, tiến độ campaign |
@@ -581,7 +581,7 @@ Vì MKT OS chỉ lưu tên, email nhân sự và thông tin công việc, **khô
 - **Nhật ký:** ghi log có cấu trúc, không ghi dữ liệu nhạy cảm.
 
 ### 13.4 Cài đặt hệ thống (admin)
-Quản lý người dùng và vai trò; SBU (mã, tên, khu vực, người phụ trách HO); brand; ngày làm việc trong tuần; bảng ngày lễ (`holidays`, nhập sẵn lễ Việt Nam năm 2026 và 2027, cần kiểm tra lại bằng dữ liệu chính thức); giờ gửi tóm tắt và giờ yên lặng; ngưỡng nhắc trễ kéo dài; quy trình content (`content_workflow_template`); định tuyến request (`request_routing`); ngưỡng quá tải workload.
+Quản lý người dùng và vai trò; SBU (mã, tên, khu vực, người phụ trách HO); brand; ngày làm việc trong tuần; bảng ngày lễ (`holidays`, nhập sẵn lễ Việt Nam năm 2026 và 2027, cần kiểm tra lại bằng dữ liệu chính thức); giờ gửi tóm tắt và giờ yên lặng; ngưỡng nhắc trễ kéo dài; quy trình content (`content_workflow_template`); ngưỡng quá tải workload.
 
 ---
 
@@ -907,6 +907,7 @@ Team MKT đã dùng thật và phản hồi 13 điểm; các quyết định sau
 22. **Danh mục kênh digital theo brand + nhiều tài khoản cùng nền tảng (10/2026).** Nguồn: file "TỔNG HỢP CÁC KÊNH DIGITAL" (36 kênh: brand, tên kênh, link, nền tảng, tình trạng). (a) **Brand thứ 8: "VMG English"** (SBU kiểu `brand`, mã `VMG_ENGLISH`, không có người phụ trách HO, không có dòng trong bảng `brands` của Content) gom các kênh của trung tâm: 10 fanpage trung tâm + Zalo OA Bình Phước + 3 kênh cũ. (b) **Mỗi tài khoản là 1 dòng kênh riêng** trong Brand Performance (thay cho quy tắc cũ "1 kênh/nền tảng/brand"): khoá tài khoản `account` (sinh ổn định từ link) trong (brand, nền tảng); số liệu tháng nhập riêng từng tài khoản, tổng brand tự cộng. **Facebook và Instagram tách thành 2 nền tảng** (kênh "Meta gộp" cũ giữ lại chỉ để tương thích, không cho thêm mới). (c) **Kênh "không còn sử dụng"** (Đại Phước — trung tâm đã đóng cửa, Cộng đồng VMG, Cuộc thi Hùng biện, fanpage IELTS cũ, TESOL MOOC) ghi `active=false`: ẩn khỏi ma trận (có nút hiện lại), số liệu cũ vẫn tính vào tổng brand. (d) Dòng STT 6 (YouTube "Anh Ngữ Việt Mỹ - VMG") trong file để trống cột brand — xếp vào VMG theo vị trí (nhóm VMG ngay phía trên). **[CẦN XÁC NHẬN]** nếu sai.
 23. **Bảng Content có cột Campaign** (sửa ngay trên ô, chip bấm mở popup campaign). Đổi campaign của một bài kéo theo campaign của task cha + task con của bài đó (trước đây chỉ bài đổi, task giữ campaign cũ).
 24. **Campaign mở thành TRANG RIÊNG (không còn popup).** Trang `/campaign/[id]` gồm: thông tin đầy đủ của campaign (trạng thái, loại, owner, thời gian, brand/SBU và 13 khối mô tả — sửa tại chỗ), thẻ tiến độ (task xong/trễ hạn/đến hạn 7 ngày/chưa giao người/bài content), **bảng Action plan** (mỗi dòng = 1 task: mã, công việc, workstream, người phụ trách (PIC), người phối hợp, ngày bắt đầu, hạn, tiến độ thời gian, trạng thái, ưu tiên, checklist, SBU; sửa trực tiếp trên ô, gom nhóm theo workstream) và bảng bài content của campaign. Task/SBU vẫn mở dạng popup.
+25. **Request = sổ ghi nhận task được order, KHÔNG có cơ chế phê duyệt (10/2026).** Request không phải quy trình xin–duyệt: nhân sự Marketing (admin/manager/member) tự thêm và tự cập nhật. Thêm request → hệ thống sinh ngay 1 task `request` (người thực hiện mặc định là người thêm, đổi ngay trên bảng; hạn tuỳ chọn). Bỏ: bước "Nhận" + hạn cam kết bắt buộc, trạng thái Mới/Đã nhận/Chờ duyệt, "Từ chối" kèm lý do, bảng định tuyến `request_routing` (và mục cấu hình trong Cài đặt), cảnh báo "request mới chưa tiếp nhận". Còn lại 4 trạng thái: Đang làm · Xong · Hoãn · Huỷ — sửa trực tiếp trên bảng và đồng bộ hai chiều với task. `center_contributor` không còn gửi request (kênh gửi yêu cầu của trung tâm nằm ngoài MKT OS; nhân sự MKT ghi nhận lại khi nhận được). Dữ liệu cũ: trạng thái `new`/`accepted`/`in_review` được chuyển thành `in_progress`; request cũ chưa có task sẽ tự sinh task khi gán người thực hiện.
 
 ---
 

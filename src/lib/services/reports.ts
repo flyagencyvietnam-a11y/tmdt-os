@@ -48,7 +48,7 @@ export async function computeManagementMetrics(db: DB, period: string) {
     db.select().from(sbus).where(eq(sbus.active, true)),
     db.select({ id: sbuCatalogItems.id }).from(sbuCatalogItems),
     db.select().from(sbuItemStatus).where(eq(sbuItemStatus.period, period)),
-    db.select({ status: requests.status, receivedDate: requests.receivedDate, completedDate: requests.completedDate }).from(requests).where(isNull(requests.deletedAt)),
+    db.select({ status: requests.status, committedDate: requests.committedDate, completedDate: requests.completedDate }).from(requests).where(isNull(requests.deletedAt)),
     // Chỉ task hoàn thành TRONG tháng (không kéo toàn bộ task đã xong từ trước đến giờ).
     db
       .select({ assigneeId: tasks.assigneeId, type: tasks.type, dueDate: tasks.dueDate, completedAt: tasks.completedAt, recurringRuleId: tasks.recurringRuleId })
@@ -89,10 +89,9 @@ export async function computeManagementMetrics(db: DB, period: string) {
 
   const requestStats = {
     total: requestRows.length,
-    new: requestRows.filter((r) => r.status === "new").length,
-    inProgress: requestRows.filter((r) => r.status === "in_progress" || r.status === "accepted" || r.status === "in_review").length,
+    inProgress: requestRows.filter((r) => r.status === "in_progress").length,
     done: requestRows.filter((r) => r.status === "done").length,
-    overdue: requestRows.filter((r) => r.status !== "done" && r.status !== "rejected" && r.receivedDate < today).length,
+    overdue: requestRows.filter((r) => (r.status === "in_progress" || r.status === "postponed") && r.committedDate !== null && r.committedDate < today).length,
   };
 
   const inMonth = doneThisMonth.filter((t) => t.completedAt && todayVnDayStr(t.completedAt) >= monthStart && todayVnDayStr(t.completedAt) <= monthEnd);
@@ -188,8 +187,7 @@ export async function generatePeriodicReport(
       ],
       rows: [
         { label: "Tổng", value: requestStats.total },
-        { label: "Mới", value: requestStats.new },
-        { label: "Đang xử lý", value: requestStats.inProgress },
+        { label: "Đang làm", value: requestStats.inProgress },
         { label: "Đã xong", value: requestStats.done },
         { label: "Trễ hạn", value: requestStats.overdue },
       ],

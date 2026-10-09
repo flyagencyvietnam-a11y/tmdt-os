@@ -2,7 +2,7 @@ import { relations } from "drizzle-orm";
 import { brands } from "./brands";
 import { campaignBrands, campaigns } from "./campaigns";
 import { recurringRules } from "./recurring-rules";
-import { requestRouting, requests } from "./requests";
+import { requests } from "./requests";
 import { sbus } from "./sbus";
 import { sbuCatalogItems, sbuItemStatus } from "./sbu-catalog";
 import {
@@ -105,11 +105,6 @@ export const requestsRelations = relations(requests, ({ one }) => ({
   requesterSbu: one(sbus, { fields: [requests.requesterSbuId], references: [sbus.id] }),
   acceptedBy: one(users, { fields: [requests.acceptedById], references: [users.id] }),
   task: one(tasks, { fields: [requests.taskId], references: [tasks.id] }),
-}));
-
-export const requestRoutingRelations = relations(requestRouting, ({ one }) => ({
-  sbu: one(sbus, { fields: [requestRouting.sbuId], references: [sbus.id] }),
-  assignee: one(users, { fields: [requestRouting.assigneeId], references: [users.id] }),
 }));
 
 export const sbuCatalogItemsRelations = relations(sbuCatalogItems, ({ one, many }) => ({

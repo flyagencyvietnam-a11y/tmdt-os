@@ -74,7 +74,7 @@ async function teamTasks(db: DB, user: { id: string }, wide: boolean, today: str
   return makeBadge(n, 0, [[n, wide ? "task quá hạn toàn phòng" : "task quá hạn bạn đang tham gia"]]);
 }
 
-/** Request: quá hạn cam kết (đỏ) + request mới chưa tiếp nhận (vàng — chỉ quản lý). Nhân sự chỉ thấy request mình nhận/thực hiện. */
+/** Request: quá hạn (đỏ). Quản lý thấy cả phòng, nhân sự chỉ thấy request mình thực hiện. */
 async function requestBadge(db: DB, user: { id: string; role: Role }, wide: boolean, today: string) {
   if (user.role === "center_contributor") return null;
   const open = notInArray(requests.status, ["done", "rejected", "postponed"]);
@@ -86,18 +86,11 @@ async function requestBadge(db: DB, user: { id: string; role: Role }, wide: bool
         sql`exists (select 1 from ${tasks} where ${tasks.id} = ${requests.taskId} and ${tasks.assigneeId} = ${user.id})`,
       );
   const [r] = await db
-    .select({
-      overdue: sql<number>`(count(*) filter (where ${overdue}))::int`,
-      fresh: sql<number>`(count(*) filter (where ${requests.status} = 'new'))::int`,
-    })
+    .select({ overdue: sql<number>`(count(*) filter (where ${overdue}))::int` })
     .from(requests)
     .where(and(isNull(requests.deletedAt), mineOnly));
   const o = r?.overdue ?? 0;
-  const f = wide ? (r?.fresh ?? 0) : 0;
-  return makeBadge(o, f, [
-    [o, "quá hạn cam kết"],
-    [f, "request mới chưa tiếp nhận"],
-  ]);
+  return makeBadge(o, 0, [[o, "request quá hạn"]]);
 }
 
 /** Campaign: đã qua ngày kết thúc mà chưa đóng. */

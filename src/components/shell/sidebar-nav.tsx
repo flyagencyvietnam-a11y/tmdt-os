@@ -51,7 +51,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/", label: "Việc của tôi", icon: LayoutDashboard, roles: ALL },
       { href: "/task", label: "Tất cả task", icon: ClipboardList, roles: STAFF },
-      { href: "/request", label: "Request", icon: Inbox, roles: ["admin", "manager", "member", "center_contributor"] },
+      { href: "/request", label: "Request", icon: Inbox, roles: ["admin", "manager", "member"] },
       { href: "/gantt", label: "Gantt", icon: CalendarRange, roles: STAFF },
       { href: "/workload", label: "Workload", icon: Gauge, roles: STAFF },
     ],

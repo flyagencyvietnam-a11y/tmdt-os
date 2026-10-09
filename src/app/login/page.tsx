@@ -38,7 +38,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <h2 className="text-3xl font-semibold leading-tight">Một nơi cho toàn bộ kế hoạch & công việc của Phòng Marketing.</h2>
           <ul className="space-y-3 text-sm text-white/85">
             <li className="flex items-center gap-3">
-              <ClipboardList className="h-4 w-4 shrink-0" /> Task, việc lặp định kỳ, request từ trung tâm
+              <ClipboardList className="h-4 w-4 shrink-0" /> Task, việc lặp định kỳ, ghi nhận request
             </li>
             <li className="flex items-center gap-3">
               <CalendarCheck className="h-4 w-4 shrink-0" /> Content calendar, quay chụp, campaign

@@ -1,13 +1,12 @@
 import { asc, eq } from "drizzle-orm";
 import { requireRole } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { appSettings, brands, contentWorkflowTemplates, holidays, pushSubscriptions, requestRouting, sbus, users } from "@/lib/db/schema";
+import { appSettings, brands, contentWorkflowTemplates, holidays, pushSubscriptions, users } from "@/lib/db/schema";
 import { fmtDate } from "@/lib/format";
 import { isAiAssistConfigured } from "@/lib/services/ai-assist";
 import { AppSettingsPanel } from "./app-settings-panel";
 import { ContentWorkflowPanel } from "./content-workflow-panel";
 import { JobsPanel } from "./jobs-panel";
-import { RequestRoutingPanel } from "./request-routing-panel";
 import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata = { title: "Cài đặt — VMG MKT OS" };
@@ -15,13 +14,11 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requireRole("admin");
-  const [settings, holidayRows, routing, workflowTemplates, pushCount, allSbus, allUsers, allBrands] = await Promise.all([
+  const [settings, holidayRows, workflowTemplates, pushCount, allUsers, allBrands] = await Promise.all([
     db.select().from(appSettings),
     db.select().from(holidays).orderBy(asc(holidays.holidayDate)),
-    db.select().from(requestRouting),
     db.select().from(contentWorkflowTemplates),
     db.select({ userId: pushSubscriptions.userId }).from(pushSubscriptions),
-    db.select({ id: sbus.id, code: sbus.code }).from(sbus),
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
     db.select({ id: brands.id, code: brands.code }).from(brands),
   ]);
@@ -30,7 +27,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Cài đặt hệ thống" description="Cấu hình chung, quy trình content, phân luồng request và tác vụ định kỳ." />
+      <PageHeader title="Cài đặt hệ thống" description="Cấu hình chung, quy trình content và tác vụ định kỳ." />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Tác vụ định kỳ — chạy ngay</h2>
@@ -57,16 +54,6 @@ export default async function SettingsPage() {
             {isAiAssistConfigured() ? "Đã cấu hình ANTHROPIC_API_KEY — tính năng đang hoạt động." : "Chưa cấu hình ANTHROPIC_API_KEY — xem trang Trợ lý AI."}
           </div>
         </div>
-      </div>
-
-      <div>
-        <h2 className="mb-2 text-sm font-semibold">Định tuyến request ({routing.length})</h2>
-        <p className="mb-2 text-xs text-muted-foreground">(loại request, SBU tuỳ chọn) → người tiếp nhận.</p>
-        <RequestRoutingPanel
-          routing={routing.map((r) => ({ id: r.id, requestType: r.requestType, sbuId: r.sbuId, assigneeId: r.assigneeId, defaultSlaDays: r.defaultSlaDays }))}
-          sbus={allSbus}
-          users={allUsers}
-        />
       </div>
 
       <div>

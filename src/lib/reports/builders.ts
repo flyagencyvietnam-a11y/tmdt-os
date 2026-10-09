@@ -662,8 +662,8 @@ async function buildManagement(db: DB, o: BuildOptions): Promise<ReportDoc> {
       items: [
         { label: "Task trễ hạn", value: String(totalOverdue), sub: `${m.overdueByPerson.length} người đang có việc trễ`, tone: totalOverdue ? "bad" : "good" },
         { label: "Campaign đang theo dõi", value: String(campaignsRunning), sub: `${m.campaignProgress.filter((c) => c.overdue > 0).length} campaign có task trễ`, tone: "brand" },
-        { label: "Request", value: String(m.requestStats.total), sub: `${m.requestStats.new} mới · ${m.requestStats.inProgress} đang xử lý · ${m.requestStats.done} xong`, tone: "neutral" },
-        { label: "Request quá hạn nhận", value: String(m.requestStats.overdue), tone: m.requestStats.overdue ? "bad" : "good" },
+        { label: "Request", value: String(m.requestStats.total), sub: `${m.requestStats.inProgress} đang làm · ${m.requestStats.done} xong`, tone: "neutral" },
+        { label: "Request quá hạn", value: String(m.requestStats.overdue), tone: m.requestStats.overdue ? "bad" : "good" },
       ],
     },
     {
