@@ -379,7 +379,7 @@ export function ContentCalendarView({
           value={scope}
           defaultValue="recent"
           options={[
-            { value: "recent", label: "Gần đây & chưa đăng", count: total },
+            { value: "recent", label: "Trễ & sắp tới", count: total },
             { value: "all", label: "Tất cả", count: allCount },
           ]}
         />

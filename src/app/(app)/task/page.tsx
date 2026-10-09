@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Danh sách task tải THEO PHẠM VI (view + người phụ trách + giới hạn) từ server — không tải cả nghìn task.
- * Mặc định theo vai trò: nhân viên → "Của tôi"; quản lý/admin → "Đang làm việc" (việc mở + vừa xong 30 ngày).
+ * Mặc định theo vai trò: nhân viên → "Của tôi"; quản lý/admin → "Ưu tiên" (trễ hạn, sắp tới, đang làm dở + vừa xong 7 ngày).
  */
 export default async function TaskListPage({ searchParams }: { searchParams: Promise<{ view?: string; assignee?: string; limit?: string }> }) {
   const sp = await searchParams;

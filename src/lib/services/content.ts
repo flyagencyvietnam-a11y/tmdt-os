@@ -1,4 +1,5 @@
-import { and, arrayContains, desc, eq, gte, inArray, isNull, like, notInArray, or, sql } from "drizzle-orm";
+import { addDaysStr } from "@/lib/time";
+import { and, arrayContains, desc, eq, gte, inArray, isNull, like, lte, notInArray, or, sql } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import {
   contentItems,
@@ -302,9 +303,11 @@ export async function listContentItems(db: DB, filters: { brandId?: string } = {
     .orderBy(desc(contentItems.publishDate));
 }
 
-export const CONTENT_RECENT_DAYS = 30;
+export const CONTENT_RECENT_DAYS = 7;
+/** Bài CHƯA đăng chỉ hiện mặc định nếu ngày đăng trong số ngày tới này (bài trễ lịch thì luôn hiện). */
+export const CONTENT_UPCOMING_DAYS = 30;
 
-/** Mốc bắt đầu của phạm vi "Gần đây": 30 ngày trước, nhưng không muộn hơn đầu tháng hiện tại (để số liệu "trong tháng" luôn đủ). */
+/** Mốc bắt đầu của phạm vi "Gần đây": `CONTENT_RECENT_DAYS` ngày trước, nhưng không muộn hơn đầu tháng hiện tại (để số liệu "trong tháng" luôn đủ). */
 export function contentRecentSince(today: string): string {
   const d = new Date(`${today}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - CONTENT_RECENT_DAYS);
@@ -314,14 +317,19 @@ export function contentRecentSince(today: string): string {
 }
 
 /**
- * Danh sách content có phạm vi + phân trang phía server. "recent" (mặc định) = bài từ `since` trở đi + MỌI bài
- * chưa đăng/chưa huỷ (kể cả quá hạn — để không bao giờ giấu bài trễ lịch); "all" = tất cả.
+ * Danh sách content có phạm vi + phân trang phía server. "recent" (mặc định) = MỌI bài chưa đăng đã đến/qua hạn
+ * (không bao giờ giấu bài trễ lịch) + bài chưa đăng trong `CONTENT_UPCOMING_DAYS` ngày tới + bài đã đăng gần đây; "all" = tất cả.
  */
 export async function listContentItemsScoped(db: DB, q: { scope: "recent" | "all"; today: string; limit: number }) {
   const scopeWhere =
     q.scope === "all"
       ? undefined
-      : or(gte(contentItems.publishDate, contentRecentSince(q.today)), notInArray(contentItems.status, ["published", "cancelled"]));
+      : or(
+          // Chưa đăng: mọi bài trễ lịch + bài trong CONTENT_UPCOMING_DAYS ngày tới (kế hoạch xa hơn xem ở "Tất cả").
+          and(notInArray(contentItems.status, ["published", "cancelled"]), lte(contentItems.publishDate, addDaysStr(q.today, CONTENT_UPCOMING_DAYS))),
+          // Đã đăng: chỉ bài gần đây (từ đầu tháng — để thẻ "Đã đăng trong tháng" vẫn đủ số).
+          and(eq(contentItems.status, "published"), gte(contentItems.publishDate, contentRecentSince(q.today))),
+        );
   const where = and(isNull(contentItems.deletedAt), scopeWhere);
   const [rows, [{ n }], [{ all }]] = await Promise.all([
     db.select().from(contentItems).where(where).orderBy(desc(contentItems.publishDate)).limit(q.limit),

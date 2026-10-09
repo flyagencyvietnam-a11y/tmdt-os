@@ -24,7 +24,7 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
   const limit = clampLimit(sp.limit);
   const base = isNull(requests.deletedAt);
   const today = todayVnDayStr();
-  // Mặc định: request chưa đóng + request vừa đóng (xong/từ chối) trong 30 ngày gần nhất.
+  // Mặc định: request chưa đóng + request vừa đóng (xong/từ chối) trong RECENT_DAYS (7) ngày gần nhất.
   const since = addDaysStr(today, -RECENT_DAYS);
   const scoped = scope === "all" ? base : and(base, or(notInArray(requests.status, ["done", "rejected"]), gte(sql`coalesce(${requests.completedDate}, ${requests.updatedAt}::date)`, since)));
 

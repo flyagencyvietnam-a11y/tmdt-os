@@ -100,7 +100,7 @@ export function TaskBoard({
           param="view"
           value={scopeView}
           defaultValue={defaultView}
-          options={(["active", "mine", "overdue", "week", "done", "archived", "all"] as TaskView[]).map((v) => ({ value: v, label: TASK_VIEW_LABEL[v], count: counts[v], alert: v === "overdue" }))}
+          options={(["focus", "active", "mine", "overdue", "week", "done", "archived", "all"] as TaskView[]).map((v) => ({ value: v, label: TASK_VIEW_LABEL[v], count: counts[v], alert: v === "overdue" }))}
         />
       </div>
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
@@ -133,7 +133,7 @@ export function TaskBoard({
             if (v === "mine") return url.set({ view: "mine", assignee: null });
             // Chọn 1 người cụ thể khi đang ở "Của tôi" → chuyển sang "Đang làm việc" để lọc đúng người đó.
             const updates: Record<string, string | null> = { assignee: v === "all" ? null : v };
-            if (scopeView === "mine") updates.view = defaultView === "active" ? null : "active";
+            if (scopeView === "mine") updates.view = defaultView === "mine" ? "active" : null;
             url.set(updates);
           }}
           options={[

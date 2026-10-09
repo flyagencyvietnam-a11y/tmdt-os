@@ -2,12 +2,12 @@ import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from "drizzl
 import type { DB } from "@/lib/db";
 import { taskSbus, tasks, type Task } from "@/lib/db/schema";
 import { addDaysStr } from "@/lib/time";
-import { ARCHIVE_AFTER_DAYS, RECENT_DAYS, TASK_VIEWS, type TaskView } from "@/lib/task-view";
+import { ARCHIVE_AFTER_DAYS, FOCUS_DAYS, RECENT_DAYS, TASK_VIEWS, type TaskView } from "@/lib/task-view";
 import { overdueSqlFragment } from "./tasks";
 
 /**
  * Danh sách task có PHẠM VI + phân trang phía server — để trang /task không phải tải cả nghìn task.
- * Task đã xong/huỷ chỉ hiện trong 30 ngày gần nhất ở view mặc định; quá 90 ngày thì job `archive-old-tasks`
+ * Task đã xong/huỷ chỉ hiện trong 7 ngày gần nhất (RECENT_DAYS) ở view mặc định; quá 90 ngày thì job `archive-old-tasks`
  * đưa vào "Lưu trữ" (vẫn tra cứu được, vẫn tính vào báo cáo).
  */
 
@@ -37,6 +37,17 @@ function viewCondition(view: TaskView, scope: TaskScope): SQL | undefined {
   const recentClosed = sql`(${tasks.status} in ('done','cancelled') and ${closedAt} >= ${recentCut.toISOString()})`;
   const active = and(isNull(tasks.archivedAt), or(isOpen, recentClosed));
   switch (view) {
+    case "focus":
+      // Việc cần chú ý: quá hạn, hạn trong FOCUS_DAYS ngày tới, đang làm dở (đang làm/chờ duyệt/bị chặn), + vừa xong gần đây.
+      return and(
+        isNull(tasks.archivedAt),
+        or(
+          overdueSqlFragment(scope.today),
+          and(isOpen, sql`${tasks.dueDate} <= ${addDaysStr(scope.today, FOCUS_DAYS)}`),
+          sql`${tasks.status} in ('in_progress','in_review','blocked')`,
+          recentClosed,
+        ),
+      );
     case "active":
       return active;
     case "mine":
@@ -66,7 +77,7 @@ export async function listTasksScoped(
       .select()
       .from(tasks)
       .where(where)
-      .orderBy(...(closedView ? [desc(closedAt)] : [sql`${tasks.dueDate} asc nulls last`, asc(tasks.priority)]))
+      .orderBy(...(closedView ? [desc(closedAt)] : [sql`(${tasks.status} in ('done','cancelled'))`, sql`${tasks.dueDate} asc nulls last`, asc(tasks.priority)]))
       .limit(q.limit),
     db.select({ n: sql<number>`count(*)::int` }).from(tasks).where(where),
   ]);

@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { makeTestDb, type TestDb } from "@/lib/db/test-db";
 import { brands, contentItems, tasks, users } from "@/lib/db/schema";
 import type { DB } from "@/lib/db";
-import { createContentItem, normalizeTags, updateContentItem } from "./content";
+import { createContentItem, listContentItemsScoped, normalizeTags, updateContentItem } from "./content";
 import { updateTask } from "./tasks";
 
 describe("normalizeTags", () => {
@@ -127,4 +127,24 @@ describe("đồng bộ 2 chiều content ⇄ task đăng bài", () => {
     await updateTask(d, item.parentTaskId!, { status: "done" }, null);
     expect(await statusOf(item.id)).toBe("cancelled");
   });
+});
+
+describe("danh sách content mặc định: trễ & sắp tới", () => {
+  it("giữ bài chưa đăng trễ lịch + trong 30 ngày tới + đã đăng gần đây; ẩn bài xa và bài đã đăng cũ", async () => {
+    const { db } = await makeTestDb();
+    const [b] = await db.insert(brands).values({ code: "B", name: "B" }).returning();
+    const mk = (topic: string, publishDate: string, status: "brief" | "published" | "cancelled") =>
+      db.insert(contentItems).values({ brandId: b.id, brandIds: [b.id], publishDate, channel: "Fanpage", channels: ["Fanpage"], topic, status });
+    // today = 2026-10-20 → đầu tháng 2026-10-01 (sớm hơn 7 ngày trước), 30 ngày tới = 2026-11-19
+    await mk("trễ lịch cũ", "2026-08-01", "brief");
+    await mk("sắp tới", "2026-11-10", "brief");
+    await mk("kế hoạch xa", "2026-12-15", "brief");
+    await mk("đã đăng tháng này", "2026-10-05", "published");
+    await mk("đã đăng tháng trước", "2026-09-10", "published");
+    await mk("huỷ", "2026-10-10", "cancelled");
+    const topics = async (scope: "recent" | "all") =>
+      (await listContentItemsScoped(db as unknown as DB, { scope, today: "2026-10-20", limit: 100 })).rows.map((r) => r.topic).sort();
+    expect(await topics("recent")).toEqual(["sắp tới", "trễ lịch cũ", "đã đăng tháng này"].sort());
+    expect((await topics("all")).length).toBe(6);
+  }, 60_000);
 });

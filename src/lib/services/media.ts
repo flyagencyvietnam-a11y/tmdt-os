@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, like } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, like, notInArray, or } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { mediaDeliverables, mediaShoots, tasks, type MediaShoot } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -165,11 +165,20 @@ export async function generateRecurringShoots(
   return out;
 }
 
-export async function listShoots(db: DB) {
+/**
+ * `hideClosedBefore` (YYYY-MM-DD): ẩn đợt quay đã xong/huỷ có ngày quay trước mốc này (mặc định xem lịch quay đang chạy);
+ * bỏ trống = lấy tất cả.
+ */
+export async function listShoots(db: DB, opts: { hideClosedBefore?: string } = {}) {
   return db
     .select()
     .from(mediaShoots)
-    .where(isNull(mediaShoots.deletedAt))
+    .where(
+      and(
+        isNull(mediaShoots.deletedAt),
+        opts.hideClosedBefore ? or(notInArray(mediaShoots.status, ["done", "cancelled"]), gte(mediaShoots.shootDate, opts.hideClosedBefore)) : undefined,
+      ),
+    )
     .orderBy(asc(mediaShoots.shootDate));
 }
 

@@ -216,11 +216,11 @@ là một app hoàn toàn mới về nghiệp vụ.
   Chưa nạp vì sheet chỉ là khung trống: 3a_Ads_Thang (chỉ khung T10-T12), 4_Request_Order (0 request), 3b_Monitoring (42 dòng "Chưa kiểm tra", chưa có ngày lắp/chu kỳ).
 - **Danh sách lớn: tải theo PHẠM VI từ server (10/2026) — đừng quay lại kiểu "tải hết rồi lọc ở client"**: `/task`, `/content`, `/campaign`, `/request` nhận
   `?view|scope=` và `?limit=` trên URL (chip `components/scope-chips.tsx` + nút "Hiện thêm" = tăng `limit`, mỗi bước 300, trần 3000). **Task** (`services/task-lists.ts`,
-  hằng số client-safe ở `lib/task-view.ts` — client KHÔNG được import `services/*` vì kéo nodemailer vào bundle): view `active` (việc mở + xong/huỷ trong 30 ngày) · `mine` ·
-  `overdue` · `week` (7 ngày tới) · `done` · `archived` · `all`; mặc định theo vai trò (member → `mine`, còn lại → `active`); chip có số đếm (1 truy vấn). **Lưu trữ**:
+  hằng số client-safe ở `lib/task-view.ts` — client KHÔNG được import `services/*` vì kéo nodemailer vào bundle): view `focus` "Ưu tiên" (quá hạn + hạn trong 14 ngày + đang làm/chờ duyệt/bị chặn + vừa xong; việc `todo` chưa hạn/hạn xa bị ẩn) · `active` (việc mở + xong/huỷ trong 7 ngày —
+  `RECENT_DAYS`, cột "Xong" của Kanban chỉ giữ việc xong gần đây) · `mine` · `overdue` · `week` (7 ngày tới) · `done` · `archived` · `all`; mặc định theo vai trò (member → `mine`, còn lại → `focus`); danh sách luôn xếp việc mở trước việc đã xong; chip có số đếm (1 truy vấn). **Lưu trữ**:
   cột `tasks.archived_at`, job `archive-old-tasks` (00:40 hằng ngày, cả cron Vercel lẫn node-cron) gom task xong/huỷ quá 90 ngày; mở lại task thì `updateTask` tự bỏ lưu
-  trữ; báo cáo/Gantt/campaign vẫn tính cả task đã lưu trữ. **Content**: mặc định "gần đây & chưa đăng" (từ min(30 ngày trước, đầu tháng); bài chưa đăng quá hạn LUÔN hiện);
-  mở `/content?item=ID` tự xem đủ. **Campaign**: ẩn done/cancelled. **Request**: ẩn done/rejected quá 30 ngày; thẻ thống kê tính trên toàn bộ.
+  trữ; báo cáo/Gantt/campaign vẫn tính cả task đã lưu trữ. **Content**: mặc định "Trễ & sắp tới" (bài chưa đăng: MỌI bài trễ lịch + bài trong 30 ngày tới; bài đã đăng chỉ từ min(7 ngày trước, đầu tháng) để thẻ "Đã đăng trong tháng" vẫn đủ số; bài huỷ và kế hoạch xa hơn 30 ngày xem ở "Tất cả");
+  mở `/content?item=ID` tự xem đủ. **Campaign**: ẩn done/cancelled. **Gantt (`/gantt`) và Quay chụp (`/quay-chup`)**: ẩn việc/đợt quay đã xong/huỷ quá `CLOSED_VISIBLE_DAYS` (30 ngày, `lib/task-view.ts`); nút ở đầu trang (`?scope=all`) hiện lại, kèm số đang ẩn — task đã lưu trữ cũng vẫn xem được bằng nút này. **Request**: ẩn done/rejected quá 7 ngày (`RECENT_DAYS`); thẻ thống kê tính trên toàn bộ.
 - **UI dùng chung (đợt rà UX 10/2026) — dùng lại, đừng tự viết lại**:
   `components/shell/page-header.tsx` (tiêu đề mọi trang — mô tả viết cho người
   dùng, KHÔNG ghi "SPEC Mục X"/"Phase N" ra UI), `components/stat-card.tsx`

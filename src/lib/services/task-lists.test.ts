@@ -50,7 +50,18 @@ describe("danh sách task có phạm vi", () => {
   const titles = async (view: Parameters<typeof listTasksScoped>[2]["view"], assigneeId?: string) =>
     (await listTasksScoped(d, scope, { view, assigneeId, limit: 100 })).rows.map((r) => r.title).sort();
 
-  it("mặc định 'Đang làm việc' = việc mở + việc vừa xong trong 30 ngày; ẩn xong cũ", async () => {
+  it("'Ưu tiên' (mặc định quản lý) = quá hạn + hạn trong 14 ngày + đang làm dở + vừa xong; ẩn việc xa/chưa hạn và xong cũ", async () => {
+    expect(await titles("focus")).toEqual(["mở của tôi", "quá hạn", "xong 5 ngày trước"].sort());
+  });
+
+  it("việc đang làm dở luôn nằm trong 'Ưu tiên' dù hạn còn xa hoặc chưa có hạn", async () => {
+    const far = await createTask(d, { title: "đang làm, hạn xa" }, null);
+    await db.update(tasks).set({ status: "in_progress", dueDate: "2026-12-30" }).where(eq(tasks.id, far.id));
+    expect(await titles("focus")).toContain("đang làm, hạn xa");
+    await db.delete(tasks).where(eq(tasks.id, far.id));
+  });
+
+  it("mặc định 'Đang làm việc' = việc mở + việc vừa xong trong 7 ngày; ẩn xong cũ", async () => {
     const t = await titles("active");
     expect(t).toContain("xong 5 ngày trước");
     expect(t).toContain("mở của tôi");
@@ -99,7 +110,7 @@ describe("danh sách task có phạm vi", () => {
 
   it("view mặc định theo vai trò + giới hạn trang", () => {
     expect(defaultTaskView("member")).toBe("mine");
-    expect(defaultTaskView("manager")).toBe("active");
+    expect(defaultTaskView("manager")).toBe("focus");
     expect(clampLimit("abc")).toBe(300);
     expect(clampLimit(999999)).toBe(3000);
     expect(clampLimit(600)).toBe(600);
