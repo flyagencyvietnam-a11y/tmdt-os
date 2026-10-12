@@ -5,14 +5,11 @@ import * as React from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DeltaBadge, StatCard } from "@/components/stat-card";
 import { funnelDef, type AdsGroupConfig, type FunnelField } from "@/lib/ads-lines";
-import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
 import { InlineNum, useMetricSaver } from "./ads-inline";
 import { axisProps, ChartCard, ChartTooltip, gridProps, Sparkline } from "./charts";
-import { AddWeekButton, Segmented } from "./weekly-view";
+import { AddWeekButton, useWeekRange } from "./weekly-view";
 import { change, fmt, fmtMoney, nextWeek, num, weekLabel, weekShort, type MetricRow } from "./shared";
-
-const RANGES = [4, 8, 12, 0] as const;
 
 type RowKey = "budget" | FunnelField;
 
@@ -24,15 +21,12 @@ type RowKey = "budget" | FunnelField;
 export function LineWeeklyView({ group, metrics, canManage }: { group: AdsGroupConfig; metrics: MetricRow[]; canManage: boolean }) {
   const saveMetric = useMetricSaver();
   const line = group.primaryLine;
-  const [range, setRange] = useSessionState<(typeof RANGES)[number]>(`ads:week:range:${group.key}`, 8);
   const [extraWeeks, setExtraWeeks] = React.useState<string[]>([]);
 
   const rows = React.useMemo(() => metrics.filter((m) => m.periodType === "week" && m.line === line), [metrics, line]);
-  const allWeeks = [...new Set([...rows.map((r) => r.period), ...extraWeeks])].sort();
-  const shown = range === 0 ? allWeeks : allWeeks.slice(-range);
+  const dataWeeks = React.useMemo(() => [...new Set(rows.map((r) => r.period))].sort(), [rows]);
+  const { options: allWeeks, shown, latest, prev: prevW, picker } = useWeekRange(group.key, dataWeeks, extraWeeks);
   const rowOf = (w: string) => rows.find((r) => r.period === w) ?? null;
-  const latest = allWeeks[allWeeks.length - 1];
-  const prevW = allWeeks[allWeeks.length - 2];
 
   const lead = group.leadField === "mql" ? "mql" : group.weeklyFields.includes("leads") ? "leads" : group.weeklyFields[0];
   const leadDef = funnelDef(group, lead);
@@ -54,7 +48,7 @@ export function LineWeeklyView({ group, metrics, canManage }: { group: AdsGroupC
     return b != null && l ? Math.round(b / l) : null;
   };
 
-  if (allWeeks.length === 0) {
+  if (allWeeks.length === 0 || !latest) {
     return (
       <div className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">
         {group.label} chưa có số liệu tuần nào. Báo cáo tuần áp dụng cho mọi mảng — {canManage ? "bấm “Thêm tuần” để bắt đầu nhập (tuần tính từ Thứ 7 đến hết Thứ 6)." : "chưa có ai nhập."}
@@ -77,6 +71,7 @@ export function LineWeeklyView({ group, metrics, canManage }: { group: AdsGroupC
 
   return (
     <div className="space-y-4">
+      {picker}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <StatCard label={`Chi tuần ${weekLabel(latest)}`} value={fmtMoney(curSpend)} icon={Coins} tone="brand" delta={change(curSpend, prevSpend)} deltaGoodWhen="down" hint="vs tuần trước" />
         <StatCard label={leadDef?.label ?? "Đầu phễu"} value={fmt(curLead)} icon={Target} tone="info" delta={change(curLead, prevLead)} hint="vs tuần trước" />
@@ -103,8 +98,7 @@ export function LineWeeklyView({ group, metrics, canManage }: { group: AdsGroupC
             <h3 className="text-sm font-semibold">Bảng theo dõi tuần — {group.label}</h3>
             <p className="text-xs text-muted-foreground">{canManage ? "Bấm vào ô để nhập/sửa số ngay trên bảng (Enter xuống dòng, Tab sang tuần kế)." : "Số tuần do nhân sự Marketing nhập."}</p>
           </div>
-          <Segmented value={range} onChange={setRange} options={RANGES.map((r) => ({ value: r, label: r ? `${r} tuần` : "Tất cả" }))} />
-          {canManage && <AddWeekButton suggested={latest ? nextWeek(latest) : undefined} onAdd={(w) => setExtraWeeks((p) => [...p, w])} />}
+          {canManage && <AddWeekButton suggested={allWeeks.length ? nextWeek(allWeeks[allWeeks.length - 1]) : undefined} onAdd={(w) => setExtraWeeks((p) => [...p, w])} />}
         </header>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">

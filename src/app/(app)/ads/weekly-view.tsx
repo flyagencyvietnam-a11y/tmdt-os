@@ -2,6 +2,8 @@
 
 import { CalendarPlus, Coins, MessageCircle, Target } from "lucide-react";
 import { useSessionState } from "@/lib/use-session-state";
+import { reportWeekBounds, todayVnDayStr } from "@/lib/time";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { DateInput } from "@/components/ui/date-input";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -20,7 +22,60 @@ import { aggregate, change, derive, fmt, fmtMoney, nextWeek, num, spendOf, weekL
 
 type WeekMetric = "spend" | "messages" | "costPerMess";
 const METRIC_LABEL: Record<WeekMetric, string> = { spend: "Ngân sách", messages: "Mess", costPerMess: "Chi phí / Mess" };
-const RANGES = [4, 8, 12, 0] as const;
+const PRESETS = [4, 8, 12, 0] as const;
+/** Số tuần mặc định khi chưa chọn khoảng. */
+const DEFAULT_WEEKS = 8;
+
+/**
+ * Chọn KHOẢNG TUẦN cho báo cáo tuần (thay cho bộ chọn tháng — tuần không thuộc về một tháng). Danh sách tuần liền mạch từ tuần có
+ * số liệu đầu tiên đến tuần hiện tại (tuần chưa có số vẫn chọn/nhập được). Mặc định = 8 tuần kết thúc ở tuần có số liệu mới nhất.
+ * Thẻ KPI, biểu đồ và bảng đều theo khoảng đã chọn; "tuần cuối" = tuần đến, so với tuần liền trước.
+ */
+export function useWeekRange(storageKey: string, dataWeeks: string[], extraWeeks: string[]) {
+  const [sel, setSel] = useSessionState<{ from: string | null; to: string | null }>(`ads:weekrange:${storageKey}`, { from: null, to: null });
+  const known = React.useMemo(() => [...new Set([...dataWeeks, ...extraWeeks])].sort(), [dataWeeks, extraWeeks]);
+  const options = React.useMemo(() => {
+    if (known.length === 0) return [] as string[];
+    const current = reportWeekBounds(todayVnDayStr())[0];
+    const end = known[known.length - 1] > current ? known[known.length - 1] : current;
+    const out = new Set(known);
+    for (let w = known[0], i = 0; w <= end && i < 400; w = nextWeek(w), i++) out.add(w);
+    return [...out].sort();
+  }, [known]);
+
+  const latestData = known[known.length - 1];
+  const to = sel.to && options.includes(sel.to) ? sel.to : (latestData ?? options[options.length - 1]);
+  const toIdx = options.indexOf(to);
+  const defaultFrom = options[Math.max(0, toIdx - (DEFAULT_WEEKS - 1))];
+  const from = sel.from && options.includes(sel.from) && sel.from <= to ? sel.from : defaultFrom;
+  const shown = options.filter((w) => w >= from && w <= to);
+  const prev = toIdx > 0 ? options[toIdx - 1] : undefined;
+
+  const presetFrom = (n: number) => (n === 0 ? options[0] : options[Math.max(0, options.indexOf(latestData ?? to) - (n - 1))]);
+  const activePreset = PRESETS.find((n) => to === (latestData ?? to) && from === presetFrom(n)) ?? -1;
+  const weekOpts = options.map((w) => ({ value: w, label: weekLabel(w) }));
+
+  const picker =
+    options.length === 0 ? null : (
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
+        <span className="px-1 text-xs font-medium text-muted-foreground">Khoảng tuần</span>
+        <Segmented
+          value={activePreset}
+          onChange={(n) => setSel({ from: presetFrom(n), to: latestData ?? to })}
+          options={PRESETS.map((n) => ({ value: n as number, label: n ? `${n} tuần gần nhất` : "Tất cả" }))}
+        />
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          Từ
+          <SimpleSelect triggerClassName="h-8 w-44" value={from} onValueChange={(v) => v && setSel({ from: v, to: v > to ? v : to })} options={weekOpts} />
+          đến
+          <SimpleSelect triggerClassName="h-8 w-44" value={to} onValueChange={(v) => v && setSel({ from: v < from ? v : from, to: v })} options={weekOpts} />
+        </div>
+        <span className="ml-auto text-xs text-muted-foreground">{shown.length} tuần · tuần tính từ Thứ 7 đến hết Thứ 6</span>
+      </div>
+    );
+
+  return { options, shown, latest: options.length ? to : undefined, prev, picker };
+}
 
 interface RowDef {
   key: string;
@@ -41,16 +96,12 @@ interface RowDef {
 export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: MetricRow[]; sbus: SbuLite[]; canManage: boolean; weeks: string[] }) {
   const router = useRouter();
   const saveMetric = useMetricSaver();
-  const [range, setRange] = useSessionState<(typeof RANGES)[number]>("ads:week:range", 8);
   const [metric, setMetric] = useSessionState<WeekMetric>("ads:week:metric", "spend");
   const [extraWeeks, setExtraWeeks] = React.useState<string[]>([]);
   const [editing, setEditing] = React.useState<{ row: MetricRow | null; sbuId: string | null; label: string; week: string } | null>(null);
 
   const weekly = metrics.filter((m) => m.periodType === "week");
-  const allWeeks = [...new Set([...weeks, ...extraWeeks])].sort();
-  const shown = range === 0 ? allWeeks : allWeeks.slice(-range);
-  const latest = allWeeks[allWeeks.length - 1];
-  const prevW = allWeeks[allWeeks.length - 2];
+  const { options: allWeeks, shown, latest, prev: prevW, picker } = useWeekRange("b2c", weeks, extraWeeks);
 
   const inWeek = (w: string) => weekly.filter((m) => m.period === w);
   const sys = (rows: MetricRow[]) => rows.filter((m) => m.line === "b2c_system" && !m.sbuId);
@@ -79,7 +130,7 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
     return { week: w, label: weekShort(w), m1: d(sys(inWeek(w))).spend, m2: d(center(inWeek(w))).spend, messages: all.messages, cpm: all.costPerMess };
   });
 
-  if (allWeeks.length === 0) {
+  if (allWeeks.length === 0 || !latest) {
     return (
       <div className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">
         Chưa có số liệu tuần nào.
@@ -94,6 +145,7 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
 
   return (
     <div className="space-y-4">
+      {picker}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label={`Tổng chi tuần ${weekLabel(latest)}`} value={fmtMoney(cur?.spend)} icon={Coins} tone="brand" delta={change(cur?.spend, prv?.spend)} deltaGoodWhen="down" hint="vs tuần trước" />
         <StatCard label="Mess" value={fmt(cur?.messages)} icon={MessageCircle} tone="info" delta={change(cur?.messages, prv?.messages)} hint="vs tuần trước" />
@@ -170,8 +222,7 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
             </p>
           </div>
           <Segmented value={metric} onChange={setMetric} options={(Object.keys(METRIC_LABEL) as WeekMetric[]).map((k) => ({ value: k, label: METRIC_LABEL[k] }))} />
-          <Segmented value={range} onChange={setRange} options={RANGES.map((r) => ({ value: r, label: r ? `${r} tuần` : "Tất cả" }))} />
-          {canManage && <AddWeekButton suggested={latest ? nextWeek(latest) : undefined} onAdd={(w) => setExtraWeeks((p) => [...p, w])} />}
+          {canManage && <AddWeekButton suggested={allWeeks.length ? nextWeek(allWeeks[allWeeks.length - 1]) : undefined} onAdd={(w) => setExtraWeeks((p) => [...p, w])} />}
         </header>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">

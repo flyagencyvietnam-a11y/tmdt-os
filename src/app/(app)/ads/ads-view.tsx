@@ -90,6 +90,8 @@ export function AdsView({
   };
 
   const showMonth = tab !== "overview" || mode === "month";
+  // Báo cáo tuần có bộ chọn KHOẢNG TUẦN riêng ngay trong view — ẩn bộ chọn tháng (và xuất báo cáo theo tháng) để không gây nhầm.
+  const weekMode = tab !== "overview" && (subs[tab] ?? "plan") === "week";
 
   return (
     <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
@@ -121,8 +123,8 @@ export function AdsView({
               ]}
             />
           )}
-          {showMonth ? <MonthPicker months={months} value={month} onChange={setMonth} /> : <QuarterPicker quarters={quarters} value={quarter} onChange={setQuarter} />}
-          <ExportMenu kind="growth" period={tab === "overview" && mode === "quarter" ? undefined : month} />
+          {!weekMode && (showMonth ? <MonthPicker months={months} value={month} onChange={setMonth} /> : <QuarterPicker quarters={quarters} value={quarter} onChange={setQuarter} />)}
+          {!weekMode && <ExportMenu kind="growth" period={tab === "overview" && mode === "quarter" ? undefined : month} />}
         </div>
       </div>
 
