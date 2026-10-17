@@ -25,7 +25,7 @@ export function LineWeeklyView({ group, metrics, canManage }: { group: AdsGroupC
 
   const rows = React.useMemo(() => metrics.filter((m) => m.periodType === "week" && m.line === line), [metrics, line]);
   const dataWeeks = React.useMemo(() => [...new Set(rows.map((r) => r.period))].sort(), [rows]);
-  const { options: allWeeks, shown, latest, prev: prevW, picker } = useWeekRange(group.key, dataWeeks, extraWeeks);
+  const { options: allWeeks, shown, prevShown, rangeLabel, rangeHint, latest, picker } = useWeekRange(group.key, dataWeeks, extraWeeks);
   const rowOf = (w: string) => rows.find((r) => r.period === w) ?? null;
 
   const lead = group.leadField === "mql" ? "mql" : group.weeklyFields.includes("leads") ? "leads" : group.weeklyFields[0];
@@ -47,6 +47,16 @@ export function LineWeeklyView({ group, metrics, canManage }: { group: AdsGroupC
     const l = val(w, lead);
     return b != null && l ? Math.round(b / l) : null;
   };
+  // Thẻ KPI = tổng cả khoảng tuần đang chọn; CP/lead = tổng chi ÷ tổng lead của khoảng (không lấy trung bình các tuần).
+  const sumOver = (ws: string[], k: RowKey): number | null => ws.reduce<number | null>((acc, w) => {
+    const v = val(w, k);
+    return v == null ? acc : (acc ?? 0) + v;
+  }, null);
+  const costOver = (ws: string[]) => {
+    const b = sumOver(ws, "budget");
+    const l = sumOver(ws, lead);
+    return b != null && l ? Math.round(b / l) : null;
+  };
 
   if (allWeeks.length === 0 || !latest) {
     return (
@@ -62,20 +72,21 @@ export function LineWeeklyView({ group, metrics, canManage }: { group: AdsGroupC
   }
 
   const chartData = shown.map((w) => ({ week: w, label: weekShort(w), spend: val(w, "budget"), lead: val(w, lead) }));
-  const curSpend = val(latest, "budget");
-  const prevSpend = prevW ? val(prevW, "budget") : null;
-  const curLead = val(latest, lead);
-  const prevLead = prevW ? val(prevW, lead) : null;
-  const curCost = costPerLead(latest);
-  const prevCost = prevW ? costPerLead(prevW) : null;
+  const hasPrev = prevShown.length > 0;
+  const curSpend = sumOver(shown, "budget");
+  const prevSpend = hasPrev ? sumOver(prevShown, "budget") : null;
+  const curLead = sumOver(shown, lead);
+  const prevLead = hasPrev ? sumOver(prevShown, lead) : null;
+  const curCost = costOver(shown);
+  const prevCost = hasPrev ? costOver(prevShown) : null;
 
   return (
     <div className="space-y-4">
       {picker}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <StatCard label={`Chi tuần ${weekLabel(latest)}`} value={fmtMoney(curSpend)} icon={Coins} tone="brand" delta={change(curSpend, prevSpend)} deltaGoodWhen="down" hint="vs tuần trước" />
-        <StatCard label={leadDef?.label ?? "Đầu phễu"} value={fmt(curLead)} icon={Target} tone="info" delta={change(curLead, prevLead)} hint="vs tuần trước" />
-        <StatCard label={group.leadField === "mql" ? "CP / MQL" : "CP / Lead"} value={fmtMoney(curCost)} icon={Target} delta={change(curCost, prevCost)} deltaGoodWhen="down" hint="vs tuần trước" />
+        <StatCard label={`Tổng chi ${rangeLabel}`} value={fmtMoney(curSpend)} icon={Coins} tone="brand" delta={change(curSpend, prevSpend)} deltaGoodWhen="down" hint={rangeHint} />
+        <StatCard label={leadDef?.label ?? "Đầu phễu"} value={fmt(curLead)} icon={Target} tone="info" delta={change(curLead, prevLead)} hint={rangeHint} />
+        <StatCard label={group.leadField === "mql" ? "CP / MQL" : "CP / Lead"} value={fmtMoney(curCost)} icon={Target} delta={change(curCost, prevCost)} deltaGoodWhen="down" hint={rangeHint} />
       </div>
 
       <ChartCard title="Chi tiêu theo tuần" description={`${group.label} — mỗi cột là 1 tuần (Thứ 7 → Thứ 6).`}>

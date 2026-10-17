@@ -49,7 +49,12 @@ export function useWeekRange(storageKey: string, dataWeeks: string[], extraWeeks
   const defaultFrom = options[Math.max(0, toIdx - (DEFAULT_WEEKS - 1))];
   const from = sel.from && options.includes(sel.from) && sel.from <= to ? sel.from : defaultFrom;
   const shown = options.filter((w) => w >= from && w <= to);
-  const prev = toIdx > 0 ? options[toIdx - 1] : undefined;
+  // Thẻ KPI = TỔNG cả khoảng đã chọn, so với khoảng liền trước có cùng số tuần (không đủ tuần để so thì bỏ delta).
+  const fromIdx = options.indexOf(from);
+  const prevCandidate = options.slice(Math.max(0, fromIdx - shown.length), fromIdx);
+  const prevShown = shown.length > 0 && prevCandidate.length === shown.length ? prevCandidate : [];
+  const rangeLabel = shown.length <= 1 ? `tuần ${weekLabel(to)}` : `${weekLabel(from).split(" – ")[0]} – ${weekLabel(to).split(" – ")[1]} (${shown.length} tuần)`;
+  const rangeHint = prevShown.length ? (shown.length === 1 ? "vs tuần trước" : `vs ${shown.length} tuần trước đó`) : shown.length > 1 ? `Tổng ${shown.length} tuần đã chọn` : undefined;
 
   const presetFrom = (n: number) => (n === 0 ? options[0] : options[Math.max(0, options.indexOf(latestData ?? to) - (n - 1))]);
   const activePreset = PRESETS.find((n) => to === (latestData ?? to) && from === presetFrom(n)) ?? -1;
@@ -74,7 +79,7 @@ export function useWeekRange(storageKey: string, dataWeeks: string[], extraWeeks
       </div>
     );
 
-  return { options, shown, latest: options.length ? to : undefined, prev, picker };
+  return { options, shown, prevShown, rangeLabel, rangeHint, latest: options.length ? to : undefined, picker };
 }
 
 interface RowDef {
@@ -101,7 +106,7 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
   const [editing, setEditing] = React.useState<{ row: MetricRow | null; sbuId: string | null; label: string; week: string } | null>(null);
 
   const weekly = metrics.filter((m) => m.periodType === "week");
-  const { options: allWeeks, shown, latest, prev: prevW, picker } = useWeekRange("b2c", weeks, extraWeeks);
+  const { options: allWeeks, shown, prevShown, rangeLabel, rangeHint, latest, picker } = useWeekRange("b2c", weeks, extraWeeks);
 
   const inWeek = (w: string) => weekly.filter((m) => m.period === w);
   const sys = (rows: MetricRow[]) => rows.filter((m) => m.line === "b2c_system" && !m.sbuId);
@@ -120,10 +125,12 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
     return metric === "spend" ? x.spend : metric === "messages" ? x.messages : x.costPerMess;
   };
 
-  const cur = latest ? d([...sys(inWeek(latest)), ...center(inWeek(latest))]) : null;
-  const prv = prevW ? d([...sys(inWeek(prevW)), ...center(inWeek(prevW))]) : null;
-  const curSys = latest ? d(sys(inWeek(latest))) : null;
-  const curCenter = latest ? d(center(inWeek(latest))) : null;
+  // Thẻ KPI cộng dồn cả khoảng tuần đang chọn (không chỉ tuần cuối).
+  const inWeeks = (ws: string[]) => ws.flatMap(inWeek);
+  const cur = shown.length ? d([...sys(inWeeks(shown)), ...center(inWeeks(shown))]) : null;
+  const prv = prevShown.length ? d([...sys(inWeeks(prevShown)), ...center(inWeeks(prevShown))]) : null;
+  const curSys = shown.length ? d(sys(inWeeks(shown))) : null;
+  const curCenter = shown.length ? d(center(inWeeks(shown))) : null;
 
   const chartData = shown.map((w) => {
     const all = d([...sys(inWeek(w)), ...center(inWeek(w))]);
@@ -147,9 +154,9 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
     <div className="space-y-4">
       {picker}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label={`Tổng chi tuần ${weekLabel(latest)}`} value={fmtMoney(cur?.spend)} icon={Coins} tone="brand" delta={change(cur?.spend, prv?.spend)} deltaGoodWhen="down" hint="vs tuần trước" />
-        <StatCard label="Mess" value={fmt(cur?.messages)} icon={MessageCircle} tone="info" delta={change(cur?.messages, prv?.messages)} hint="vs tuần trước" />
-        <StatCard label="Chi phí / Mess" value={fmtMoney(cur?.costPerMess)} icon={Target} delta={change(cur?.costPerMess, prv?.costPerMess)} deltaGoodWhen="down" hint="vs tuần trước" />
+        <StatCard label={`Tổng chi ${rangeLabel}`} value={fmtMoney(cur?.spend)} icon={Coins} tone="brand" delta={change(cur?.spend, prv?.spend)} deltaGoodWhen="down" hint={rangeHint} />
+        <StatCard label="Mess" value={fmt(cur?.messages)} icon={MessageCircle} tone="info" delta={change(cur?.messages, prv?.messages)} hint={rangeHint} />
+        <StatCard label="Chi phí / Mess" value={fmtMoney(cur?.costPerMess)} icon={Target} delta={change(cur?.costPerMess, prv?.costPerMess)} deltaGoodWhen="down" hint={rangeHint} />
         <StatCard
           label="Mục 1 / Mục 2"
           value={
