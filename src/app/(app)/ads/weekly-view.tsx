@@ -22,6 +22,7 @@ import { aggregate, change, derive, fmt, fmtMoney, nextWeek, num, spendOf, weekL
 
 type WeekMetric = "spend" | "messages" | "costPerMess";
 const METRIC_LABEL: Record<WeekMetric, string> = { spend: "Ngân sách", messages: "Mess", costPerMess: "Chi phí / Mess" };
+const WEEK_METRICS: WeekMetric[] = ["spend", "messages", "costPerMess"];
 const PRESETS = [4, 8, 12, 0] as const;
 /** Số tuần mặc định khi chưa chọn khoảng. */
 const DEFAULT_WEEKS = 8;
@@ -101,7 +102,6 @@ interface RowDef {
 export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: MetricRow[]; sbus: SbuLite[]; canManage: boolean; weeks: string[] }) {
   const router = useRouter();
   const saveMetric = useMetricSaver();
-  const [metric, setMetric] = useSessionState<WeekMetric>("ads:week:metric", "spend");
   const [extraWeeks, setExtraWeeks] = React.useState<string[]>([]);
   const [editing, setEditing] = React.useState<{ row: MetricRow | null; sbuId: string | null; label: string; week: string } | null>(null);
 
@@ -120,9 +120,9 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
     ...sbus.map<RowDef>((s) => ({ key: s.id, label: s.code, target: { sbuId: s.id }, pick: (r) => center(r).filter((m) => m.sbuId === s.id), level: 1 })),
   ];
 
-  const value = (rows: MetricRow[]): number | null => {
+  const value = (rows: MetricRow[], m: WeekMetric): number | null => {
     const x = d(rows);
-    return metric === "spend" ? x.spend : metric === "messages" ? x.messages : x.costPerMess;
+    return m === "spend" ? x.spend : m === "messages" ? x.messages : x.costPerMess;
   };
 
   // Thẻ KPI cộng dồn cả khoảng tuần đang chọn (không chỉ tuần cuối).
@@ -223,19 +223,19 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
       <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
         <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
           <div className="mr-auto">
-            <h3 className="text-sm font-semibold">Bảng theo dõi tuần — {METRIC_LABEL[metric]}</h3>
+            <h3 className="text-sm font-semibold">Bảng theo dõi tuần — Ngân sách · Mess · Chi phí / Mess</h3>
             <p className="text-xs text-muted-foreground">
-              Ô càng đậm = càng cao trong hàng{metric === "costPerMess" ? " (đỏ: chi phí cao là xấu)" : ""}. {canManage ? "Bấm vào ô để sửa số ngay trên bảng (Enter xuống dòng, Tab sang tuần kế)." : ""}
+              Mỗi mảng/SBU gồm 3 dòng. Ô càng đậm = càng cao trong dòng (đỏ: chi phí/mess cao là xấu). {canManage ? "Bấm ô Ngân sách/Mess để sửa ngay trên bảng (Enter xuống dòng, Tab sang tuần kế); Chi phí/Mess tự tính." : ""}
             </p>
           </div>
-          <Segmented value={metric} onChange={setMetric} options={(Object.keys(METRIC_LABEL) as WeekMetric[]).map((k) => ({ value: k, label: METRIC_LABEL[k] }))} />
           {canManage && <AddWeekButton suggested={allWeeks.length ? nextWeek(allWeeks[allWeeks.length - 1]) : undefined} onAdd={(w) => setExtraWeeks((p) => [...p, w])} />}
         </header>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>
-                <th className="sticky left-0 z-10 min-w-48 bg-muted px-3 py-2 text-left font-medium">Mảng / SBU</th>
+                <th className="sticky left-0 z-10 min-w-44 bg-muted px-3 py-2 text-left font-medium">Mảng / SBU</th>
+                <th className="sticky left-44 z-10 min-w-24 bg-muted px-2 py-2 text-left font-medium">Chỉ số</th>
                 {shown.map((w) => (
                   <th key={w} className="whitespace-nowrap px-2 py-2 text-right font-medium" title={weekLabel(w)}>
                     {weekLabel(w)}
@@ -245,52 +245,57 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
                 <th className="px-3 py-2 text-left font-medium">Xu hướng</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
-              {rowDefs.map((rd) => {
-                const vals = shown.map((w) => value(rd.pick(inWeek(w))));
-                const present = vals.filter((v): v is number => v != null);
-                const min = Math.min(...present);
-                const max = Math.max(...present);
-                const last = vals[vals.length - 1];
-                const before = vals[vals.length - 2];
-                return (
-                  <tr key={rd.key} className={cn("hover:bg-muted/20", rd.strong && "bg-muted/30 font-semibold")}>
-                    <td className={cn("sticky left-0 z-10 bg-card px-3 py-1.5", rd.level === 1 && "pl-7 text-muted-foreground", rd.strong && "bg-muted")}>{rd.label}</td>
-                    {shown.map((w, i) => {
-                      const v = vals[i];
-                      const editable = canManage && rd.target;
-                      const src = rd.target ? rd.pick(inWeek(w))[0] ?? null : null;
-                      const inline = !!editable && metric !== "costPerMess";
-                      const rawField = metric === "messages" ? "messages" : rd.target?.sbuId ? "centerOrderBudget" : "budget";
-                      const shown = v == null ? <span className="text-muted-foreground/50">{editable ? "＋" : "—"}</span> : metric === "messages" ? fmt(v) : fmtMoney(v);
-                      return (
-                        <td
-                          key={w}
-                          style={rd.strong ? undefined : heatStyle(v, min, max, metric === "costPerMess")}
-                          className={cn("group whitespace-nowrap px-2 py-1.5 text-right tabular-nums", editable && !inline && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
-                          onClick={() => editable && !inline && setEditing({ row: src, sbuId: rd.target!.sbuId, label: rd.label, week: w })}
-                          title={src && spendOf(src) != null ? `Ngân sách ${fmt(spendOf(src))} · ${fmt(src.messages)} mess` : undefined}
-                        >
-                          {inline ? (
-                            <InlineNum
-                              value={src?.[rawField as "budget" | "centerOrderBudget" | "messages"] ?? null}
-                              display={shown}
-                              title={`Sửa ${metric === "messages" ? "số mess" : "ngân sách"} — ${rd.label}, tuần ${weekLabel(w)}`}
-                              onSave={(val) => saveMetric(src, { line: rd.target!.sbuId ? "b2c_center" : "b2c_system", periodType: "week", period: w, sbuId: rd.target!.sbuId }, rawField as "budget", val)}
-                            />
-                          ) : (
-                            shown
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="px-3 py-1.5 text-right">{change(last, before) != null ? <DeltaBadge delta={change(last, before)!} goodWhen={metric === "messages" ? "up" : "down"} /> : <span className="text-muted-foreground">—</span>}</td>
-                    <td className="px-3 py-1.5">
-                      <Sparkline values={vals} color={rd.level === 1 ? "var(--series-2)" : "var(--series-1)"} width={72} />
-                    </td>
-                  </tr>
-                );
-              })}
+            <tbody>
+              {rowDefs.flatMap((rd) =>
+                WEEK_METRICS.map((m, mi) => {
+                  const vals = shown.map((w) => value(rd.pick(inWeek(w)), m));
+                  const present = vals.filter((v): v is number => v != null);
+                  const min = Math.min(...present);
+                  const max = Math.max(...present);
+                  const last = vals[vals.length - 1];
+                  const before = vals[vals.length - 2];
+                  const first = mi === 0;
+                  const stickyBg = rd.strong ? "bg-muted" : "bg-card";
+                  return (
+                    <tr key={`${rd.key}:${m}`} className={cn("hover:bg-muted/20", first ? "border-t-2 border-border" : "border-t border-border/50", rd.strong && "bg-muted/30 font-semibold")}>
+                      <td className={cn("sticky left-0 z-10 px-3 py-1", stickyBg, rd.level === 1 && "pl-7 text-muted-foreground")}>{first ? rd.label : ""}</td>
+                      <td className={cn("sticky left-44 z-10 whitespace-nowrap px-2 py-1 text-xs font-normal text-muted-foreground", stickyBg)}>{METRIC_LABEL[m]}</td>
+                      {shown.map((w, i) => {
+                        const v = vals[i];
+                        const editable = canManage && rd.target;
+                        const src = rd.target ? rd.pick(inWeek(w))[0] ?? null : null;
+                        const inline = !!editable && m !== "costPerMess";
+                        const rawField = m === "messages" ? "messages" : rd.target?.sbuId ? "centerOrderBudget" : "budget";
+                        const display = v == null ? <span className="text-muted-foreground/50">{inline ? "＋" : "—"}</span> : m === "messages" ? fmt(v) : fmtMoney(v);
+                        return (
+                          <td
+                            key={w}
+                            style={rd.strong ? undefined : heatStyle(v, min, max, m === "costPerMess")}
+                            className={cn("group whitespace-nowrap px-2 py-1 text-right tabular-nums", editable && !inline && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
+                            onClick={() => editable && !inline && setEditing({ row: src, sbuId: rd.target!.sbuId, label: rd.label, week: w })}
+                            title={editable && !inline ? "Bấm để sửa ngân sách, mess, impression của tuần này" : src && spendOf(src) != null ? `Ngân sách ${fmt(spendOf(src))} · ${fmt(src.messages)} mess` : undefined}
+                          >
+                            {inline ? (
+                              <InlineNum
+                                value={src?.[rawField as "budget" | "centerOrderBudget" | "messages"] ?? null}
+                                display={display}
+                                title={`Sửa ${m === "messages" ? "số mess" : "ngân sách"} — ${rd.label}, tuần ${weekLabel(w)}`}
+                                onSave={(val) => saveMetric(src, { line: rd.target!.sbuId ? "b2c_center" : "b2c_system", periodType: "week", period: w, sbuId: rd.target!.sbuId }, rawField as "budget", val)}
+                              />
+                            ) : (
+                              display
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-1 text-right">{change(last, before) != null ? <DeltaBadge delta={change(last, before)!} goodWhen={m === "messages" ? "up" : "down"} /> : <span className="text-muted-foreground">—</span>}</td>
+                      <td className="px-3 py-1">
+                        <Sparkline values={vals} color={rd.level === 1 ? "var(--series-2)" : "var(--series-1)"} width={72} />
+                      </td>
+                    </tr>
+                  );
+                }),
+              )}
             </tbody>
           </table>
         </div>
