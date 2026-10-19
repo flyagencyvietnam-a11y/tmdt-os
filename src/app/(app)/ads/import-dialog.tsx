@@ -14,19 +14,19 @@ import { commitAdsImportAction, previewAdsImportAction } from "./actions";
 const COPY: Record<AdsImportKind, { title: string; desc: string }> = {
   plan: {
     title: "Nhập Excel — Kế hoạch tháng",
-    desc: "Ngân sách kế hoạch và mục tiêu theo phễu của từng mảng (B2C: Hệ thống + từng trung tâm). Ô trống giữ nguyên số cũ; mọi thay đổi được ghi nhật ký.",
+    desc: "Ngân sách kế hoạch của từng SBU và mục tiêu theo phễu (B2C: tổng ở dòng Hệ thống). Ô trống giữ nguyên số cũ; mọi thay đổi được ghi nhật ký.",
   },
   week: {
     title: "Nhập Excel — Hàng tuần",
-    desc: "Số liệu tuần (Thứ 7 → Thứ 6) theo mảng: ngân sách và các chỉ số tuần của mảng; B2C có thêm từng trung tâm.",
+    desc: "Số liệu tuần (Thứ 7 → Thứ 6) của từng SBU: ngân sách, mess, Lead (Ecom: MQL), HVM; B2C có thêm từng trung tâm.",
   },
   month: {
     title: "Nhập Excel — Hàng tháng",
-    desc: "Số liệu tháng của 6 mảng (B2C Hệ thống = tổng B2C, B2C Trung tâm, Ecom, B2B, VMT/OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập riêng, không cộng từ tuần.",
+    desc: "Số liệu tháng của từng SBU (Hệ thống = tổng B2C, từng trung tâm, Ecom, B2B, VMT/OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập riêng, không cộng từ tuần.",
   },
   request: {
     title: "Nhập Excel — Theo request",
-    desc: "Từng request/chiến dịch ads (chi phí, ngân sách kế hoạch, người chạy, tin nhắn, tiếp cận, tương tác…) — của trung tâm B2C hoặc của các mảng khác.",
+    desc: "Từng request/chiến dịch ads (chi phí, ngân sách kế hoạch, người chạy, tin nhắn, tiếp cận, tương tác…) — của trung tâm hoặc của Ecom/VMP/VMT/B2B.",
   },
 };
 

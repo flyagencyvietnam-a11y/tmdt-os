@@ -1,5 +1,5 @@
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
-import { ADS_GROUPS, groupOfLine, type AdsGroupKey } from "@/lib/ads-lines";
+import { ADS_GROUPS } from "@/lib/ads-lines";
 import { budgetProgress } from "@/lib/ads-plan";
 import { diffDaysStr, todayVnDayStr } from "@/lib/time";
 import {
@@ -20,6 +20,7 @@ import {
   type SbuLite,
 } from "./shared";
 import { b2cSummary } from "./rollups";
+import { buildAdsUnits, rowsOfUnit } from "./units";
 
 export type AlertLevel = "crit" | "warn" | "info";
 
@@ -27,10 +28,8 @@ export interface AdsAlert {
   level: AlertLevel;
   title: string;
   detail: string;
-  /** Mục con nên mở để xem chi tiết. */
+  /** Tab nên mở để xem chi tiết. */
   tab: "month" | "week" | "plan";
-  /** Mảng nên mở (bỏ trống = B2C). */
-  group?: AdsGroupKey;
 }
 
 /** Ngưỡng cảnh báo — chỉnh ở đây nếu phòng đổi chuẩn theo dõi. */
@@ -120,38 +119,41 @@ export function computeAdsAlerts({
     const p = derive(aggregate(monthRows(line, prev)), line, rubric);
     const cplUp = change(d.cpl, p.cpl);
     if (cplUp != null && cplUp > ALERT_THRESHOLDS.costIncrease) {
-      out.push({ level: "warn", tab: "month", group: groupOfLine(line).key, title: `${LINE_LABELS[line]}: CPL tăng ${pct(cplUp)}`, detail: `${fmtMoney(p.cpl)} → ${fmtMoney(d.cpl)} so với ${monthLabel(prev)}.` });
+      out.push({ level: "warn", tab: "month", title: `${LINE_LABELS[line]}: CPL tăng ${pct(cplUp)}`, detail: `${fmtMoney(p.cpl)} → ${fmtMoney(d.cpl)} so với ${monthLabel(prev)}.` });
     }
     const cacUp = change(d.cac, p.cac);
     if (cacUp != null && cacUp > ALERT_THRESHOLDS.costIncrease) {
-      out.push({ level: "warn", tab: "month", group: groupOfLine(line).key, title: `${LINE_LABELS[line]}: CAC tăng ${pct(cacUp)}`, detail: `${fmtMoney(p.cac)} → ${fmtMoney(d.cac)} so với ${monthLabel(prev)}.` });
+      out.push({ level: "warn", tab: "month", title: `${LINE_LABELS[line]}: CAC tăng ${pct(cacUp)}`, detail: `${fmtMoney(p.cac)} → ${fmtMoney(d.cac)} so với ${monthLabel(prev)}.` });
     }
     if (d.spend && (line === "ecom" ? d.mql : d.leads) == null) {
-      out.push({ level: "info", tab: "month", group: groupOfLine(line).key, title: `${LINE_LABELS[line]}: thiếu số Lead`, detail: `${monthLabel(month)} đã chi ${fmtMoney(d.spend)} nhưng chưa nhập Lead/HVM.` });
+      out.push({ level: "info", tab: "month", title: `${LINE_LABELS[line]}: thiếu số Lead`, detail: `${monthLabel(month)} đã chi ${fmtMoney(d.spend)} nhưng chưa nhập Lead/HVM.` });
     }
   }
 
-  // --- 3. Kế hoạch tháng: vượt/chậm so với kế hoạch, chưa lập kế hoạch (rà theo từng mảng) ---
+  // --- 3. Kế hoạch tháng: vượt/chậm so với kế hoạch (rà theo từng SBU), chưa lập kế hoạch (gom 1 cảnh báo) ---
   const today = todayVnDayStr();
-  for (const g of ADS_GROUPS) {
-    const rows = metrics.filter((m) => m.periodType === "month" && g.lines.includes(m.line) && m.period === month);
-    const planRows = plan.filter((p) => g.lines.includes(p.line) && p.period === month && num(p.plannedBudget) != null);
-    const planned = planRows.length ? planRows.reduce((s, p) => s + (num(p.plannedBudget) ?? 0), 0) : null;
+  const units = buildAdsUnits(sbus);
+  const unplanned: string[] = [];
+  for (const u of units) {
+    const name = u.kind === "ho" ? "Hệ thống" : u.code;
+    const rows = rowsOfUnit(metrics.filter((m) => m.periodType === "month" && m.period === month), u);
+    const planRow = plan.find((p) => p.line === u.line && p.period === month && (u.kind === "center" ? p.sbuId === u.sbuId : !p.sbuId));
+    const planned = num(planRow?.plannedBudget);
     const actual = rows.length ? rows.reduce((s, r) => s + (spendOf(r) ?? 0), 0) : null;
     const prog = budgetProgress(planned, actual, month, today);
     const ratio = prog.used != null ? Math.round(prog.used * 100) : 0;
     if (prog.status === "over") {
-      out.push({ level: "crit", tab: "plan", group: g.key, title: `${g.label}: vượt ngân sách kế hoạch (${ratio}%)`, detail: `Thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)} trong ${monthLabel(month)}.` });
+      out.push({ level: "crit", tab: "plan", title: `${name}: vượt ngân sách kế hoạch (${ratio}%)`, detail: `Thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)} trong ${monthLabel(month)}.` });
     } else if (prog.status === "fast") {
-      out.push({ level: "warn", tab: "plan", group: g.key, title: `${g.label}: đang đi nhanh hơn kế hoạch`, detail: `Đã dùng ${ratio}% KH, dự báo cuối ${monthLabel(month)} khoảng ${fmtMoney(prog.forecast)} / KH ${fmtMoney(planned)}.` });
+      out.push({ level: "warn", tab: "plan", title: `${name}: đang đi nhanh hơn kế hoạch`, detail: `Đã dùng ${ratio}% KH, dự báo cuối ${monthLabel(month)} khoảng ${fmtMoney(prog.forecast)} / KH ${fmtMoney(planned)}.` });
     } else if (prog.status === "slow") {
-      out.push({ level: "warn", tab: "plan", group: g.key, title: `${g.label}: giải ngân chậm (${ratio}%)`, detail: month < currentMonth ? `${monthLabel(month)} đã kết thúc, thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)}.` : `Dự báo cuối tháng ${fmtMoney(prog.forecast)} / KH ${fmtMoney(planned)}.` });
+      out.push({ level: "warn", tab: "plan", title: `${name}: giải ngân chậm (${ratio}%)`, detail: month < currentMonth ? `${monthLabel(month)} đã kết thúc, thực tế ${fmtMoney(actual)} / KH ${fmtMoney(planned)}.` : `Dự báo cuối tháng ${fmtMoney(prog.forecast)} / KH ${fmtMoney(planned)}.` });
     }
-    // Chưa lập kế hoạch cho tháng hiện tại, trong khi mảng đang chạy (đã có số liệu ở tháng nào đó).
-    if (month === currentMonth && planned == null) {
-      const active = metrics.some((m) => m.periodType === "month" && g.lines.includes(m.line));
-      if (active) out.push({ level: "info", tab: "plan", group: g.key, title: `${g.label}: chưa lập kế hoạch ${monthLabel(month)}`, detail: "Nhập ngân sách và mục tiêu tháng để theo dõi tiến độ." });
-    }
+    // Chưa lập kế hoạch cho tháng hiện tại, trong khi SBU đang chạy (đã có số liệu tháng ở kỳ nào đó).
+    if (month === currentMonth && planned == null && metrics.some((m) => m.periodType === "month" && rowsOfUnit([m], u).length > 0)) unplanned.push(name);
+  }
+  if (unplanned.length) {
+    out.push({ level: "info", tab: "plan", title: `Chưa lập kế hoạch ${monthLabel(month)}: ${unplanned.length} SBU`, detail: `${unplanned.join(", ")} — nhập ngân sách và mục tiêu tháng để theo dõi tiến độ.` });
   }
 
   // --- 4. Tuần gần nhất so với tuần trước (Mục 1 + Mục 2) ---
@@ -184,7 +186,7 @@ export function computeAdsAlerts({
       const ws = [...new Set(metrics.filter((m) => m.periodType === "week" && g.lines.includes(m.line)).map((m) => m.period))].sort();
       const latest = ws[ws.length - 1];
       if (latest && diffDaysStr(latest, today) > 13) {
-        out.push({ level: "info", tab: "week", group: g.key, title: `${g.label}: chưa nhập số tuần gần nhất`, detail: `Tuần mới nhất đang có là ${weekLabel(latest)}.` });
+        out.push({ level: "info", tab: "week", title: `${g.label}: chưa nhập số tuần gần nhất`, detail: `Tuần mới nhất đang có là ${weekLabel(latest)}.` });
       }
     }
   }

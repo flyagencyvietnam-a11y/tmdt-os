@@ -12,56 +12,57 @@ import { MonthInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import type { AdsGroupConfig } from "@/lib/ads-lines";
+import type { AdsLine } from "@/lib/ads-lines";
 import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
 import { ROW_TONE_CLASS } from "../task/task-style";
 import { deleteAdsCampaignAction, patchAdsCampaignAction, rollupCampaignsAction, upsertAdsCampaignAction } from "./actions";
 import { axisProps, ChartCard, ChartTooltip, gridProps } from "./charts";
-import { fmt, fmtMoney, monthLabel, num, type CampaignRow, type SbuLite } from "./shared";
+import { fmt, fmtMoney, monthLabel, num, type CampaignRow } from "./shared";
+import { unitKeyOf, type AdsUnit } from "./units";
 
 /**
- * Report THEO REQUEST — mỗi dòng là 1 chiến dịch Facebook ứng với 1 request
- * ads riêng của trung tâm (sheet gốc "ads tt.xlsx"), KHÔNG gộp theo kỳ như
- * tab Tuần/Tháng. "Cộng dồn vào tháng" chỉ tổng hợp thủ công khi cần đối
+ * Report THEO REQUEST — mỗi dòng là 1 chiến dịch/request ads của 1 SBU (trung tâm, Ecom, VMP, VMT, B2B — chung một danh sách;
+ * sheet gốc "ads tt.xlsx"), KHÔNG gộp theo kỳ như tab Tuần/Tháng. "Cộng dồn vào tháng" chỉ tổng hợp thủ công khi cần đối
  * chiếu với report tháng — xem SPEC Mục 9.4 / CLAUDE.md "Ads redesign".
  *
  * Bảng sửa trực tiếp như Excel: bấm ô → gõ → Enter/Tab; "+ Cột" ở cuối hàng tiêu đề để thêm cột mới.
  */
-const INITIAL_VIEW = { sorts: [{ field: "period", direction: "asc" as const }, { field: "sbuCode", direction: "asc" as const }] };
-const INITIAL_VIEW_LINE = { sorts: [{ field: "period", direction: "asc" as const }] };
+const INITIAL_VIEW = { sorts: [{ field: "period", direction: "asc" as const }, { field: "unit", direction: "asc" as const }] };
 
-const EMPTY_FORM = { sbuId: "", period: "", campaignName: "", runnerId: "", plannedBudget: "", misaRequestUrl: "", messages: "", impressions: "", spend: "" };
+const EMPTY_FORM = { unitKey: "", period: "", campaignName: "", runnerId: "", plannedBudget: "", misaRequestUrl: "", messages: "", impressions: "", spend: "" };
 
-export function RequestsView({ group, campaigns, sbus, users, canManage }: { group: AdsGroupConfig; campaigns: CampaignRow[]; sbus: SbuLite[]; users: { id: string; fullName: string }[]; canManage: boolean }) {
-  // Request của B2C gắn với từng trung tâm (SBU); các mảng khác là request cấp mảng, không có SBU.
-  const isB2c = group.key === "b2c";
-  const reqLine = isB2c ? "b2c_center" : group.primaryLine;
+export function RequestsView({ campaigns, units, users, canManage }: { campaigns: CampaignRow[]; units: AdsUnit[]; users: { id: string; fullName: string }[]; canManage: boolean }) {
+  // Mọi SBU chung một danh sách: trung tâm (line b2c_center + sbu_id), còn Ecom/VMP/VMT/B2B là request cấp line, không có sbu_id.
+  // Hệ thống (HO) không có request riêng — ngân sách HO nằm ở kế hoạch/báo cáo.
+  const reqUnits = React.useMemo(() => units.filter((u) => u.kind !== "ho"), [units]);
   const router = useRouter();
   const [pending, start] = React.useTransition();
-  const [sbuFilter, setSbuFilter] = useSessionState<string>(`ads:req:sbu:${group.key}`, "");
-  const [periodFilter, setPeriodFilter] = useSessionState<string>(`ads:req:period:${group.key}`, "");
+  const [sbuFilter, setSbuFilter] = useSessionState<string>("ads:req:unit", "");
+  const [periodFilter, setPeriodFilter] = useSessionState<string>("ads:req:period", "");
   const [adding, setAdding] = React.useState(false);
   const [f, setF] = React.useState(EMPTY_FORM);
 
-  const sbuCode = React.useCallback((id: string | null) => (id ? (sbus.find((s) => s.id === id)?.code ?? "?") : group.label), [sbus, group.label]);
+  const unitByKey = React.useMemo(() => new Map(reqUnits.map((u) => [u.key, u])), [reqUnits]);
+  const keyOf = React.useCallback((c: Pick<CampaignRow, "line" | "sbuId">) => unitKeyOf(c.line as AdsLine, c.sbuId), []);
+  const sbuCode = React.useCallback((c: Pick<CampaignRow, "line" | "sbuId">) => unitByKey.get(keyOf(c))?.code ?? "?", [unitByKey, keyOf]);
   const userName = React.useCallback((id: string | null | undefined) => users.find((u) => u.id === id)?.fullName ?? "", [users]);
   const periods = [...new Set(campaigns.map((c) => c.period))].sort().reverse();
 
   const filtered = React.useMemo(
-    () => campaigns.filter((c) => (sbuFilter ? c.sbuId === sbuFilter : true)).filter((c) => (periodFilter ? c.period === periodFilter : true)),
-    [campaigns, sbuFilter, periodFilter],
+    () => campaigns.filter((c) => (sbuFilter ? keyOf(c) === sbuFilter : true)).filter((c) => (periodFilter ? c.period === periodFilter : true)),
+    [campaigns, sbuFilter, periodFilter, keyOf],
   );
 
   const totalSpend = filtered.reduce((s, c) => s + Number(c.spend || 0), 0);
   const totalPlanned = filtered.reduce((s, c) => s + (num(c.plannedBudget) ?? 0), 0);
   const plannedCount = filtered.filter((c) => num(c.plannedBudget) != null).length;
   const totalMess = filtered.reduce((s, c) => s + (num(c.messages as string) ?? 0), 0);
-  const bySbu = sbus
-    .map((s) => {
-      const rows = filtered.filter((c) => c.sbuId === s.id);
+  const bySbu = reqUnits
+    .map((u) => {
+      const rows = filtered.filter((c) => keyOf(c) === u.key);
       const spend = rows.reduce((a, c) => a + Number(c.spend || 0), 0);
-      return { code: s.code, spend, count: rows.length };
+      return { code: u.code, spend, count: rows.length };
     })
     .filter((x) => x.spend > 0)
     .sort((a, b) => b.spend - a.spend);
@@ -82,8 +83,11 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
       switch (field) {
         case "period":
           return patch(rowId, { period: v });
-        case "sbuCode":
-          return patch(rowId, { sbuId: v });
+        case "unit": {
+          const u = unitByKey.get(v);
+          if (!u) return;
+          return patch(rowId, { line: u.line, sbuId: u.sbuId });
+        }
         case "campaignName":
           return patch(rowId, { campaignName: v });
         case "runnerId":
@@ -100,11 +104,11 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
           return patch(rowId, { misaRequestUrl: v || null });
       }
     },
-    [patch],
+    [patch, unitByKey],
   );
 
   const columns: GridColumn<CampaignRow>[] = React.useMemo(() => {
-    const sbuOpts = sbus.map((s) => ({ value: s.id, label: s.code }));
+    const sbuOpts = reqUnits.map((u) => ({ value: u.key, label: u.code }));
     const userOpts = users.map((u) => ({ value: u.id, label: u.fullName }));
     const numCol = (field: string, header: string, get: (c: CampaignRow) => string | null | undefined, w = 120): GridColumn<CampaignRow> => ({
       field,
@@ -131,24 +135,20 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
         editValue: (r) => r.period,
         defaultWidth: 90,
       },
-      ...(isB2c
-        ? ([
-            {
-              field: "sbuCode",
-              header: "SBU",
-              kind: "enum",
-              accessor: (r) => r.sbuId ?? "",
-              cell: (r) => <span className="font-medium">{sbuCode(r.sbuId)}</span>,
-              enumOptions: sbuOpts,
-              filterOptions: sbuOpts,
-              editable: canManage,
-              editKind: "select",
-              editOptions: sbuOpts,
-              editValue: (r) => r.sbuId ?? "",
-              defaultWidth: 90,
-            },
-          ] as GridColumn<CampaignRow>[])
-        : []),
+      {
+        field: "unit",
+        header: "SBU",
+        kind: "enum",
+        accessor: (r) => keyOf(r),
+        cell: (r) => <span className="font-medium">{sbuCode(r)}</span>,
+        enumOptions: sbuOpts,
+        filterOptions: sbuOpts,
+        editable: canManage,
+        editKind: "select",
+        editOptions: sbuOpts,
+        editValue: (r) => keyOf(r),
+        defaultWidth: 90,
+      },
       {
         field: "campaignName",
         header: "Tên chiến dịch / request",
@@ -240,7 +240,7 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
               defaultWidth: 70,
               cell: (c) => (
                 <div className="flex items-center gap-2">
-                  {isB2c && c.sbuId && (
+                  {c.line === "b2c_center" && c.sbuId && (
                     <button
                       className="text-muted-foreground hover:text-foreground"
                       title="Cộng dồn chi tiêu của SBU + kỳ này vào report Theo tháng"
@@ -263,7 +263,7 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
                     title="Xoá request"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!window.confirm(`Xoá request "${c.campaignName}" (${sbuCode(c.sbuId)}, ${monthLabel(c.period)})?`)) return;
+                      if (!window.confirm(`Xoá request "${c.campaignName}" (${sbuCode(c)}, ${monthLabel(c.period)})?`)) return;
                       start(async () => {
                         const res = await deleteAdsCampaignAction(c.id);
                         if (res.ok) {
@@ -281,7 +281,7 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
           ] as GridColumn<CampaignRow>[])
         : []),
     ];
-  }, [sbus, users, canManage, sbuCode, userName, router, isB2c]);
+  }, [reqUnits, users, canManage, sbuCode, keyOf, userName, router]);
 
   return (
     <div className="space-y-4">
@@ -299,8 +299,8 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
         <StatCard label="Chi phí / mess" value={fmtMoney(totalMess ? totalSpend / totalMess : null)} icon={Target} hint="bình quân theo bộ lọc" />
       </div>
 
-      {isB2c && bySbu.length > 0 && (
-        <ChartCard title="Chi tiêu request theo trung tâm" description="Theo bộ lọc đang chọn, cao → thấp.">
+      {bySbu.length > 0 && (
+        <ChartCard title="Chi tiêu request theo SBU" description="Theo bộ lọc đang chọn, cao → thấp.">
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={bySbu} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="30%">
@@ -316,18 +316,16 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
       )}
 
       <p className="text-xs text-muted-foreground">
-        {isB2c ? "Mỗi dòng = 1 request ads riêng của trung tâm" : `Mỗi dòng = 1 request/chiến dịch ads của ${group.label}`}, độc lập chu kỳ tuần/tháng; ngân sách kế hoạch của request được cộng vào “Đã phân bổ” ở tab Kế hoạch. {canManage ? "Bấm ô để sửa ngay trên bảng (Enter/Tab sang ô kế, Ctrl+V để dán từ Excel); dấu + ở cuối hàng tiêu đề để thêm cột. " : ""}{isB2c ? "Nút ⟳ “Cộng dồn” đưa tổng chi tiêu các request của 1 SBU + kỳ vào báo cáo Theo tháng." : ""}
+        Mỗi dòng = 1 request/chiến dịch ads của 1 SBU (trung tâm, Ecom, VMP, VMT, B2B), độc lập chu kỳ tuần/tháng; ngân sách kế hoạch của request được cộng vào “Đã phân bổ” ở tab Kế hoạch. {canManage ? "Bấm ô để sửa ngay trên bảng (Enter/Tab sang ô kế, Ctrl+V để dán từ Excel); dấu + ở cuối hàng tiêu đề để thêm cột. " : ""}Nút ⟳ “Cộng dồn” (request của trung tâm) đưa tổng chi tiêu các request của 1 trung tâm + kỳ vào báo cáo tháng.
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        {isB2c && (
         <SimpleSelect
           triggerClassName="h-8 w-40"
           value={sbuFilter}
           onValueChange={(v) => setSbuFilter(v ?? "")}
           placeholder="Tất cả SBU"
-          options={[{ value: "", label: "Tất cả SBU" }, ...sbus.map((s) => ({ value: s.id, label: s.code }))]}
+          options={[{ value: "", label: "Tất cả SBU" }, ...reqUnits.map((u) => ({ value: u.key, label: u.code }))]}
         />
-        )}
         <SimpleSelect
           triggerClassName="h-8 w-40"
           value={periodFilter}
@@ -340,11 +338,9 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
       {adding && (
         <div className="space-y-2 rounded-xl border bg-card p-3 shadow-xs">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {isB2c && (
-              <F label="SBU">
-                <SimpleSelect triggerClassName="h-8" value={f.sbuId} onValueChange={(v) => setF((p) => ({ ...p, sbuId: v ?? "" }))} placeholder="Chọn SBU" options={sbus.map((s) => ({ value: s.id, label: s.code }))} />
-              </F>
-            )}
+            <F label="SBU">
+              <SimpleSelect triggerClassName="h-8" value={f.unitKey} onValueChange={(v) => setF((p) => ({ ...p, unitKey: v ?? "" }))} placeholder="Chọn SBU" options={reqUnits.map((u) => ({ value: u.key, label: u.code }))} />
+            </F>
             <F label="Kỳ (tháng)">
               <MonthInput className="h-8" value={f.period} onChange={(v) => setF((p) => ({ ...p, period: v }))} />
             </F>
@@ -375,12 +371,13 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
           <div className="flex gap-2">
             <Button
               size="sm"
-              disabled={pending || (isB2c && !f.sbuId) || !f.period || !f.campaignName.trim() || (!f.spend && !f.plannedBudget)}
+              disabled={pending || !unitByKey.has(f.unitKey) || !f.period || !f.campaignName.trim() || (!f.spend && !f.plannedBudget)}
               onClick={() =>
                 start(async () => {
+                  const u = unitByKey.get(f.unitKey)!;
                   const res = await upsertAdsCampaignAction({
-                    line: reqLine,
-                    sbuId: isB2c ? f.sbuId : null,
+                    line: u.line,
+                    sbuId: u.sbuId,
                     period: f.period,
                     campaignName: f.campaignName.trim(),
                     runnerId: f.runnerId || null,
@@ -409,11 +406,11 @@ export function RequestsView({ group, campaigns, sbus, users, canManage }: { gro
       )}
 
       <DataGrid
-        entity={isB2c ? "ads_requests" : `ads_requests_${group.key}`}
+        entity="ads_requests_all"
         columns={columns}
         rows={filtered}
         getRowId={(r) => r.id}
-        initialView={isB2c ? INITIAL_VIEW : INITIAL_VIEW_LINE}
+        initialView={INITIAL_VIEW}
         onEditCell={canManage ? onEditCell : undefined}
         onAddRow={canManage ? () => setAdding(true) : undefined}
         addRowLabel="Thêm request"

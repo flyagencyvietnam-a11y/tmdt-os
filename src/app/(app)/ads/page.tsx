@@ -14,8 +14,8 @@ export const metadata = { title: "Growth Performance — VMG MKT OS" };
 export const dynamic = "force-dynamic";
 
 /**
- * SPEC Mục 9.4 + Phụ lục D mục 21: tab theo MẢNG (B2C/Ecom/B2B/VMP/VMT), mỗi mảng cùng luồng
- * Kế hoạch tháng → Request → Báo cáo tuần → Báo cáo tháng.
+ * SPEC Mục 9.4 + Phụ lục D mục 26: mọi SBU (Hệ thống, trung tâm, Ecom, VMP, VMT, B2B) chung một danh sách; tab
+ * Tổng quan · Kế hoạch & tiến độ · Request · Báo cáo tuần · Báo cáo tháng · Báo cáo quý.
  */
 export default async function AdsPage() {
   const user = await requireUser();
@@ -35,7 +35,7 @@ export default async function AdsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Growth Performance"
-        description="Kế hoạch và hiệu quả tăng trưởng (quảng cáo/Ads) theo từng mảng: B2C · Ecom · B2B · VMP · VMT (khảo thí). Mỗi mảng đi cùng một luồng: lập kế hoạch tháng → request → báo cáo tuần → báo cáo tháng, và so thực tế với kế hoạch. Tuần tính từ Thứ 7 đến hết Thứ 6; số tháng/quý nhập riêng, không cộng từ các tuần."
+        description="Kế hoạch và hiệu quả tăng trưởng (quảng cáo/Ads) của mọi SBU trong cùng một danh sách: Hệ thống, các trung tâm, Ecom, VMP, VMT, B2B. Luồng: lập kế hoạch tháng → request → báo cáo tuần / tháng / quý (chọn khoảng kỳ bất kỳ), và so thực tế với kế hoạch. Tuần tính từ Thứ 7 đến hết Thứ 6; số tháng nhập riêng, quý = cộng 3 tháng, không cộng từ các tuần."
       />
       <AdsView
         metrics={metrics.map((m) => ({

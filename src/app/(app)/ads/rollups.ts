@@ -27,6 +27,11 @@ export function quarterMonths(q: string): string[] {
 export function quarterLabel(q: string, short = false): string {
   return short ? `Q${q.slice(6, 7)}` : `Q${q.slice(6, 7)}/${q.slice(0, 4)}`;
 }
+export function nextQuarter(q: string): string {
+  const y = Number(q.slice(0, 4));
+  const n = Number(q.slice(6, 7));
+  return n === 4 ? `${y + 1}-Q1` : `${y}-Q${n + 1}`;
+}
 export function prevQuarter(q: string): string {
   const y = Number(q.slice(0, 4));
   const n = Number(q.slice(6, 7));
@@ -83,9 +88,9 @@ const funnel = (spend: number | null, leads: number | null, newStudents: number 
   cvr: ratio(newStudents, leads),
 });
 
-/** Tổng hợp B2C cho 1 hoặc nhiều THÁNG (`periods`) từ mọi dòng tháng của b2c_system + b2c_center. */
-export function b2cSummary(rows: MetricRow[], periods: string[]): B2cSummary {
-  const monthly = rows.filter((r) => r.periodType === "month" && periods.includes(r.period));
+/** Tổng hợp B2C cho 1 hoặc nhiều kỳ (`periods`, mặc định THÁNG; có thể là tuần) từ mọi dòng của b2c_system + b2c_center. */
+export function b2cSummary(rows: MetricRow[], periods: string[], periodType: "month" | "week" = "month"): B2cSummary {
+  const monthly = rows.filter((r) => r.periodType === periodType && periods.includes(r.period));
   const per = periods.map((p) => {
     const sys = monthly.filter((r) => r.period === p && r.line === "b2c_system");
     const ctr = monthly.filter((r) => r.period === p && r.line === "b2c_center");

@@ -3,23 +3,37 @@
 import * as React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExportMenu } from "@/components/report/export-menu";
-import { ADS_GROUPS, type AdsGroupKey } from "@/lib/ads-lines";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
+import { todayVnDayStr } from "@/lib/time";
 import { useSessionState } from "@/lib/use-session-state";
 import { computeAdsAlerts, type AdsAlert } from "./alerts";
-import { MonthPicker, QuarterPicker } from "./ads-ui";
-import { LineView, type LineSub } from "./line-view";
+import { MonthPicker, QuarterPicker, Segmented } from "./ads-ui";
+import { AdsImportButton } from "./import-dialog";
+import { MonthlyView } from "./monthly-view";
 import { OverviewView, type OverviewRange } from "./overview-view";
+import { PlanPanel } from "./plan-panel";
+import { QuarterlyView } from "./quarterly-view";
+import { RequestsView } from "./requests-view";
 import { prevQuarter, quarterKey, quarterLabel, quarterMonths, type EcomProductRow } from "./rollups";
-import { monthLabel, nextMonth, prevMonth, type CampaignRow, type MetricRow, type PlanRow, type SbuLite } from "./shared";
-import { Segmented } from "./weekly-view";
+import { monthLabel, nextMonth, nextWeek, prevMonth, type CampaignRow, type MetricRow, type PlanRow, type SbuLite } from "./shared";
+import { buildAdsUnits } from "./units";
+import { WeeklyView } from "./weekly-view";
 
-type Tab = "overview" | AdsGroupKey;
+type Tab = "overview" | "plan" | "request" | "week" | "month" | "quarter";
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: "overview", label: "Tổng quan" },
+  { value: "plan", label: "Kế hoạch & tiến độ" },
+  { value: "request", label: "Request" },
+  { value: "week", label: "Báo cáo tuần" },
+  { value: "month", label: "Báo cáo tháng" },
+  { value: "quarter", label: "Báo cáo quý" },
+];
 
 /**
- * Container Growth Performance (SPEC Phụ lục D mục 21): tab lớn = Tổng quan + từng MẢNG (B2C, Ecom, B2B, VMP, VMT).
- * Trong mỗi mảng cùng 1 luồng: Kế hoạch & tiến độ → Request → Báo cáo tuần → Báo cáo tháng.
- * Tháng đang xem dùng chung giữa Tổng quan và mọi mảng.
+ * Container Growth Performance (SPEC Phụ lục D mục 26): KHÔNG còn tab theo mảng — Hệ thống, trung tâm, Ecom, VMP, VMT, B2B là SBU ngang hàng
+ * trong cùng một danh sách. Tab: Tổng quan · Kế hoạch & tiến độ · Request · Báo cáo tuần · Báo cáo tháng · Báo cáo quý. Tháng đang xem dùng chung
+ * giữa Tổng quan và Kế hoạch; ba báo cáo có bộ chọn KHOẢNG kỳ riêng ngay trong view.
  */
 export function AdsView({
   metrics,
@@ -41,20 +55,20 @@ export function AdsView({
   plans: PlanRow[];
   canManage: boolean;
   currentMonth: string;
+  /** Mọi tuần đã có số liệu, mới nhất trước. */
   weeks: string[];
   rubric: EffectivenessRubric;
 }) {
-  // Tháng có số liệu HOẶC có kế hoạch (để chọn được tháng đã lập kế hoạch mà chưa có số).
+  const units = React.useMemo(() => buildAdsUnits(sbus), [sbus]);
+
   // Danh sách tháng chọn được: tháng có số liệu/kế hoạch + tháng hiện tại + tháng sau (để lập kế hoạch trước khi tháng bắt đầu).
   const months = React.useMemo(
     () => [...new Set([...metrics.filter((m) => m.periodType === "month").map((m) => m.period), ...plans.map((p) => p.period), currentMonth, nextMonth(currentMonth)])].sort(),
     [metrics, plans, currentMonth],
   );
   const metricMonths = React.useMemo(() => [...new Set(metrics.filter((m) => m.periodType === "month").map((m) => m.period))].sort(), [metrics]);
-  // Mặc định: tháng hiện tại (nơi lập kế hoạch), nếu chưa có gì thì tháng gần nhất có dữ liệu.
   const [month, setMonth] = useSessionState<string>("ads:month", currentMonth);
-  const [tab, setTab] = useSessionState<Tab>("ads:tab:v2", "overview");
-  const [subs, setSubs] = useSessionState<Partial<Record<AdsGroupKey, LineSub>>>("ads:subs", {});
+  const [tab, setTab] = useSessionState<Tab>("ads:tab:v3", "overview");
   const [mode, setMode] = useSessionState<"month" | "quarter">("ads:mode", "month");
   const quarters = React.useMemo(() => [...new Set(months.map(quarterKey))].sort(), [months]);
   const [quarter, setQuarter] = useSessionState<string>("ads:quarter", quarterKey(currentMonth));
@@ -74,39 +88,40 @@ export function AdsView({
   const alertMonth = mode === "month" ? month : ([...range.months].reverse().find((m) => metricMonths.includes(m)) ?? range.months[0]);
   const alerts = React.useMemo(() => computeAdsAlerts({ metrics, sbus, plan: plans, rubric, month: alertMonth, currentMonth }), [metrics, sbus, plans, rubric, alertMonth, currentMonth]);
   const critCount = alerts.filter((a) => a.level !== "info").length;
-  const alertsOf = (g: AdsGroupKey) => alerts.filter((a) => (a.group ?? "b2c") === g && a.level !== "info").length;
+  const badgeOf = (t: Tab) => (t === "overview" ? critCount : alerts.filter((a) => a.tab === t && a.level !== "info").length);
 
-  const openAlert = (a: AdsAlert) => {
-    const g = a.group ?? "b2c";
-    setSubs((p) => ({ ...p, [g]: a.tab }));
-    setTab(g);
-  };
+  const openAlert = (a: AdsAlert) => setTab(a.tab);
 
-  // Từ Tổng quan mở kế hoạch của 1 mảng; ở chế độ quý thì nhảy tới tháng mới nhất của quý.
-  const openGroupPlan = (g: AdsGroupKey) => {
+  // Từ Tổng quan mở kế hoạch; ở chế độ quý thì nhảy tới tháng mới nhất của quý.
+  const openPlan = () => {
     if (mode === "quarter") setMonth(range.months[range.months.length - 1]);
-    setSubs((p) => ({ ...p, [g]: "plan" }));
-    setTab(g);
+    setTab("plan");
   };
 
-  const showMonth = tab !== "overview" || mode === "month";
-  // Báo cáo tuần có bộ chọn KHOẢNG TUẦN riêng ngay trong view — ẩn bộ chọn tháng (và xuất báo cáo theo tháng) để không gây nhầm.
-  const weekMode = tab !== "overview" && (subs[tab] ?? "plan") === "week";
+  // Template import điền sẵn khung theo kỳ đang xem.
+  const suggestedWeek = React.useMemo(() => {
+    const latest = weeks[0];
+    if (!latest) return undefined;
+    const next = nextWeek(latest);
+    return next <= todayVnDayStr() ? next : latest;
+  }, [weeks]);
+  const importQuery = new URLSearchParams();
+  if (tab === "week" && suggestedWeek) importQuery.set("week", suggestedWeek);
+  if (tab === "month" || tab === "plan") importQuery.set("month", month);
+  const importKind = tab === "plan" || tab === "request" || tab === "week" || tab === "month" ? tab : null;
+
+  const showMonthPicker = tab === "plan" || (tab === "overview" && mode === "month");
+  const showExport = tab === "overview" || tab === "plan";
 
   return (
     <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
       <div className="flex flex-wrap items-center gap-2">
         <TabsList className="max-w-full justify-start overflow-x-auto">
-          <TabsTrigger value="overview">
-            Tổng quan
-            {critCount > 0 && <span className="ml-1.5 rounded-full bg-red-500 px-1.5 text-[10px] font-semibold leading-4 text-white">{critCount}</span>}
-          </TabsTrigger>
-          {ADS_GROUPS.map((g) => {
-            const n = alertsOf(g.key);
+          {TABS.map((t) => {
+            const n = badgeOf(t.value);
             return (
-              <TabsTrigger key={g.key} value={g.key}>
-                <span className="mr-1.5 h-2.5 w-2.5 rounded-[3px]" style={{ background: g.color }} />
-                {g.label}
+              <TabsTrigger key={t.value} value={t.value}>
+                {t.label}
                 {n > 0 && <span className="ml-1.5 rounded-full bg-red-500 px-1.5 text-[10px] font-semibold leading-4 text-white">{n}</span>}
               </TabsTrigger>
             );
@@ -123,8 +138,10 @@ export function AdsView({
               ]}
             />
           )}
-          {!weekMode && (showMonth ? <MonthPicker months={months} value={month} onChange={setMonth} /> : <QuarterPicker quarters={quarters} value={quarter} onChange={setQuarter} />)}
-          {!weekMode && <ExportMenu kind="growth" period={tab === "overview" && mode === "quarter" ? undefined : month} />}
+          {showMonthPicker && <MonthPicker months={months} value={month} onChange={setMonth} />}
+          {tab === "overview" && mode === "quarter" && <QuarterPicker quarters={quarters} value={quarter} onChange={setQuarter} />}
+          {showExport && <ExportMenu kind="growth" period={tab === "overview" && mode === "quarter" ? undefined : month} />}
+          {canManage && importKind && <AdsImportButton key={importKind} kind={importKind} templateQuery={importQuery.toString()} />}
         </div>
       </div>
 
@@ -137,31 +154,39 @@ export function AdsView({
             </button>
           </div>
         )}
-        <OverviewView metrics={metrics} months={metricMonths} range={range} alerts={alerts} alertsMonthLabel={monthLabel(alertMonth)} onOpenTab={openAlert} plans={plans} onOpenGroup={openGroupPlan} />
+        <OverviewView metrics={metrics} units={units} months={metricMonths} range={range} alerts={alerts} alertsMonthLabel={monthLabel(alertMonth)} onOpenAlert={openAlert} plans={plans} onOpenPlan={openPlan} />
       </TabsContent>
 
-      {ADS_GROUPS.map((g) => (
-        <TabsContent key={g.key} value={g.key} className="pt-4">
-          <LineView
-            group={g}
-            sub={subs[g.key] ?? "plan"}
-            onSubChange={(s) => setSubs((p) => ({ ...p, [g.key]: s }))}
-            metrics={metrics}
-            plans={plans}
-            campaigns={campaigns}
-            sbus={sbus}
-            users={users}
-            ecomProducts={ecomProducts}
-            weeks={weeks}
-            canManage={canManage}
-            month={month}
-            months={months}
-            currentMonth={currentMonth}
-            onMonthChange={setMonth}
-            rubric={rubric}
-          />
-        </TabsContent>
-      ))}
+      <TabsContent value="plan" className="pt-4">
+        <PlanPanel
+          month={month}
+          months={months}
+          currentMonth={currentMonth}
+          metrics={metrics}
+          plans={plans}
+          campaigns={campaigns}
+          units={units}
+          canManage={canManage}
+          onMonthChange={setMonth}
+          onOpenRequests={() => setTab("request")}
+        />
+      </TabsContent>
+
+      <TabsContent value="request" className="pt-4">
+        <RequestsView campaigns={campaigns} units={units} users={users} canManage={canManage} />
+      </TabsContent>
+
+      <TabsContent value="week" className="pt-4">
+        <WeeklyView metrics={metrics} units={units} canManage={canManage} weeks={weeks} />
+      </TabsContent>
+
+      <TabsContent value="month" className="pt-4">
+        <MonthlyView metrics={metrics} units={units} centers={sbus} ecomProducts={ecomProducts} canManage={canManage} currentMonth={currentMonth} months={metricMonths} rubric={rubric} />
+      </TabsContent>
+
+      <TabsContent value="quarter" className="pt-4">
+        <QuarterlyView metrics={metrics} units={units} canManage={canManage} currentMonth={currentMonth} months={metricMonths} />
+      </TabsContent>
     </Tabs>
   );
 }

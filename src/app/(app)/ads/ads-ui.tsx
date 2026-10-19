@@ -72,3 +72,20 @@ export function F({ label, hint, children }: { label: string; hint?: string; chi
     </div>
   );
 }
+
+export function Segmented<T extends string | number>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
+  return (
+    <div className="flex rounded-lg bg-muted p-0.5 text-xs">
+      {options.map((o) => (
+        <button
+          key={String(o.value)}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={cn("whitespace-nowrap rounded-md px-2.5 py-1 transition-colors", o.value === value ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}

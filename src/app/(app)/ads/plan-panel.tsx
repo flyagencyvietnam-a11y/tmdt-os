@@ -6,7 +6,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
-import { PLAN_TARGET_COLUMN, type AdsGroupConfig, type FunnelDef, type FunnelField, type PlanTargetColumn } from "@/lib/ads-lines";
+import { groupOfLine, PLAN_TARGET_COLUMN, type AdsLine, type FunnelDef, type FunnelField, type PlanTargetColumn } from "@/lib/ads-lines";
 import {
   BUDGET_STATUS_LABEL,
   budgetProgress,
@@ -22,7 +22,8 @@ import { cn } from "@/lib/utils";
 import { copyAdsPlansAction, upsertAdsPlanAction } from "./actions";
 import { InlineNum } from "./ads-inline";
 import { b2cSummary } from "./rollups";
-import { aggregate, derive, fmt, fmtMoney, fmtPct, monthLabel, num, prevMonth, type CampaignRow, type Line, type MetricRow, type PlanRow, type SbuLite } from "./shared";
+import { aggregate, fmt, fmtMoney, fmtPct, monthLabel, num, prevMonth, type CampaignRow, type Line, type MetricRow, type PlanRow } from "./shared";
+import { hasFunnelTargets, rowsOfUnit, unitKeyOf, type AdsUnit } from "./units";
 
 export const STATUS_TONE: Record<BudgetStatus, string> = {
   no_plan: "bg-muted text-muted-foreground",
@@ -78,110 +79,81 @@ function usePlanSaver() {
   );
 }
 
-interface PlanTarget {
-  key: string;
-  label: string;
-  line: Line;
-  sbuId: string | null;
-  metricRows: MetricRow[];
-  /** Request thuộc dòng kế hoạch này (để tính ngân sách đã phân bổ). null = không áp dụng. */
-  requests: CampaignRow[] | null;
-}
+const ALL_LINES: AdsLine[] = ["b2c_system", "b2c_center", "ecom", "b2b", "osir", "vmp"];
+
+/** Dòng kế hoạch của 1 SBU trong 1 tháng. */
+const planOfUnit = (plans: PlanRow[], u: AdsUnit, period: string) => plans.find((p) => p.line === u.line && p.period === period && (u.kind === "center" ? p.sbuId === u.sbuId : !p.sbuId));
 
 /**
- * KẾ HOẠCH & TIẾN ĐỘ của 1 mảng trong 1 tháng — điểm đầu của luồng Kế hoạch → Request → Báo cáo.
- * Lập ngân sách + mục tiêu theo phễu của mảng; so ngay với thực tế (suy ra từ báo cáo tháng).
+ * KẾ HOẠCH & TIẾN ĐỘ của MỌI SBU trong 1 tháng — điểm đầu của luồng Kế hoạch → Request → Báo cáo (SPEC Phụ lục D mục 26: Hệ thống, trung tâm,
+ * Ecom, VMP, VMT, B2B chung một danh sách). Lập ngân sách + mục tiêu đầu tháng, so ngay với thực tế (suy ra từ báo cáo tháng).
  * Sửa trực tiếp trên ô (kiểu Excel); mọi thay đổi ghi nhật ký.
  */
 export function PlanPanel({
-  group,
   month,
   months,
   currentMonth,
   metrics,
   plans,
   campaigns,
-  sbus,
+  units,
   canManage,
   onMonthChange,
-  onOpenSub,
+  onOpenRequests,
 }: {
-  group: AdsGroupConfig;
   month: string;
   months: string[];
   currentMonth: string;
   metrics: MetricRow[];
   plans: PlanRow[];
   campaigns: CampaignRow[];
-  sbus: SbuLite[];
+  units: AdsUnit[];
   canManage: boolean;
   onMonthChange: (m: string) => void;
-  onOpenSub: (sub: "request" | "month") => void;
+  onOpenRequests: () => void;
 }) {
   const router = useRouter();
   const savePlan = usePlanSaver();
   const [copying, startCopy] = React.useTransition();
   const today = todayVnDayStr();
-  const isB2c = group.key === "b2c";
 
-  const monthRows = React.useMemo(() => metrics.filter((m) => m.periodType === "month" && group.lines.includes(m.line) && m.period === month), [metrics, group, month]);
-  const groupPlans = React.useMemo(() => plans.filter((p) => group.lines.includes(p.line)), [plans, group]);
-  const planOf = (line: Line, sbuId: string | null, period = month) => groupPlans.find((p) => p.line === line && p.period === period && (p.sbuId ?? null) === sbuId);
+  const monthRows = React.useMemo(() => metrics.filter((m) => m.periodType === "month" && m.period === month), [metrics, month]);
 
-  // Các dòng lập kế hoạch: B2C = Hệ thống + từng trung tâm; mảng khác = 1 dòng cả mảng.
-  const targets: PlanTarget[] = React.useMemo(() => {
-    const reqOf = (line: Line, sbuId: string | null) => campaigns.filter((c) => c.line === line && c.period === month && (sbuId ? c.sbuId === sbuId : true));
-    if (!isB2c) return [{ key: "all", label: group.label, line: group.primaryLine, sbuId: null, metricRows: monthRows, requests: reqOf(group.primaryLine, null) }];
-    return [
-      { key: "sys", label: "Hệ thống (HO chạy chung)", line: "b2c_system" as Line, sbuId: null, metricRows: monthRows.filter((m) => m.line === "b2c_system"), requests: null },
-      ...sbus.map((s) => ({ key: s.id, label: s.code, line: "b2c_center" as Line, sbuId: s.id, metricRows: monthRows.filter((m) => m.line === "b2c_center" && m.sbuId === s.id), requests: reqOf("b2c_center", s.id) })),
-    ];
-  }, [isB2c, group, monthRows, campaigns, month, sbus]);
-
-  const rowsView = targets.map((t) => {
-    const plan = planOf(t.line, t.sbuId);
-    const actual = aggregate(t.metricRows).spend;
+  const rowsView = units.map((u) => {
+    const plan = planOfUnit(plans, u, month);
+    const actual = aggregate(rowsOfUnit(monthRows, u)).spend;
     const planned = num(plan?.plannedBudget);
     const prog = budgetProgress(planned, actual, month, today);
-    const allocated = t.requests ? t.requests.reduce((s, c) => s + (num(c.plannedBudget) ?? 0), 0) : null;
-    return { t, plan, actual, planned, prog, allocated };
+    // Request thuộc SBU (Hệ thống không có request riêng).
+    const allocated = u.kind === "ho" ? null : campaigns.filter((c) => c.period === month && unitKeyOf(c.line as AdsLine, c.sbuId) === u.key).reduce((s, c) => s + (num(c.plannedBudget) ?? 0), 0);
+    return { u, plan, actual, planned, prog, allocated };
   });
 
   const totalPlanned = rowsView.some((r) => r.planned != null) ? rowsView.reduce((s, r) => s + (r.planned ?? 0), 0) : null;
-  const totalActual = aggregate(monthRows).spend;
+  // Tiến độ tổng chỉ so các SBU ĐÃ lập kế hoạch (SBU chưa lập không tính vào thực tế, kẻo vượt giả); chi toàn phòng ghi riêng.
+  const plannedRows = rowsView.filter((r) => r.planned != null);
+  const totalActual = plannedRows.some((r) => r.actual != null) ? plannedRows.reduce((s, r) => s + (r.actual ?? 0), 0) : null;
+  const allActual = aggregate(monthRows).spend;
   const total: BudgetProgress = budgetProgress(totalPlanned, totalActual, month, today);
   const totalAllocated = rowsView.some((r) => r.allocated != null) ? rowsView.reduce((s, r) => s + (r.allocated ?? 0), 0) : null;
   const elapsed = monthElapsed(month, today);
 
-  // ---- Mục tiêu theo phễu: dòng kế hoạch "cả mảng" (B2C: dòng Hệ thống mang mục tiêu tổng cả B2C) ----
-  const headTarget = targets[0];
-  const headPlan = planOf(headTarget.line, headTarget.sbuId);
-  const b2c = isB2c ? b2cSummary(metrics, [month]) : null;
-  const agg = aggregate(monthRows);
-  const actualOf = (f: FunnelField): number | null => {
-    if (b2c && f === "leads") return b2c.leads;
-    if (b2c && f === "newStudents") return b2c.newStudents;
-    return agg[f];
-  };
-  const targetOf = (f: FunnelField): number | null => num(headPlan?.[PLAN_TARGET_COLUMN[f] as keyof PlanRow] as string | null | undefined);
-  const dTotal = b2c ? { cpl: b2c.cpl, cac: b2c.cac } : derive(agg, group.primaryLine);
-  const leadActual = actualOf(group.leadField);
-  const leadTarget = targetOf(group.leadField);
-  const convTarget = targetOf("newStudents");
-  const plannedLeadCost = plannedUnitCost(totalPlanned, leadTarget);
-  const plannedCac = plannedUnitCost(totalPlanned, convTarget);
-  const actualLeadCost = b2c ? b2c.cpl : group.leadField === "mql" ? (agg.spend != null && agg.mql ? Math.round(agg.spend / agg.mql) : null) : dTotal.cpl;
-  const leadCostName = group.leadField === "mql" ? "CP/MQL" : "CPL";
-
-  const hasAnyPlan = groupPlans.some((p) => p.period === month && (p.plannedBudget != null || group.funnel.some((f) => p[PLAN_TARGET_COLUMN[f.field] as keyof PlanRow] != null)));
+  const hasPlanValue = (p: PlanRow) => p.plannedBudget != null || Object.values(PLAN_TARGET_COLUMN).some((c) => p[c as keyof PlanRow] != null);
+  const hasAnyPlan = plans.some((p) => p.period === month && hasPlanValue(p));
   const prev = prevMonth(month);
-  const prevHasPlan = groupPlans.some((p) => p.period === prev);
+  const prevHasPlan = plans.some((p) => p.period === prev);
 
-  // ---- Lịch sử các tháng (kế hoạch ↔ thực tế) ----
-  const historyMonths = [...new Set([...months, ...groupPlans.map((p) => p.period), month])].sort().reverse().slice(0, 8);
+  // ---- Lịch sử các tháng (kế hoạch ↔ thực tế, cả phòng) ----
+  const historyMonths = [...new Set([...months, ...plans.map((p) => p.period), month])].sort().reverse().slice(0, 8);
+  // Mỗi tháng chỉ so các SBU đã có ngân sách kế hoạch tháng đó (cả hai vế cùng tập SBU).
   const history = historyMonths.map((p) => {
-    const planned = groupPlans.filter((x) => x.period === p).reduce<number | null>((s, x) => (x.plannedBudget == null ? s : (s ?? 0) + Number(x.plannedBudget)), null);
-    const actual = aggregate(metrics.filter((m) => m.periodType === "month" && group.lines.includes(m.line) && m.period === p)).spend;
+    const rowsP = metrics.filter((m) => m.periodType === "month" && m.period === p);
+    const planned = units.reduce<number | null>((s, u) => {
+      const v = num(planOfUnit(plans, u, p)?.plannedBudget);
+      return v == null ? s : (s ?? 0) + v;
+    }, null);
+    const actualRows = units.filter((u) => num(planOfUnit(plans, u, p)?.plannedBudget) != null).flatMap((u) => rowsOfUnit(rowsP, u));
+    const actual = actualRows.length ? aggregate(actualRows).spend : null;
     return { p, planned, actual, prog: budgetProgress(planned, actual, p, today) };
   });
 
@@ -191,8 +163,8 @@ export function PlanPanel({
       <InlineNum
         value={r.plan?.plannedBudget}
         display={r.planned != null ? money(r.planned) : <span className="text-muted-foreground/50">＋ lập KH</span>}
-        title={`Ngân sách kế hoạch — ${r.t.label}, ${monthLabel(month)}`}
-        onSave={(v) => savePlan({ line: r.t.line, period: month, sbuId: r.t.sbuId }, "plannedBudget", v)}
+        title={`Ngân sách kế hoạch — ${r.u.code}, ${monthLabel(month)}`}
+        onSave={(v) => savePlan({ line: r.u.line, period: month, sbuId: r.u.sbuId }, "plannedBudget", v)}
       />
     ) : r.planned != null ? (
       money(r.planned)
@@ -204,9 +176,7 @@ export function PlanPanel({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 shadow-xs">
         <div className="mr-auto">
-          <h3 className="text-sm font-semibold">
-            Kế hoạch {group.label} — {monthLabel(month)}
-          </h3>
+          <h3 className="text-sm font-semibold">Kế hoạch mọi SBU — {monthLabel(month)}</h3>
           <p className="text-xs text-muted-foreground">
             Lập ngân sách và mục tiêu đầu tháng, theo dõi thực tế so với kế hoạch ngay bên dưới. {canManage ? "Bấm vào ô để nhập/sửa (Enter xuống dòng, Tab sang phải)." : ""}
           </p>
@@ -218,7 +188,7 @@ export function PlanPanel({
             disabled={copying}
             onClick={() =>
               startCopy(async () => {
-                const res = await copyAdsPlansAction({ lines: group.lines, from: prev, to: month });
+                const res = await copyAdsPlansAction({ lines: ALL_LINES, from: prev, to: month });
                 if (res.ok) {
                   toast.success(res.data.copied ? `Đã sao chép ${res.data.copied} dòng kế hoạch từ ${monthLabel(prev)} — điều chỉnh lại cho phù hợp.` : "Không có gì để sao chép.");
                   router.refresh();
@@ -234,14 +204,14 @@ export function PlanPanel({
       {!hasAnyPlan && (
         <div className="rounded-xl border border-dashed border-amber-400/60 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           <b>Chưa lập kế hoạch cho {monthLabel(month)}.</b> {canManage ? "Nhập ngân sách ở bảng dưới" : "Nhờ người phụ trách nhập ngân sách"}
-          {prevHasPlan && canManage ? ` hoặc bấm “Sao chép từ ${monthLabel(prev)}”` : ""}; sau đó đặt mục tiêu theo phễu của mảng.
+          {prevHasPlan && canManage ? ` hoặc bấm “Sao chép từ ${monthLabel(prev)}”` : ""}; sau đó đặt mục tiêu theo phễu.
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard label="Ngân sách kế hoạch" value={money(totalPlanned)} icon={Coins} tone="brand" hint={totalPlanned == null ? "Chưa lập" : undefined} />
         <StatCard
-          label="Đã dùng"
+          label="Đã dùng (SBU có kế hoạch)"
           value={money(totalActual)}
           icon={Gauge}
           tone={total.status === "over" ? "crit" : total.status === "fast" ? "warn" : "default"}
@@ -266,15 +236,13 @@ export function PlanPanel({
       <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
         <header className="border-b px-4 py-3">
           <h3 className="text-sm font-semibold">Ngân sách — kế hoạch so với thực tế</h3>
-          <p className="text-xs text-muted-foreground">
-            Thực tế lấy từ số liệu tháng ({monthLabel(month)}). “Đã phân bổ” = tổng ngân sách kế hoạch của các request{isB2c ? " trung tâm" : ""} đã tạo.
-          </p>
+          <p className="text-xs text-muted-foreground">Thực tế lấy từ số liệu tháng ({monthLabel(month)}). “Đã phân bổ” = tổng ngân sách kế hoạch của các request đã tạo cho SBU đó (Hệ thống không có request riêng).</p>
         </header>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">{isB2c ? "Hệ thống / Trung tâm" : "Mảng"}</th>
+                <th className="px-3 py-2 text-left font-medium">SBU</th>
                 <th className="px-3 py-2 text-right font-medium">Kế hoạch</th>
                 <th className="px-3 py-2 text-right font-medium">Thực tế</th>
                 <th className="w-40 px-3 py-2 text-left font-medium">% đã dùng</th>
@@ -285,8 +253,13 @@ export function PlanPanel({
             </thead>
             <tbody className="divide-y">
               {rowsView.map((r) => (
-                <tr key={r.t.key} className="hover:bg-muted/20">
-                  <td className="px-3 py-2 font-medium">{r.t.label}</td>
+                <tr key={r.u.key} className="hover:bg-muted/20">
+                  <td className="px-3 py-2 font-medium" title={r.u.label}>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: r.u.color }} />
+                      {r.u.kind === "ho" ? "Hệ thống (HO)" : r.u.code}
+                    </span>
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">{planCell(r)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.actual != null ? money(r.actual) : <span className="text-muted-foreground/50">—</span>}</td>
                   <td className="px-3 py-2">
@@ -302,7 +275,7 @@ export function PlanPanel({
                     {r.allocated == null ? (
                       <span className="text-muted-foreground/50">—</span>
                     ) : (
-                      <button type="button" className="hover:underline" onClick={() => onOpenSub("request")} title="Mở danh sách request">
+                      <button type="button" className="hover:underline" onClick={onOpenRequests} title="Mở danh sách request">
                         {r.allocated ? money(r.allocated) : <span className="text-muted-foreground/50">0</span>}
                         {r.planned ? <span className="text-xs text-muted-foreground"> ({Math.round((r.allocated / r.planned) * 100)}%)</span> : null}
                       </button>
@@ -314,23 +287,24 @@ export function PlanPanel({
                 </tr>
               ))}
             </tbody>
-            {rowsView.length > 1 && (
-              <tfoot className="border-t-2 bg-muted/40 font-semibold">
-                <tr>
-                  <td className="px-3 py-2">Tổng {group.label}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(totalPlanned)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(totalActual)}</td>
-                  <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground">{total.used != null ? `${Math.round(total.used * 100)}%` : "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(total.forecast)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(totalAllocated)}</td>
-                  <td className="px-3 py-2">
-                    <StatusPill tone={STATUS_TONE[total.status]}>{BUDGET_STATUS_LABEL[total.status]}</StatusPill>
-                  </td>
-                </tr>
-              </tfoot>
-            )}
+            <tfoot className="border-t-2 bg-muted/40 font-semibold">
+              <tr>
+                <td className="px-3 py-2">Tổng — SBU đã lập kế hoạch</td>
+                <td className="px-3 py-2 text-right tabular-nums">{money(totalPlanned)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{money(totalActual)}</td>
+                <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground">{total.used != null ? `${Math.round(total.used * 100)}%` : "—"}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{money(total.forecast)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{money(totalAllocated)}</td>
+                <td className="px-3 py-2">
+                  <StatusPill tone={STATUS_TONE[total.status]}>{BUDGET_STATUS_LABEL[total.status]}</StatusPill>
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
+        <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+          Dòng tổng, % đã dùng và dự báo chỉ so các SBU ĐÃ lập kế hoạch. Tổng chi toàn phòng {monthLabel(month)} (gồm cả SBU chưa lập kế hoạch): <b className="text-foreground">{money(allActual)}</b>.
+        </p>
       </section>
 
       <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -339,7 +313,7 @@ export function PlanPanel({
           <div className="mr-auto">
             <h3 className="text-sm font-semibold">Mục tiêu theo phễu — kế hoạch so với thực tế</h3>
             <p className="text-xs text-muted-foreground">
-              {isB2c ? "Mục tiêu Lead/HVM là số TỔNG cả B2C (Hệ thống + Trung tâm), cùng quy ước với số liệu thực tế. " : ""}Thực tế lấy từ số liệu tháng; “đúng nhịp” = % đạt không thấp hơn phần tháng đã trôi qua.
+              Mục tiêu Lead/HVM của B2C là số TỔNG (Hệ thống + Trung tâm), lập ở dòng Hệ thống — cùng quy ước với số thực tế; từng trung tâm chỉ lập ngân sách. Thực tế lấy từ số liệu tháng; “đúng nhịp” = % đạt không thấp hơn phần tháng đã trôi qua.
             </p>
           </div>
         </header>
@@ -354,24 +328,17 @@ export function PlanPanel({
                 <th className="px-3 py-2 text-left font-medium">Tình trạng</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
-              {group.funnel.map((f) => (
-                <FunnelRow key={f.field} def={f} target={targetOf(f.field)} actual={actualOf(f.field)} elapsed={elapsed} plan={headPlan} canManage={canManage} onSave={(v) => savePlan({ line: headTarget.line, period: month, sbuId: headTarget.sbuId }, PLAN_TARGET_COLUMN[f.field], v)} />
-              ))}
-            </tbody>
+            {units.filter(hasFunnelTargets).map((u) => (
+              <FunnelBlock key={u.key} unit={u} month={month} metrics={metrics} monthRows={monthRows} plans={plans} elapsed={elapsed} totalPlanned={num(planOfUnit(plans, u, month)?.plannedBudget)} canManage={canManage} savePlan={savePlan} />
+            ))}
           </table>
         </div>
-        <div className="grid gap-3 border-t bg-muted/20 px-4 py-3 text-sm sm:grid-cols-2">
-          <UnitCost label={`${leadCostName} kế hoạch → thực tế`} planned={plannedLeadCost} actual={actualLeadCost} hint={leadTarget ? `= NS KH ÷ mục tiêu ${group.funnel.find((f) => f.field === group.leadField)?.label}` : "Cần NS kế hoạch và mục tiêu đầu phễu"} />
-          <UnitCost label="CAC kế hoạch → thực tế" planned={plannedCac} actual={dTotal.cac} hint={convTarget ? `= NS KH ÷ mục tiêu ${group.conversionLabel}` : `Cần NS kế hoạch và mục tiêu ${group.conversionLabel}`} />
-        </div>
-        {leadActual == null && agg.spend != null && <p className="border-t px-4 py-2 text-xs text-muted-foreground">Chưa có số {group.funnel[0].label} thực tế của tháng — nhập ở tab Báo cáo tháng.</p>}
       </section>
 
       <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
         <header className="border-b px-4 py-3">
           <h3 className="text-sm font-semibold">Các tháng gần đây — kế hoạch ngân sách so với thực tế</h3>
-          <p className="text-xs text-muted-foreground">Bấm 1 dòng để xem kế hoạch của tháng đó.</p>
+          <p className="text-xs text-muted-foreground">Mỗi tháng chỉ so các SBU đã lập kế hoạch tháng đó. Bấm 1 dòng để xem kế hoạch của tháng đó.</p>
         </header>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -407,6 +374,90 @@ export function PlanPanel({
   );
 }
 
+/** Mục tiêu phễu của 1 SBU "chủ" (Hệ thống = tổng B2C; Ecom/VMP/VMT/B2B). Phễu lấy theo cấu hình line (lib/ads-lines.ts). */
+function FunnelBlock({
+  unit,
+  month,
+  metrics,
+  monthRows,
+  plans,
+  elapsed,
+  totalPlanned,
+  canManage,
+  savePlan,
+}: {
+  unit: AdsUnit;
+  month: string;
+  metrics: MetricRow[];
+  monthRows: MetricRow[];
+  plans: PlanRow[];
+  elapsed: number;
+  totalPlanned: number | null;
+  canManage: boolean;
+  savePlan: ReturnType<typeof usePlanSaver>;
+}) {
+  const group = groupOfLine(unit.line);
+  const isHo = unit.kind === "ho";
+  const plan = planOfUnit(plans, unit, month);
+  // Hệ thống: số thực tế cả B2C (Hệ thống + mọi trung tâm); các SBU khác: dòng của chính SBU.
+  const rows = isHo ? monthRows.filter((m) => m.line === "b2c_system" || m.line === "b2c_center") : rowsOfUnit(monthRows, unit);
+  const b2c = isHo ? b2cSummary(metrics, [month]) : null;
+  const agg = aggregate(rows);
+  const actualOf = (f: FunnelField): number | null => {
+    if (b2c && f === "leads") return b2c.leads;
+    if (b2c && f === "newStudents") return b2c.newStudents;
+    return agg[f];
+  };
+  const targetOf = (f: FunnelField): number | null => num(plan?.[PLAN_TARGET_COLUMN[f] as keyof PlanRow] as string | null | undefined);
+  const leadTarget = targetOf(group.leadField);
+  const convTarget = targetOf("newStudents");
+  const spendBase = b2c ? b2c.totalSpend : agg.spend;
+  const leadActual = actualOf(group.leadField);
+  const convActual = actualOf("newStudents");
+  const actualLeadCost = spendBase != null && leadActual ? Math.round(spendBase / leadActual) : null;
+  const actualCac = spendBase != null && convActual ? Math.round(spendBase / convActual) : null;
+  // CPL/CAC kế hoạch: NS KH ÷ mục tiêu. Hệ thống: mục tiêu là tổng B2C nên chia tổng NS KH của B2C (Hệ thống + trung tâm).
+  const b2cPlanned = isHo
+    ? plans.filter((p) => (p.line === "b2c_system" || p.line === "b2c_center") && p.period === month && p.plannedBudget != null).reduce((s, p) => s + (num(p.plannedBudget) ?? 0), 0) || null
+    : totalPlanned;
+  const plannedLeadCost = plannedUnitCost(b2cPlanned, leadTarget);
+  const plannedCac = plannedUnitCost(b2cPlanned, convTarget);
+  const leadCostName = group.leadField === "mql" ? "CP/MQL" : "CPL";
+
+  return (
+    <tbody className="divide-y border-t-2">
+      <tr className="bg-muted/40">
+        <th colSpan={5} className="px-3 py-1.5 text-left text-xs font-semibold">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: unit.color }} />
+            {isHo ? "B2C Offline — mục tiêu tổng (Hệ thống + Trung tâm)" : unit.label}
+          </span>
+        </th>
+      </tr>
+      {group.funnel.map((f) => (
+        <FunnelRow
+          key={f.field}
+          def={f}
+          target={targetOf(f.field)}
+          actual={actualOf(f.field)}
+          elapsed={elapsed}
+          plan={plan}
+          canManage={canManage}
+          onSave={(v) => savePlan({ line: unit.line, period: month, sbuId: unit.sbuId }, PLAN_TARGET_COLUMN[f.field], v)}
+        />
+      ))}
+      <tr>
+        <td colSpan={5} className="bg-muted/20 px-3 py-2">
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <UnitCost label={`${leadCostName} kế hoạch → thực tế`} planned={plannedLeadCost} actual={actualLeadCost} hint={leadTarget ? `= NS KH ÷ mục tiêu ${group.funnel.find((f) => f.field === group.leadField)?.label}` : "Cần NS kế hoạch và mục tiêu đầu phễu"} />
+            <UnitCost label="CAC kế hoạch → thực tế" planned={plannedCac} actual={actualCac} hint={convTarget ? `= NS KH ÷ mục tiêu ${group.conversionLabel}` : `Cần NS kế hoạch và mục tiêu ${group.conversionLabel}`} />
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  );
+}
+
 function FunnelRow({
   def,
   target,
@@ -425,7 +476,7 @@ function FunnelRow({
   onSave: (v: string | null) => Promise<unknown>;
 }) {
   const prog = targetProgress(def.field, target, actual, elapsed);
-  const show = (v: number | null) => (v == null ? "—" : def.kind === "money" ? fmtMoney(v) : fmt(v));
+  const showVal = (v: number | null) => (v == null ? "—" : def.kind === "money" ? fmtMoney(v) : fmt(v));
   const raw = plan?.[PLAN_TARGET_COLUMN[def.field] as keyof PlanRow] as string | null | undefined;
   const tone = prog.status === "achieved" ? "bg-emerald-500" : prog.status === "behind" ? "bg-red-500" : "bg-sky-500";
   return (
@@ -433,14 +484,14 @@ function FunnelRow({
       <td className="px-3 py-2 font-medium">{def.label}</td>
       <td className="px-3 py-2 text-right tabular-nums">
         {canManage ? (
-          <InlineNum value={raw} display={target != null ? show(target) : <span className="text-muted-foreground/50">＋ đặt mục tiêu</span>} title={`Mục tiêu ${def.label}`} onSave={onSave} />
+          <InlineNum value={raw} display={target != null ? showVal(target) : <span className="text-muted-foreground/50">＋ đặt mục tiêu</span>} title={`Mục tiêu ${def.label}`} onSave={onSave} />
         ) : target != null ? (
-          show(target)
+          showVal(target)
         ) : (
           <span className="text-muted-foreground/50">—</span>
         )}
       </td>
-      <td className="px-3 py-2 text-right tabular-nums">{actual != null ? show(actual) : <span className="text-muted-foreground/50">—</span>}</td>
+      <td className="px-3 py-2 text-right tabular-nums">{actual != null ? showVal(actual) : <span className="text-muted-foreground/50">—</span>}</td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="w-24">

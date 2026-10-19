@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { EffBadge } from "./ads-ui";
 import { heatStyle } from "./charts";
 import { fmt, fmtMoney, fmtPct, monthLabel, type AggDerived, type MetricRow, type SbuLite } from "./shared";
-import { Segmented } from "./weekly-view";
+import { Segmented } from "./ads-ui";
 
 /** Màu đèn giao thông theo mức 1-5 — LUÔN đi kèm chữ/số trong ô nên không phụ thuộc riêng màu. */
 export const TIER_CLASS: Record<1 | 2 | 3 | 4 | 5, string> = {

@@ -16,7 +16,7 @@ import { F } from "./ads-ui";
 import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle } from "./charts";
 import { ecomAggregate, ecomMonthlyTotal, ecomPeriods, makeEcomPeriod, type EcomAgg, type EcomPeriod, type EcomProductRow } from "./rollups";
 import { fmt, fmtMoney, fmtPct, num, type MetricRow } from "./shared";
-import { Segmented } from "./weekly-view";
+import { Segmented } from "./ads-ui";
 
 type Metric = "spend" | "mql" | "newStudents" | "revenue" | "cac" | "roas";
 const METRIC_LABEL: Record<Metric, string> = { spend: "Spend", mql: "MQL", newStudents: "HV", revenue: "Doanh thu", cac: "CAC", roas: "ROAS" };

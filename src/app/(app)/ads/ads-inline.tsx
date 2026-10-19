@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { upsertAdsMetricAction } from "./actions";
 import type { Line, MetricRow, PeriodType } from "./shared";
 
-type NumField = "budget" | "centerOrderBudget" | "hoTopupBudget" | "leads" | "newStudents" | "messages" | "impressions" | "revenue" | "actualRevenue" | "mql" | "deals";
+export type NumField = "budget" | "centerOrderBudget" | "hoTopupBudget" | "leads" | "newStudents" | "messages" | "impressions" | "revenue" | "actualRevenue" | "mql" | "deals";
 
 /**
  * Sửa 1 ô số liệu ngay trên bảng (như Excel): bấm ô → gõ số → Enter (xuống dòng) / Tab (sang phải) / Esc (huỷ).
@@ -37,9 +37,16 @@ function jump(from: HTMLElement, mode: "right" | "down") {
   }
   const td = from.closest("td");
   const tr = td?.parentElement;
-  const next = tr?.nextElementSibling as HTMLElement | null;
   const idx = td ? [...(tr?.children ?? [])].indexOf(td) : -1;
-  next?.children[idx]?.querySelector<HTMLElement>(`[${ATTR}]`)?.click();
+  // Bỏ qua các dòng suy ra (CPL/CAC...) không có ô sửa được cùng cột — nhảy tới ô sửa được kế tiếp bên dưới.
+  let next = tr?.nextElementSibling ?? null;
+  for (let i = 0; next && i < 12; i++, next = next.nextElementSibling) {
+    const el = next.children[idx]?.querySelector<HTMLElement>(`[${ATTR}]`);
+    if (el) {
+      el.click();
+      return;
+    }
+  }
 }
 
 export function InlineNum({

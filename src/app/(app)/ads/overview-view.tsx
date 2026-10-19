@@ -5,12 +5,12 @@ import * as React from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DeltaBadge, StatCard } from "@/components/stat-card";
 import { cn } from "@/lib/utils";
-import type { AdsGroupKey } from "@/lib/ads-lines";
 import type { AdsAlert } from "./alerts";
 import { PlanOverview } from "./plan-overview";
 import { axisProps, ChartCard, ChartTooltip, gridProps, Sparkline } from "./charts";
-import { b2cSummary, OVERVIEW_COLORS, OVERVIEW_KEYS, OVERVIEW_LABELS, overviewAgg, overviewTotal, quarterKey, quarterLabel, quarterMonths, type OverviewAgg } from "./rollups";
-import { aggregate, change, fmt, fmtMoney, fmtPct, LINE_COLORS, LINE_LABELS, LINES, monthLabel, type MetricRow, type PlanRow } from "./shared";
+import { quarterKey, quarterLabel, quarterMonths } from "./rollups";
+import { change, fmt, fmtMoney, fmtPct, monthLabel, type MetricRow, type PlanRow } from "./shared";
+import { bucketRows, indexRows, totalFunnel, unitFunnel, type AdsUnit, type Funnel } from "./units";
 
 /** Khoảng thời gian đang xem ở Tổng quan: 1 tháng hoặc 1 quý (= cộng 3 dòng THÁNG, không cộng từ tuần). */
 export interface OverviewRange {
@@ -25,30 +25,37 @@ export interface OverviewRange {
   filledMonths: number;
 }
 
+/**
+ * Tổng quan: số của TẤT CẢ SBU (Hệ thống, trung tâm, Ecom, VMP, VMT, B2B chung một danh sách) trong 1 tháng hoặc 1 quý.
+ * Chi tiết theo nhiều kỳ nằm ở các tab Báo cáo tuần / tháng / quý.
+ */
 export function OverviewView({
   metrics,
+  units,
   months,
   range,
   alerts,
   alertsMonthLabel,
-  onOpenTab,
+  onOpenAlert,
   plans,
-  onOpenGroup,
+  onOpenPlan,
 }: {
   metrics: MetricRow[];
+  units: AdsUnit[];
   /** Mọi tháng đã có số liệu. */
   months: string[];
   range: OverviewRange;
   alerts: AdsAlert[];
   alertsMonthLabel: string;
-  onOpenTab: (alert: AdsAlert) => void;
+  onOpenAlert: (alert: AdsAlert) => void;
   plans: PlanRow[];
-  /** Mở kế hoạch của 1 mảng (bấm 1 dòng ở bảng Kế hoạch so với thực tế). */
-  onOpenGroup: (g: AdsGroupKey) => void;
+  onOpenPlan: () => void;
 }) {
   const isQuarter = range.kind === "quarter";
-  const cur = overviewTotal(metrics, range.months);
-  const old = overviewTotal(metrics, range.prevMonths);
+  const idx = React.useMemo(() => indexRows(metrics), [metrics]);
+  const rowsIn = React.useCallback((ms: string[]) => bucketRows(idx, "month", ms), [idx]);
+  const cur = totalFunnel(rowsIn(range.months));
+  const old = totalFunnel(rowsIn(range.prevMonths));
 
   // Các "cột" của biểu đồ/xu hướng: tháng, hoặc quý khi xem theo quý.
   const buckets = React.useMemo(() => {
@@ -58,15 +65,11 @@ export function OverviewView({
     return qs.map((q) => ({ key: q, label: `${quarterLabel(q, true)}/${q.slice(2, 4)}`, months: quarterMonths(q) }));
   }, [months, range.months, isQuarter]);
 
-  const spendOfLine = (line: (typeof LINES)[number], ms: string[]) => aggregate(metrics.filter((m) => m.periodType === "month" && m.line === line && ms.includes(m.period))).spend;
+  const trend = buckets.map((b) => ({ period: b.key, label: b.label, spend: totalFunnel(rowsIn(b.months)).spend }));
 
-  const trend = buckets.map((b) => {
-    const row: Record<string, number | string | null> = { period: b.key, label: b.label };
-    for (const l of LINES) row[l] = spendOfLine(l, b.months);
-    return row;
-  });
-
-  const shares = LINES.map((l) => ({ line: l, label: LINE_LABELS[l], spend: spendOfLine(l, range.months) ?? 0 }))
+  const curRows = rowsIn(range.months);
+  const shares = units
+    .map((u) => ({ u, spend: unitFunnel(curRows, u).spend ?? 0 }))
     .filter((x) => x.spend > 0)
     .sort((a, b) => b.spend - a.spend);
   const shareTotal = shares.reduce((s, x) => s + x.spend, 0);
@@ -75,9 +78,8 @@ export function OverviewView({
   const warn = alerts.filter((a) => a.level === "warn").length;
 
   const sparkBuckets = buckets.slice(isQuarter ? -4 : -6);
-  const b2cCur = b2cSummary(metrics, range.months);
-  const b2cOld = b2cSummary(metrics, range.prevMonths);
   const vs = `vs ${range.prevLabel}`;
+  const prevRows = rowsIn(range.prevMonths);
 
   return (
     <div className="space-y-4">
@@ -90,7 +92,7 @@ export function OverviewView({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatCard label={`Tổng chi ${range.label}`} value={fmtMoney(cur.spend)} icon={Coins} tone="brand" delta={change(cur.spend, old.spend)} deltaGoodWhen="down" hint={vs} />
         <StatCard label="Lead / Data" value={fmt(cur.leads)} icon={Users} tone="info" delta={change(cur.leads, old.leads)} hint={vs} />
-        <StatCard label="Học viên mới" value={fmt(cur.newStudents)} icon={UserPlus} tone="ok" delta={change(cur.newStudents, old.newStudents)} hint={vs} />
+        <StatCard label="Học viên mới" value={fmt(cur.hvm)} icon={UserPlus} tone="ok" delta={change(cur.hvm, old.hvm)} hint={vs} />
         <StatCard label="CPL bình quân" value={fmtMoney(cur.cpl)} icon={Target} delta={change(cur.cpl, old.cpl)} deltaGoodWhen="down" hint="Tổng chi ÷ tổng lead" />
         <StatCard
           label="Cảnh báo"
@@ -101,14 +103,10 @@ export function OverviewView({
         />
       </div>
 
-      <PlanOverview metrics={metrics} plans={plans} range={range} onOpenGroup={onOpenGroup} />
+      <PlanOverview units={units} metrics={metrics} plans={plans} range={range} onOpenPlan={onOpenPlan} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <ChartCard
-          title={isQuarter ? "Chi tiêu theo quý, tách theo mảng" : "Chi tiêu theo tháng, tách theo mảng"}
-          description={`Cột chồng = tổng chi digital mỗi ${isQuarter ? "quý" : "tháng"}. Rê chuột để xem từng mảng.`}
-          legend={LINES.map((l) => ({ label: LINE_LABELS[l], color: LINE_COLORS[l] }))}
-        >
+        <ChartCard title={isQuarter ? "Tổng chi theo quý" : "Tổng chi theo tháng"} description={`Tổng chi digital mọi SBU mỗi ${isQuarter ? "quý" : "tháng"}. Chi tiết từng SBU ở tab Báo cáo ${isQuarter ? "quý" : "tháng"}.`}>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={trend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="28%">
@@ -116,9 +114,7 @@ export function OverviewView({
                 <XAxis dataKey="label" {...axisProps} />
                 <YAxis {...axisProps} width={56} tickFormatter={(v) => fmtMoney(v)} />
                 <Tooltip cursor={{ fill: "var(--muted)", opacity: 0.6 }} content={<ChartTooltip fmtValue={(v) => fmtMoney(v)} />} />
-                {LINES.map((l, i) => (
-                  <Bar key={l} dataKey={l} name={LINE_LABELS[l]} stackId="spend" fill={LINE_COLORS[l]} stroke="var(--card)" strokeWidth={1} radius={i === LINES.length - 1 ? [4, 4, 0, 0] : 0} />
-                ))}
+                <Bar dataKey="spend" name="Tổng chi" fill="var(--series-1)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -131,27 +127,25 @@ export function OverviewView({
             <>
               <ul className="space-y-3">
                 {shares.map((s) => (
-                  <li key={s.line}>
+                  <li key={s.u.key}>
                     <div className="mb-1 flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: LINE_COLORS[s.line] }} />
-                        {s.label}
+                      <span className="flex items-center gap-1.5 font-medium" title={s.u.label}>
+                        <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: s.u.color }} />
+                        {s.u.kind === "ho" ? "Hệ thống (HO)" : s.u.code}
                       </span>
                       <span className="tabular-nums text-muted-foreground">
                         {fmtMoney(s.spend)} · <b className="text-foreground">{Math.round((s.spend / shareTotal) * 100)}%</b>
                       </span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full" style={{ width: `${(s.spend / shares[0].spend) * 100}%`, background: LINE_COLORS[s.line] }} />
+                      <div className="h-full rounded-full" style={{ width: `${(s.spend / shares[0].spend) * 100}%`, background: s.u.color }} />
                     </div>
                   </li>
                 ))}
               </ul>
               <div className="mt-4 flex items-center justify-between border-t pt-3 text-sm font-semibold">
                 <span>Tổng cộng</span>
-                <span className="tabular-nums">
-                  {fmtMoney(shareTotal)} · 100%
-                </span>
+                <span className="tabular-nums">{fmtMoney(shareTotal)} · 100%</span>
               </div>
             </>
           )}
@@ -161,16 +155,16 @@ export function OverviewView({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
           <header className="border-b px-4 py-3">
-            <h3 className="text-sm font-semibold">So sánh các mảng — {range.label}</h3>
+            <h3 className="text-sm font-semibold">So sánh các SBU — {range.label}</h3>
             <p className="text-xs text-muted-foreground">
-              Δ so với {range.prevLabel}. Chi phí tăng tô đỏ, giảm tô xanh. B2C = Hệ thống + Trung tâm, Lead/HVM tính chung. Ecom: MQL tính là lead. Cột cuối: xu hướng chi {isQuarter ? "4 quý" : "6 tháng"}.
+              Δ so với {range.prevLabel}. Chi phí tăng tô đỏ, giảm tô xanh. Dòng Hệ thống mang Lead/HVM tổng cả B2C (CPL/CAC chia tổng ngân sách B2C); Lead/HVM của từng trung tâm là phần quy riêng cho ads trung tâm. Ecom: MQL tính là lead. Cột cuối: xu hướng chi {isQuarter ? "4 quý" : "6 tháng"}.
             </p>
           </header>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium">Mảng</th>
+                  <th className="px-3 py-2 text-left font-medium">SBU</th>
                   <th className="px-3 py-2 text-right font-medium">Chi tiêu</th>
                   <th className="px-3 py-2 text-right font-medium">Lead</th>
                   <th className="px-3 py-2 text-right font-medium">HVM</th>
@@ -181,40 +175,30 @@ export function OverviewView({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {OVERVIEW_KEYS.map((k) => {
-                  const d = overviewAgg(metrics, k, range.months);
-                  const p = overviewAgg(metrics, k, range.prevMonths);
-                  const spark = sparkBuckets.map((b) => overviewAgg(metrics, k, b.months).spend);
-                  return (
-                    <React.Fragment key={k}>
-                      <AggRow label={OVERVIEW_LABELS[k]} color={OVERVIEW_COLORS[k]} d={d} p={p} spark={spark} />
-                      {k === "b2c" && (
-                        <>
-                          <SubRow label="Hệ thống (HO chạy chung)" spend={b2cCur.systemSpend} prev={b2cOld.systemSpend} />
-                          <SubRow label="Trung tâm (NS riêng từng TT)" spend={b2cCur.centerSpend} prev={b2cOld.centerSpend} />
-                        </>
-                      )}
-                    </React.Fragment>
-                  );
+                {units.map((u) => {
+                  const d = unitFunnel(curRows, u);
+                  const p = unitFunnel(prevRows, u);
+                  const spark = sparkBuckets.map((b) => unitFunnel(rowsIn(b.months), u).spend);
+                  return <AggRow key={u.key} label={u.kind === "ho" ? "Hệ thống (HO)" : u.code} title={u.label} color={u.color} d={d} p={p} spark={spark} />;
                 })}
               </tbody>
               <tfoot className="border-t-2 bg-muted/40 font-semibold">
-                <AggRow label="Tổng cộng" d={cur} p={old} spark={sparkBuckets.map((b) => overviewTotal(metrics, b.months).spend)} total />
+                <AggRow label="Tổng cộng" d={cur} p={old} spark={sparkBuckets.map((b) => totalFunnel(rowsIn(b.months)).spend)} total />
               </tfoot>
             </table>
           </div>
         </section>
 
-        <AlertsPanel alerts={alerts} onOpenTab={onOpenTab} subtitle={`Rà theo ${alertsMonthLabel}: ngưỡng hiệu quả, biến động chi phí, giải ngân.`} />
+        <AlertsPanel alerts={alerts} onOpenTab={onOpenAlert} subtitle={`Rà theo ${alertsMonthLabel}: ngưỡng hiệu quả, biến động chi phí, giải ngân.`} />
       </div>
     </div>
   );
 }
 
-function AggRow({ label, color, d, p, spark, total }: { label: string; color?: string; d: OverviewAgg; p: OverviewAgg; spark: (number | null)[]; total?: boolean }) {
+function AggRow({ label, title, color, d, p, spark, total }: { label: string; title?: string; color?: string; d: Funnel; p: Funnel; spark: (number | null)[]; total?: boolean }) {
   return (
     <tr className={cn(!total && "hover:bg-muted/30")}>
-      <td className="px-3 py-2">
+      <td className="px-3 py-2" title={title}>
         <span className="flex items-center gap-2 font-medium">
           {color && <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />}
           {label}
@@ -222,26 +206,12 @@ function AggRow({ label, color, d, p, spark, total }: { label: string; color?: s
       </td>
       <Num value={fmtMoney(d.spend)} delta={change(d.spend, p.spend)} good="down" />
       <Num value={fmt(d.leads)} delta={change(d.leads, p.leads)} good="up" />
-      <Num value={fmt(d.newStudents)} delta={change(d.newStudents, p.newStudents)} good="up" />
+      <Num value={fmt(d.hvm)} delta={change(d.hvm, p.hvm)} good="up" />
       <Num value={fmtMoney(d.cpl)} delta={change(d.cpl, p.cpl)} good="down" />
       <Num value={fmtMoney(d.cac)} delta={change(d.cac, p.cac)} good="down" />
       <td className="px-3 py-2 text-right tabular-nums">{fmtPct(d.cvr)}</td>
       <td className="px-3 py-2">
         <Sparkline values={spark} color={color ?? "var(--foreground)"} />
-      </td>
-    </tr>
-  );
-}
-
-/** Dòng con của B2C: chỉ có ngân sách (Lead/HVM được tính chung ở dòng B2C). */
-function SubRow({ label, spend, prev }: { label: string; spend: number | null; prev: number | null }) {
-  if (spend == null) return null;
-  return (
-    <tr className="text-muted-foreground">
-      <td className="px-3 py-1.5 pl-8 text-xs">↳ {label}</td>
-      <Num value={fmtMoney(spend)} delta={change(spend, prev)} good="down" muted />
-      <td colSpan={6} className="px-3 py-1.5 text-[11px] italic">
-        Lead/HVM tính chung ở dòng B2C Offline
       </td>
     </tr>
   );

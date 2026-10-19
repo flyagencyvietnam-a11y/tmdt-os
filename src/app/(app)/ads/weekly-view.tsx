@@ -1,309 +1,89 @@
 "use client";
 
-import { CalendarPlus, Coins, MessageCircle, Target } from "lucide-react";
-import { useSessionState } from "@/lib/use-session-state";
-import { reportWeekBounds, todayVnDayStr } from "@/lib/time";
-import { SimpleSelect } from "@/components/ui/simple-select";
-import { DateInput } from "@/components/ui/date-input";
+import { CalendarPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
-import { Bar, BarChart, CartesianGrid, Line as RLine, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
-import { DeltaBadge, StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { reportWeekBounds, todayVnDayStr } from "@/lib/time";
 import { upsertAdsMetricAction } from "./actions";
-import { InlineNum, useMetricSaver } from "./ads-inline";
-import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle, Sparkline } from "./charts";
-import { aggregate, change, derive, fmt, fmtMoney, nextWeek, num, spendOf, weekLabel, weekShort, type MetricRow, type SbuLite } from "./shared";
+import { usePeriodRange } from "./period-range";
+import { PeriodReport, type Bucket, type MetricKey } from "./period-report";
+import { fmt, nextWeek, num, weekLabel, weekShort, type MetricRow } from "./shared";
+import { rowsOfUnit, type AdsUnit } from "./units";
 
-type WeekMetric = "spend" | "messages" | "costPerMess";
-const METRIC_LABEL: Record<WeekMetric, string> = { spend: "Ngân sách", messages: "Mess", costPerMess: "Chi phí / Mess" };
-const WEEK_METRICS: WeekMetric[] = ["spend", "messages", "costPerMess"];
-const PRESETS = [4, 8, 12, 0] as const;
-/** Số tuần mặc định khi chưa chọn khoảng. */
-const DEFAULT_WEEKS = 8;
+const WEEK_METRICS: MetricKey[] = ["spend", "messages", "costPerMess", "leads", "hvm", "cpl", "cac"];
+
+const weekRangeText = (from: string, to: string, n: number) => (n <= 1 ? `tuần ${weekLabel(to)}` : `${weekLabel(from).split(" – ")[0]} – ${weekLabel(to).split(" – ")[1]} (${n} tuần)`);
 
 /**
- * Chọn KHOẢNG TUẦN cho báo cáo tuần (thay cho bộ chọn tháng — tuần không thuộc về một tháng). Danh sách tuần liền mạch từ tuần có
- * số liệu đầu tiên đến tuần hiện tại (tuần chưa có số vẫn chọn/nhập được). Mặc định = 8 tuần kết thúc ở tuần có số liệu mới nhất.
- * Thẻ KPI, biểu đồ và bảng đều theo khoảng đã chọn; "tuần cuối" = tuần đến, so với tuần liền trước.
+ * Báo cáo TUẦN (chu kỳ Thứ 7 → hết Thứ 6) của MỌI SBU trong một bảng (SPEC Phụ lục D mục 26): Ngân sách · Mess · CP/Mess · Lead · HVM · CPL · CAC.
+ * Lead của Ecom = MQL. Số liệu chưa có để trống. Xem NHIỀU tuần cùng lúc (Từ – Đến) để thấy xu hướng.
  */
-export function useWeekRange(storageKey: string, dataWeeks: string[], extraWeeks: string[]) {
-  const [sel, setSel] = useSessionState<{ from: string | null; to: string | null }>(`ads:weekrange:${storageKey}`, { from: null, to: null });
-  const known = React.useMemo(() => [...new Set([...dataWeeks, ...extraWeeks])].sort(), [dataWeeks, extraWeeks]);
-  const options = React.useMemo(() => {
-    if (known.length === 0) return [] as string[];
-    const current = reportWeekBounds(todayVnDayStr())[0];
-    const end = known[known.length - 1] > current ? known[known.length - 1] : current;
-    const out = new Set(known);
-    for (let w = known[0], i = 0; w <= end && i < 400; w = nextWeek(w), i++) out.add(w);
-    return [...out].sort();
-  }, [known]);
-
-  const latestData = known[known.length - 1];
-  const to = sel.to && options.includes(sel.to) ? sel.to : (latestData ?? options[options.length - 1]);
-  const toIdx = options.indexOf(to);
-  const defaultFrom = options[Math.max(0, toIdx - (DEFAULT_WEEKS - 1))];
-  const from = sel.from && options.includes(sel.from) && sel.from <= to ? sel.from : defaultFrom;
-  const shown = options.filter((w) => w >= from && w <= to);
-  // Thẻ KPI = TỔNG cả khoảng đã chọn, so với khoảng liền trước có cùng số tuần (không đủ tuần để so thì bỏ delta).
-  const fromIdx = options.indexOf(from);
-  const prevCandidate = options.slice(Math.max(0, fromIdx - shown.length), fromIdx);
-  const prevShown = shown.length > 0 && prevCandidate.length === shown.length ? prevCandidate : [];
-  const rangeLabel = shown.length <= 1 ? `tuần ${weekLabel(to)}` : `${weekLabel(from).split(" – ")[0]} – ${weekLabel(to).split(" – ")[1]} (${shown.length} tuần)`;
-  const rangeHint = prevShown.length ? (shown.length === 1 ? "vs tuần trước" : `vs ${shown.length} tuần trước đó`) : shown.length > 1 ? `Tổng ${shown.length} tuần đã chọn` : undefined;
-
-  const presetFrom = (n: number) => (n === 0 ? options[0] : options[Math.max(0, options.indexOf(latestData ?? to) - (n - 1))]);
-  const activePreset = PRESETS.find((n) => to === (latestData ?? to) && from === presetFrom(n)) ?? -1;
-  const weekOpts = options.map((w) => ({ value: w, label: weekLabel(w) }));
-
-  const picker =
-    options.length === 0 ? null : (
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-xs">
-        <span className="px-1 text-xs font-medium text-muted-foreground">Khoảng tuần</span>
-        <Segmented
-          value={activePreset}
-          onChange={(n) => setSel({ from: presetFrom(n), to: latestData ?? to })}
-          options={PRESETS.map((n) => ({ value: n as number, label: n ? `${n} tuần gần nhất` : "Tất cả" }))}
-        />
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          Từ
-          <SimpleSelect triggerClassName="h-8 w-44" value={from} onValueChange={(v) => v && setSel({ from: v, to: v > to ? v : to })} options={weekOpts} />
-          đến
-          <SimpleSelect triggerClassName="h-8 w-44" value={to} onValueChange={(v) => v && setSel({ from: v < from ? v : from, to: v })} options={weekOpts} />
-        </div>
-        <span className="ml-auto text-xs text-muted-foreground">{shown.length} tuần · tuần tính từ Thứ 7 đến hết Thứ 6</span>
-      </div>
-    );
-
-  return { options, shown, prevShown, rangeLabel, rangeHint, latest: options.length ? to : undefined, picker };
-}
-
-interface RowDef {
-  key: string;
-  label: string;
-  /** null = dòng tổng hợp (không sửa được). */
-  target: { sbuId: string | null } | null;
-  pick: (rows: MetricRow[]) => MetricRow[];
-  level: 0 | 1;
-  strong?: boolean;
-}
-
-/**
- * Report TUẦN (sheet "Tracking Tuần") — chu kỳ Thứ 7 → hết Thứ 6, chỉ Mục 1
- * (B2C Hệ thống) + Mục 2 (B2C Trung tâm), chỉ Ngân sách + Mess (đúng phạm vi
- * dữ liệu thật, không suy ra Lead/HVM theo tuần). Xem NHIỀU tuần cùng lúc
- * để thấy xu hướng, không phải chọn từng tuần.
- */
-export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: MetricRow[]; sbus: SbuLite[]; canManage: boolean; weeks: string[] }) {
+export function WeeklyView({ metrics, units, canManage, weeks }: { metrics: MetricRow[]; units: AdsUnit[]; canManage: boolean; weeks: string[] }) {
   const router = useRouter();
-  const saveMetric = useMetricSaver();
   const [extraWeeks, setExtraWeeks] = React.useState<string[]>([]);
-  const [editing, setEditing] = React.useState<{ row: MetricRow | null; sbuId: string | null; label: string; week: string } | null>(null);
+  const [editing, setEditing] = React.useState<{ unit: AdsUnit; week: string } | null>(null);
 
-  const weekly = metrics.filter((m) => m.periodType === "week");
-  const { options: allWeeks, shown, prevShown, rangeLabel, rangeHint, latest, picker } = useWeekRange("b2c", weeks, extraWeeks);
-
-  const inWeek = (w: string) => weekly.filter((m) => m.period === w);
-  const sys = (rows: MetricRow[]) => rows.filter((m) => m.line === "b2c_system" && !m.sbuId);
-  const center = (rows: MetricRow[]) => rows.filter((m) => m.line === "b2c_center");
-  const d = (rows: MetricRow[]) => derive(aggregate(rows), "b2c_system");
-
-  const rowDefs: RowDef[] = [
-    { key: "total", label: "Tổng Mục 1 + Mục 2", target: null, pick: (r) => [...sys(r), ...center(r)], level: 0, strong: true },
-    { key: "sys", label: "Mục 1 — B2C Hệ thống", target: { sbuId: null }, pick: sys, level: 0 },
-    { key: "center", label: "Mục 2 — B2C Trung tâm", target: null, pick: center, level: 0 },
-    ...sbus.map<RowDef>((s) => ({ key: s.id, label: s.code, target: { sbuId: s.id }, pick: (r) => center(r).filter((m) => m.sbuId === s.id), level: 1 })),
-  ];
-
-  const value = (rows: MetricRow[], m: WeekMetric): number | null => {
-    const x = d(rows);
-    return m === "spend" ? x.spend : m === "messages" ? x.messages : x.costPerMess;
-  };
-
-  // Thẻ KPI cộng dồn cả khoảng tuần đang chọn (không chỉ tuần cuối).
-  const inWeeks = (ws: string[]) => ws.flatMap(inWeek);
-  const cur = shown.length ? d([...sys(inWeeks(shown)), ...center(inWeeks(shown))]) : null;
-  const prv = prevShown.length ? d([...sys(inWeeks(prevShown)), ...center(inWeeks(prevShown))]) : null;
-  const curSys = shown.length ? d(sys(inWeeks(shown))) : null;
-  const curCenter = shown.length ? d(center(inWeeks(shown))) : null;
-
-  const chartData = shown.map((w) => {
-    const all = d([...sys(inWeek(w)), ...center(inWeek(w))]);
-    return { week: w, label: weekShort(w), m1: d(sys(inWeek(w))).spend, m2: d(center(inWeek(w))).spend, messages: all.messages, cpm: all.costPerMess };
+  const range = usePeriodRange({
+    storageKey: "week",
+    dataKeys: weeks,
+    extraKeys: extraWeeks,
+    current: reportWeekBounds(todayVnDayStr())[0],
+    next: nextWeek,
+    label: weekLabel,
+    rangeText: weekRangeText,
+    unit: "tuần",
+    presets: [4, 8, 12, 0],
+    defaultCount: 8,
+    footer: "tuần tính từ Thứ 7 đến hết Thứ 6",
   });
+  const toBucket = React.useCallback((w: string): Bucket => ({ key: w, label: weekLabel(w), short: weekShort(w), periods: [w], editPeriod: w }), []);
+  const buckets = React.useMemo(() => range.shown.map(toBucket), [range.shown, toBucket]);
+  const prevBuckets = React.useMemo(() => range.prevShown.map(toBucket), [range.prevShown, toBucket]);
 
-  if (allWeeks.length === 0 || !latest) {
+  const addButton = canManage ? <AddWeekButton suggested={range.options.length ? nextWeek(range.options[range.options.length - 1]) : undefined} onAdd={(w) => setExtraWeeks((p) => [...p, w])} /> : null;
+
+  if (range.options.length === 0 || !range.latest) {
     return (
       <div className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">
         Chưa có số liệu tuần nào.
-        {canManage && (
-          <div className="mt-3">
-            <AddWeekButton onAdd={(w) => setExtraWeeks((p) => [...p, w])} suggested={undefined} />
-          </div>
-        )}
+        {addButton && <div className="mt-3 flex justify-center">{addButton}</div>}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {picker}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label={`Tổng chi ${rangeLabel}`} value={fmtMoney(cur?.spend)} icon={Coins} tone="brand" delta={change(cur?.spend, prv?.spend)} deltaGoodWhen="down" hint={rangeHint} />
-        <StatCard label="Mess" value={fmt(cur?.messages)} icon={MessageCircle} tone="info" delta={change(cur?.messages, prv?.messages)} hint={rangeHint} />
-        <StatCard label="Chi phí / Mess" value={fmtMoney(cur?.costPerMess)} icon={Target} delta={change(cur?.costPerMess, prv?.costPerMess)} deltaGoodWhen="down" hint={rangeHint} />
-        <StatCard
-          label="Mục 1 / Mục 2"
-          value={
-            <span className="text-xl">
-              {fmtMoney(curSys?.spend)} <span className="text-muted-foreground">/</span> {fmtMoney(curCenter?.spend)}
-            </span>
-          }
-          icon={Coins}
-          hint={cur?.spend ? `Trung tâm chiếm ${Math.round(((curCenter?.spend ?? 0) / cur.spend) * 100)}%` : undefined}
-        />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <ChartCard
-          className="lg:col-span-1"
-          title="Chi tiêu theo tuần"
-          description="Cột chồng: Mục 1 (Hệ thống) + Mục 2 (Trung tâm)."
-          legend={[
-            { label: "Mục 1 — Hệ thống", color: "var(--series-1)" },
-            { label: "Mục 2 — Trung tâm", color: "var(--series-2)" },
-          ]}
-        >
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="25%">
-                <CartesianGrid {...gridProps} />
-                <XAxis dataKey="label" {...axisProps} />
-                <YAxis {...axisProps} width={52} tickFormatter={(v) => fmtMoney(v)} />
-                <Tooltip cursor={{ fill: "var(--muted)", opacity: 0.6 }} content={<ChartTooltip fmtValue={(v) => fmtMoney(v)} fmtLabel={(l) => `Tuần ${weekLabel(chartData.find((c) => c.label === l)?.week ?? "")}`} />} />
-                <Bar dataKey="m1" name="Mục 1" stackId="s" fill="var(--series-1)" stroke="var(--card)" strokeWidth={1} />
-                <Bar dataKey="m2" name="Mục 2" stackId="s" fill="var(--series-2)" stroke="var(--card)" strokeWidth={1} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-        <ChartCard title="Số mess theo tuần" description="Tổng Mục 1 + Mục 2.">
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="25%">
-                <CartesianGrid {...gridProps} />
-                <XAxis dataKey="label" {...axisProps} />
-                <YAxis {...axisProps} width={40} allowDecimals={false} />
-                <Tooltip cursor={{ fill: "var(--muted)", opacity: 0.6 }} content={<ChartTooltip fmtLabel={(l) => `Tuần bắt đầu ${l}`} />} />
-                <Bar dataKey="messages" name="Mess" fill="var(--series-3)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-        <ChartCard title="Chi phí trên mỗi mess" description="Càng thấp càng tốt.">
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid {...gridProps} />
-                <XAxis dataKey="label" {...axisProps} />
-                <YAxis {...axisProps} width={52} tickFormatter={(v) => fmtMoney(v)} />
-                <Tooltip content={<ChartTooltip fmtValue={(v) => `${fmtMoney(v)}/mess`} fmtLabel={(l) => `Tuần bắt đầu ${l}`} />} />
-                <RLine type="monotone" dataKey="cpm" name="Chi phí/mess" stroke="var(--series-7)" strokeWidth={2} dot={{ r: 3, strokeWidth: 2, fill: "var(--card)" }} activeDot={{ r: 5 }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-      </div>
-
-      <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
-        <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-          <div className="mr-auto">
-            <h3 className="text-sm font-semibold">Bảng theo dõi tuần — Ngân sách · Mess · Chi phí / Mess</h3>
-            <p className="text-xs text-muted-foreground">
-              Mỗi mảng/SBU gồm 3 dòng. Ô càng đậm = càng cao trong dòng (đỏ: chi phí/mess cao là xấu). {canManage ? "Bấm ô Ngân sách/Mess để sửa ngay trên bảng (Enter xuống dòng, Tab sang tuần kế); Chi phí/Mess tự tính." : ""}
-            </p>
-          </div>
-          {canManage && <AddWeekButton suggested={allWeeks.length ? nextWeek(allWeeks[allWeeks.length - 1]) : undefined} onAdd={(w) => setExtraWeeks((p) => [...p, w])} />}
-        </header>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                <th className="sticky left-0 z-10 min-w-44 bg-muted px-3 py-2 text-left font-medium">Mảng / SBU</th>
-                <th className="sticky left-44 z-10 min-w-24 bg-muted px-2 py-2 text-left font-medium">Chỉ số</th>
-                {shown.map((w) => (
-                  <th key={w} className="whitespace-nowrap px-2 py-2 text-right font-medium" title={weekLabel(w)}>
-                    {weekLabel(w)}
-                  </th>
-                ))}
-                <th className="px-3 py-2 text-right font-medium">Δ tuần cuối</th>
-                <th className="px-3 py-2 text-left font-medium">Xu hướng</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rowDefs.flatMap((rd) =>
-                WEEK_METRICS.map((m, mi) => {
-                  const vals = shown.map((w) => value(rd.pick(inWeek(w)), m));
-                  const present = vals.filter((v): v is number => v != null);
-                  const min = Math.min(...present);
-                  const max = Math.max(...present);
-                  const last = vals[vals.length - 1];
-                  const before = vals[vals.length - 2];
-                  const first = mi === 0;
-                  const stickyBg = rd.strong ? "bg-muted" : "bg-card";
-                  return (
-                    <tr key={`${rd.key}:${m}`} className={cn("hover:bg-muted/20", first ? "border-t-2 border-border" : "border-t border-border/50", rd.strong && "bg-muted/30 font-semibold")}>
-                      <td className={cn("sticky left-0 z-10 px-3 py-1", stickyBg, rd.level === 1 && "pl-7 text-muted-foreground")}>{first ? rd.label : ""}</td>
-                      <td className={cn("sticky left-44 z-10 whitespace-nowrap px-2 py-1 text-xs font-normal text-muted-foreground", stickyBg)}>{METRIC_LABEL[m]}</td>
-                      {shown.map((w, i) => {
-                        const v = vals[i];
-                        const editable = canManage && rd.target;
-                        const src = rd.target ? rd.pick(inWeek(w))[0] ?? null : null;
-                        const inline = !!editable && m !== "costPerMess";
-                        const rawField = m === "messages" ? "messages" : rd.target?.sbuId ? "centerOrderBudget" : "budget";
-                        const display = v == null ? <span className="text-muted-foreground/50">{inline ? "＋" : "—"}</span> : m === "messages" ? fmt(v) : fmtMoney(v);
-                        return (
-                          <td
-                            key={w}
-                            style={rd.strong ? undefined : heatStyle(v, min, max, m === "costPerMess")}
-                            className={cn("group whitespace-nowrap px-2 py-1 text-right tabular-nums", editable && !inline && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
-                            onClick={() => editable && !inline && setEditing({ row: src, sbuId: rd.target!.sbuId, label: rd.label, week: w })}
-                            title={editable && !inline ? "Bấm để sửa ngân sách, mess, impression của tuần này" : src && spendOf(src) != null ? `Ngân sách ${fmt(spendOf(src))} · ${fmt(src.messages)} mess` : undefined}
-                          >
-                            {inline ? (
-                              <InlineNum
-                                value={src?.[rawField as "budget" | "centerOrderBudget" | "messages"] ?? null}
-                                display={display}
-                                title={`Sửa ${m === "messages" ? "số mess" : "ngân sách"} — ${rd.label}, tuần ${weekLabel(w)}`}
-                                onSave={(val) => saveMetric(src, { line: rd.target!.sbuId ? "b2c_center" : "b2c_system", periodType: "week", period: w, sbuId: rd.target!.sbuId }, rawField as "budget", val)}
-                              />
-                            ) : (
-                              display
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="px-3 py-1 text-right">{change(last, before) != null ? <DeltaBadge delta={change(last, before)!} goodWhen={m === "messages" ? "up" : "down"} /> : <span className="text-muted-foreground">—</span>}</td>
-                      <td className="px-3 py-1">
-                        <Sparkline values={vals} color={rd.level === 1 ? "var(--series-2)" : "var(--series-1)"} width={72} />
-                      </td>
-                    </tr>
-                  );
-                }),
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
+    <>
+      <PeriodReport
+        kind="week"
+        periodType="week"
+        metrics={metrics}
+        units={units}
+        buckets={buckets}
+        prevBuckets={prevBuckets}
+        rangeLabel={range.rangeLabel}
+        rangeHint={range.rangeHint}
+        canManage={canManage}
+        picker={range.picker}
+        metricSet={WEEK_METRICS}
+        defaultOn={WEEK_METRICS}
+        persistKey="week"
+        title="Bảng theo dõi tuần — mọi SBU"
+        description={`Mỗi SBU một khối, mỗi chỉ số một dòng. Ô càng đậm = càng cao trong dòng (đỏ: chi phí cao là xấu). ${canManage ? "Bấm ô để sửa ngay trên bảng (Enter xuống dòng, Tab sang tuần kế); CP/Mess, CPL, CAC tự tính — bấm ô CP/Mess để sửa kèm impression." : ""}`}
+        tableActions={addButton}
+        detailMetrics={["costPerMess"]}
+        onOpenDetail={(unit, b) => setEditing({ unit, week: b.editPeriod! })}
+      />
       {editing && (
         <WeeklyEditDialog
-          target={editing}
+          unit={editing.unit}
+          week={editing.week}
+          row={rowsOfUnit(metrics.filter((m) => m.periodType === "week" && m.period === editing.week), editing.unit)[0] ?? null}
           onOpenChange={(o) => !o && setEditing(null)}
           onDone={() => {
             setEditing(null);
@@ -311,24 +91,7 @@ export function WeeklyView({ metrics, sbus, canManage, weeks }: { metrics: Metri
           }}
         />
       )}
-    </div>
-  );
-}
-
-export function Segmented<T extends string | number>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
-  return (
-    <div className="flex rounded-lg bg-muted p-0.5 text-xs">
-      {options.map((o) => (
-        <button
-          key={String(o.value)}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={cn("whitespace-nowrap rounded-md px-2.5 py-1 transition-colors", o.value === value ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    </>
   );
 }
 
@@ -366,32 +129,37 @@ export function AddWeekButton({ suggested, onAdd }: { suggested?: string; onAdd:
   );
 }
 
+/** Form đầy đủ của (SBU, tuần): ngân sách, mess, impression. Lead/HVM sửa thẳng trên ô của bảng. */
 function WeeklyEditDialog({
-  target,
+  unit,
+  week,
+  row,
   onOpenChange,
   onDone,
 }: {
-  target: { row: MetricRow | null; sbuId: string | null; label: string; week: string };
+  unit: AdsUnit;
+  week: string;
+  row: MetricRow | null;
   onOpenChange: (o: boolean) => void;
   onDone: () => void;
 }) {
   const [pending, start] = React.useTransition();
-  const isSystem = !target.sbuId;
-  const [budget, setBudget] = React.useState(isSystem ? (target.row?.budget ?? "") : (target.row?.centerOrderBudget ?? ""));
-  const [messages, setMessages] = React.useState(target.row?.messages ?? "");
-  const [impressions, setImpressions] = React.useState(target.row?.impressions ?? "");
+  const isCenter = unit.kind === "center";
+  const [budget, setBudget] = React.useState(isCenter ? (row?.centerOrderBudget ?? "") : (row?.budget ?? ""));
+  const [messages, setMessages] = React.useState(row?.messages ?? "");
+  const [impressions, setImpressions] = React.useState(row?.impressions ?? "");
   const cpm = num(budget) != null && num(messages) ? Math.round(num(budget)! / num(messages)!) : null;
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{target.label}</DialogTitle>
-          <DialogDescription>Tuần {weekLabel(target.week)}</DialogDescription>
+          <DialogTitle>{unit.label}</DialogTitle>
+          <DialogDescription>Tuần {weekLabel(week)}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">{isSystem ? "Ngân sách (VND)" : "Ngân sách trung tâm order (VND)"}</Label>
+            <Label className="text-xs text-muted-foreground">{isCenter ? "Ngân sách trung tâm order (VND)" : "Ngân sách (VND)"}</Label>
             <Input type="number" inputMode="numeric" value={budget} onChange={(e) => setBudget(e.target.value)} autoFocus />
             {num(budget) != null && <p className="text-xs text-muted-foreground">= {fmt(budget)} đ</p>}
           </div>
@@ -405,7 +173,11 @@ function WeeklyEditDialog({
               <Input type="number" inputMode="numeric" value={impressions} onChange={(e) => setImpressions(e.target.value)} />
             </div>
           </div>
-          {cpm != null && <p className="rounded-md bg-muted/60 px-3 py-2 text-xs">Chi phí / mess: <b>{fmt(cpm)} đ</b></p>}
+          {cpm != null && (
+            <p className="rounded-md bg-muted/60 px-3 py-2 text-xs">
+              Chi phí / mess: <b>{fmt(cpm)} đ</b>
+            </p>
+          )}
           <div className="flex justify-end gap-2 border-t pt-3">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Huỷ
@@ -415,13 +187,12 @@ function WeeklyEditDialog({
               onClick={() =>
                 start(async () => {
                   const res = await upsertAdsMetricAction({
-                    id: target.row?.id,
-                    line: isSystem ? "b2c_system" : "b2c_center",
+                    id: row?.id,
+                    line: unit.line,
                     periodType: "week",
-                    period: target.week,
-                    sbuId: target.sbuId,
-                    budget: isSystem ? budget || null : null,
-                    centerOrderBudget: isSystem ? null : budget || null,
+                    period: week,
+                    sbuId: unit.sbuId,
+                    ...(isCenter ? { centerOrderBudget: budget || null } : { budget: budget || null }),
                     messages: messages || null,
                     impressions: impressions || null,
                   });

@@ -74,7 +74,7 @@ export const ADS_GROUPS: AdsGroupConfig[] = [
     funnel: [LEADS, conv("HVM"), MESS],
     leadField: "leads",
     conversionLabel: "HVM",
-    weeklyFields: ["messages"],
+    weeklyFields: ["messages", "leads", "newStudents"],
     expectWeekly: true,
   },
   {
@@ -86,7 +86,7 @@ export const ADS_GROUPS: AdsGroupConfig[] = [
     funnel: [MQL, conv("HVM online"), REVENUE],
     leadField: "mql",
     conversionLabel: "HVM online",
-    weeklyFields: ["mql", "newStudents", "revenue"],
+    weeklyFields: ["mql", "newStudents", "revenue", "messages"],
     expectWeekly: false,
   },
   {
@@ -98,7 +98,7 @@ export const ADS_GROUPS: AdsGroupConfig[] = [
     funnel: [LEADS, conv("HVM"), MESS, DEALS],
     leadField: "leads",
     conversionLabel: "HVM",
-    weeklyFields: ["leads", "messages", "deals"],
+    weeklyFields: ["leads", "messages", "newStudents", "deals"],
     expectWeekly: false,
   },
   {
@@ -110,7 +110,7 @@ export const ADS_GROUPS: AdsGroupConfig[] = [
     funnel: [LEADS, conv("HS đăng ký DV")],
     leadField: "leads",
     conversionLabel: "HS đăng ký DV",
-    weeklyFields: ["leads", "newStudents"],
+    weeklyFields: ["leads", "newStudents", "messages"],
     expectWeekly: false,
   },
   {
@@ -123,7 +123,7 @@ export const ADS_GROUPS: AdsGroupConfig[] = [
     funnel: [LEADS, conv("HV ghi danh thi")],
     leadField: "leads",
     conversionLabel: "HV ghi danh thi",
-    weeklyFields: ["leads", "newStudents"],
+    weeklyFields: ["leads", "newStudents", "messages"],
     expectWeekly: false,
   },
 ];
