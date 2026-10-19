@@ -8,8 +8,8 @@ import { nextQuarter, quarterKey, quarterLabel, quarterMonths } from "./rollups"
 import type { MetricRow } from "./shared";
 import type { AdsUnit } from "./units";
 
-const QUARTER_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "messages", "costPerMess", "revenue", "roas"];
-const QUARTER_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "revenue", "roas"];
+const QUARTER_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas"];
+const QUARTER_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas"];
 
 const quarterRangeText = (from: string, to: string, n: number) => (n <= 1 ? quarterLabel(to) : `${quarterLabel(from)} – ${quarterLabel(to)} (${n} quý)`);
 
@@ -60,7 +60,7 @@ export function QuarterlyView({ metrics, units, canManage, currentMonth, months,
       picker={range.picker}
       metricSet={QUARTER_METRICS}
       defaultOn={QUARTER_DEFAULT}
-      persistKey="quarter:v2"
+      persistKey="quarter:v3"
       rubric={rubric}
       title="Bảng theo dõi quý — mọi SBU"
       description="Mỗi SBU một khối, mỗi chỉ số một dòng, mỗi quý một cột. Quý đang dở (chưa đủ 3 tháng có số) được ghi rõ ở đầu cột — tổng và Δ của quý đó chưa phản ánh đủ quý."

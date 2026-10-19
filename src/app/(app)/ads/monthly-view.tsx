@@ -10,8 +10,8 @@ import { PeriodReport, type Bucket, type MetricKey } from "./period-report";
 import { monthLabel, nextMonth, type MetricRow } from "./shared";
 import { rowsOfUnit, type AdsUnit } from "./units";
 
-const MONTH_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "messages", "costPerMess", "revenue", "roas"];
-const MONTH_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "revenue", "roas"];
+const MONTH_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas"];
+const MONTH_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas"];
 
 const monthRangeText = (from: string, to: string, n: number) => (n <= 1 ? monthLabel(to) : `${monthLabel(from)} – ${monthLabel(to)} (${n} tháng)`);
 
@@ -76,7 +76,7 @@ export function MonthlyView({
         picker={range.picker}
         metricSet={MONTH_METRICS}
         defaultOn={MONTH_DEFAULT}
-        persistKey="month:v2"
+        persistKey="month:v3"
         rubric={rubric}
         title="Bảng theo dõi tháng — mọi SBU"
         description={`Mỗi SBU một khối, mỗi chỉ số một dòng, mỗi tháng một cột. ${canManage ? "Bấm ô để sửa ngay trên bảng; bấm ô CPL/CAC để mở form đầy đủ (NS P.MKT chạy thêm, feedback trung tâm…). Trung tâm: ô Ngân sách sửa phần NS Trung tâm order." : ""}`}
