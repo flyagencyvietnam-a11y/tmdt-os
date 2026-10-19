@@ -5,7 +5,7 @@ import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { sbus, users } from "@/lib/db/schema";
-import { listAdsCampaigns, listAdsMetrics, listAdsPlans, listEcomProducts, loadEffectivenessRubric } from "@/lib/services/ads";
+import { listAdsCampaigns, listAdsMetrics, listAdsPlans, loadEffectivenessRubric } from "@/lib/services/ads";
 import { PageHeader } from "@/components/shell/page-header";
 import { todayVnDayStr } from "@/lib/time";
 import { AdsView } from "./ads-view";
@@ -21,11 +21,10 @@ export default async function AdsPage() {
   const user = await requireUser();
   if (!canSee(user.role, "ads")) redirect("/khong-co-quyen");
 
-  const [metrics, allSbus, campaigns, ecomProducts, plans, rubric, allUsers] = await Promise.all([
+  const [metrics, allSbus, campaigns, plans, rubric, allUsers] = await Promise.all([
     listAdsMetrics(db),
-    db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.kind, "center")),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name, region: sbus.region }).from(sbus).where(eq(sbus.kind, "center")),
     listAdsCampaigns(db),
-    listEcomProducts(db),
     listAdsPlans(db),
     loadEffectivenessRubric(db),
     db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.active, true)),
@@ -55,7 +54,6 @@ export default async function AdsPage() {
         sbus={allSbus}
         campaigns={campaigns}
         users={allUsers}
-        ecomProducts={ecomProducts}
         plans={plans}
         canManage={isStaff(user.role)}
         currentMonth={todayVnDayStr().slice(0, 7)}

@@ -3,13 +3,10 @@
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
-import { B2cSplit } from "./b2c-split";
-import { EcomProducts } from "./ecom-products";
 import { MetricEditDialog } from "./metric-edit-dialog";
 import { usePeriodRange } from "./period-range";
 import { officialOf } from "./month-derive";
 import { PeriodReport, type Bucket, type MetricKey } from "./period-report";
-import type { EcomProductRow } from "./rollups";
 import { monthLabel, nextMonth, type MetricRow } from "./shared";
 import { rowsOfUnit, type AdsUnit } from "./units";
 
@@ -21,12 +18,11 @@ const monthRangeText = (from: string, to: string, n: number) => (n <= 1 ? monthL
 /**
  * Báo cáo THÁNG của MỌI SBU (SPEC Phụ lục D mục 26) — cùng format với báo cáo tuần, chọn KHOẢNG tháng (Từ – Đến) thay cho so sánh
  * mặc định các tháng cũ. Số tháng = số nhập chính thức; ô còn trống tự cộng từ các tuần (mục 28). Điểm hiệu quả + màu theo thang CPL/CAC của trung tâm nằm
- * ngay trong bảng chính (không còn bảng "theo trung tâm × tháng" riêng — trùng số liệu). Kèm 2 khối: ads riêng TT so với tổng B2C, Ecom theo sản phẩm.
+ * ngay trong bảng chính (không còn bảng "theo trung tâm × tháng" riêng — trùng số liệu). Bảng "ads riêng TT so với tổng B2C" và "Ecom theo sản phẩm" đã bỏ khỏi giao diện (SPEC mục 29).
  */
 export function MonthlyView({
   metrics,
   units,
-  ecomProducts,
   canManage,
   currentMonth,
   months,
@@ -34,7 +30,6 @@ export function MonthlyView({
 }: {
   metrics: MetricRow[];
   units: AdsUnit[];
-  ecomProducts: EcomProductRow[];
   canManage: boolean;
   currentMonth: string;
   /** Mọi tháng đã có số liệu tháng. */
@@ -87,12 +82,6 @@ export function MonthlyView({
         description={`Mỗi SBU một khối, mỗi chỉ số một dòng, mỗi tháng một cột. ${canManage ? "Bấm ô để sửa ngay trên bảng; bấm ô CPL/CAC để mở form đầy đủ (NS P.MKT chạy thêm, feedback trung tâm…). Trung tâm: ô Ngân sách sửa phần NS Trung tâm order." : ""}`}
         detailMetrics={["cpl", "cac"]}
         onOpenDetail={(unit, b) => setEditing({ unit, month: b.editPeriod! })}
-        below={
-          <div className="space-y-4">
-            <B2cSplit metrics={metrics} months={range.shown} />
-            <EcomProducts metrics={metrics} products={ecomProducts} canManage={canManage} month={range.to} />
-          </div>
-        }
       />
       {editing && (
         <MetricEditDialog

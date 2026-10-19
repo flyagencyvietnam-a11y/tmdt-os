@@ -927,6 +927,10 @@ Team MKT đã dùng thật và phản hồi 13 điểm; các quyết định sau
     - **Điều kiện cộng:** tháng đã qua chỉ cộng khi ĐỦ mọi tuần đã kết thúc của tháng đó có số liệu (thiếu tuần thì để trống, không cộng dở); tháng đang chạy được cộng từ các tuần đã có (tạm tính lũy kế) và ghi rõ "x/y tuần".
     - **Đánh dấu:** ô lấy từ tuần hiển thị nghiêng kèm chú thích "Tạm tính từ các tuần"; đầu cột tháng/quý có ghi chú "có số tạm tính từ tuần". Quý = cộng 3 tháng (số chính thức hoặc tạm tính). Tổng quan, Kế hoạch & tiến độ (đã dùng/dự báo), cảnh báo và báo cáo xuất đều dùng cùng quy tắc.
     - **Giới hạn đã biết:** tháng tính từ tuần có thể lệch so với tháng dương lịch tối đa 3 ngày ở hai đầu (do gán nguyên tuần), nên số chính thức từ báo cáo theo đúng tháng vẫn là số đối chiếu cuối cùng.
+29. **Bảng theo dõi SBU: nhóm theo khu vực + thu gọn/mở rộng; bỏ 2 bảng phụ ở báo cáo tháng/quý (10/2026).**
+    - **Bỏ khỏi Báo cáo tháng/quý** (giao diện): bảng "B2C Offline — ads ngân sách riêng trung tâm so với tổng" và bảng "Ecom theo sản phẩm" (+ biểu đồ/bảng kỳ của nó). Dữ liệu `ads_ecom_products` và sheet import `ECOM_SP`, cùng bảng Ecom theo sản phẩm trong báo cáo xuất, giữ nguyên.
+    - **Nhóm trung tâm theo khu vực** (lấy từ `sbus.region`, không gõ cứng): **KV1** = VTS, PVT, NKN, TBM · **KV2** = TPU, PTA, LDN, NTI, HVG · **KV3** = BPH. Trong bảng báo cáo tuần/tháng/quý mỗi khu vực có một **dòng cộng theo khu vực** (Ngân sách, Mess, Lead, HVM, CPL, CAC, CVR, điểm hiệu quả — cộng từ các trung tâm trong khu vực; CPL/CAC chỉ chia chi phí của phần đã có Lead/HVM) và nút đóng/mở danh sách trung tâm của khu vực đó. Dòng cộng khu vực chỉ xem, không sửa; trung tâm vẫn sửa số ở dòng riêng. Lead/HVM của khu vực là phần quy riêng cho ads ngân sách trung tâm (tập con của số tổng B2C ở dòng Hệ thống, không cộng thêm vào dòng Tổng cộng).
+    - **Nút "Thu gọn chỉ số / Mở rộng chỉ số":** thu gọn thì mỗi dòng (Tổng cộng, Hệ thống, khu vực, trung tâm, Ecom, VMP, VMT) chỉ còn dòng Ngân sách. Kèm nút "Thu gọn/Mở các khu vực". Trạng thái nhớ theo phiên.
 
 ---
 

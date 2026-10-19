@@ -1,6 +1,6 @@
 "use client";
 
-import { Coins, MessageCircle, Percent, Target, UserPlus, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Coins, MessageCircle, Percent, Target, UserPlus, Users } from "lucide-react";
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, Line as RLine, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DeltaBadge, StatCard } from "@/components/stat-card";
@@ -11,7 +11,7 @@ import { InlineNum, useMetricSaver, type NumField } from "./ads-inline";
 import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle, Sparkline } from "./charts";
 import { isDerivedField, isSynthetic } from "./month-derive";
 import { change, fmt, fmtMoney, fmtPct, type MetricRow, type PeriodType } from "./shared";
-import { bucketRows, indexRows, rowsOfUnit, totalFunnel, unitFunnel, type AdsUnit, type Funnel } from "./units";
+import { bucketRows, buildUnitGroups, groupFunnel, indexRows, rowsOfGroup, rowsOfUnit, totalFunnel, unitFunnel, type AdsUnit, type AdsUnitGroup, type Funnel } from "./units";
 
 /**
  * KHUNG BÁO CÁO CHUNG cho Báo cáo TUẦN / THÁNG / QUÝ (SPEC Phụ lục D mục 26). Ma trận: mỗi SBU là một khối, mỗi chỉ số một dòng,
@@ -134,10 +134,13 @@ const METRIC_FIELDS: Record<MetricKey, string[]> = {
   roas: ["revenue", "budget"],
 };
 
-function derivedCell(rows: MetricRow[], u: AdsUnit | null, m: MetricKey): boolean {
+function derivedCell(rows: MetricRow[], m: MetricKey): boolean {
   const fields = METRIC_FIELDS[m];
-  return (u ? rowsOfUnit(rows, u) : rows).some((r) => fields.some((f) => isDerivedField(r, f)));
+  return rows.some((r) => fields.some((f) => isDerivedField(r, f)));
 }
+
+/** Một "dòng khối" của bảng: Tổng cộng, 1 đơn vị (SBU), hoặc dòng cộng theo khu vực (SPEC Phụ lục D mục 29). */
+type Entity = { kind: "total" } | { kind: "unit"; u: AdsUnit; indent: boolean } | { kind: "group"; g: AdsUnitGroup; members: AdsUnit[] };
 const rowsDerived = (rows: MetricRow[]) => rows.some((r) => isSynthetic(r) || !!r.derivedFields?.length);
 
 /** Trường thô sửa được ngay trên ô cho (chỉ số, đơn vị); null = chỉ số suy ra, không sửa trực tiếp. */
@@ -217,16 +220,26 @@ export function PeriodReport({
   const saveMetric = useMetricSaver();
   const [on, setOn] = useSessionState<MetricKey[]>(`ads:metrics:${persistKey}`, defaultOn);
   const [hideEmpty, setHideEmpty] = useSessionState<boolean>(`ads:hideempty:${persistKey}`, false);
+  // Thu gọn chỉ số: mỗi dòng khối chỉ còn dòng Ngân sách. Khu vực đang thu gọn = chỉ hiện dòng cộng, ẩn danh sách trung tâm.
+  const [compact, setCompact] = useSessionState<boolean>(`ads:compact:${persistKey}`, false);
+  const [collapsed, setCollapsed] = useSessionState<string[]>(`ads:groups:${persistKey}`, []);
   const active = metricSet.filter((m) => on.includes(m));
 
+  const groups = React.useMemo(() => buildUnitGroups(units), [units]);
   const idx = React.useMemo(() => indexRows(metrics), [metrics]);
   const data = React.useMemo(
     () =>
       buckets.map((bucket) => {
         const rows = bucketRows(idx, periodType, bucket.periods);
-        return { bucket, rows, total: totalFunnel(rows), byUnit: new Map(units.map((u) => [u.key, unitFunnel(rows, u)])) };
+        return {
+          bucket,
+          rows,
+          total: totalFunnel(rows),
+          byUnit: new Map(units.map((u) => [u.key, unitFunnel(rows, u)])),
+          byGroup: new Map(groups.map((g) => [g.key, groupFunnel(rows, g.members)])),
+        };
       }),
-    [idx, buckets, units, periodType],
+    [idx, buckets, units, groups, periodType],
   );
 
   // Thẻ KPI = TỔNG cả khoảng đã chọn, so với khoảng liền trước có cùng số kỳ.
@@ -244,6 +257,29 @@ export function PeriodReport({
         return f.spend != null || f.leads != null || f.hvm != null || f.messages != null;
       }))
     : units;
+
+  const entities = React.useMemo(() => {
+    const out: Entity[] = [{ kind: "total" }];
+    const emitted = new Set<string>();
+    const visible = new Set(visibleUnits.map((u) => u.key));
+    for (const u of units) {
+      if (!visible.has(u.key)) continue;
+      if (u.kind !== "center") {
+        out.push({ kind: "unit", u, indent: false });
+        continue;
+      }
+      const g = groups.find((x) => x.members.includes(u));
+      if (!g || emitted.has(g.key)) continue;
+      emitted.add(g.key);
+      const members = g.members.filter((m) => visible.has(m.key));
+      out.push({ kind: "group", g, members });
+      if (!collapsed.includes(g.key)) for (const m of members) out.push({ kind: "unit", u: m, indent: true });
+    }
+    return out;
+  }, [units, groups, visibleUnits, collapsed]);
+
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.includes(g.key));
+  const toggleGroup = (key: string) => setCollapsed(collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key]);
 
   const sourceNote =
     kind === "quarter"
@@ -354,7 +390,7 @@ export function PeriodReport({
         </header>
 
         <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/30 px-4 py-2 text-xs">
-          <span className="mr-1 font-medium text-muted-foreground">Chỉ số hiển thị</span>
+          <span className="mr-1 font-medium text-muted-foreground">Chỉ số hiển thị{compact ? " (đang thu gọn — chỉ hiện Ngân sách)" : ""}</span>
           {metricSet.map((m) => {
             const isOn = on.includes(m);
             return (
@@ -363,13 +399,25 @@ export function PeriodReport({
                 type="button"
                 aria-pressed={isOn}
                 onClick={() => setOn(isOn ? on.filter((x) => x !== m) : [...on, m])}
-                className={cn("rounded-full border px-2.5 py-0.5 transition-colors", isOn ? "border-brand/40 bg-brand/10 font-medium text-brand" : "bg-background text-muted-foreground hover:text-foreground")}
+                className={cn("rounded-full border px-2.5 py-0.5 transition-colors", compact && "opacity-50", isOn ? "border-brand/40 bg-brand/10 font-medium text-brand" : "bg-background text-muted-foreground hover:text-foreground")}
               >
                 {METRICS[m].chip}
               </button>
             );
           })}
-          <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-muted-foreground">
+          <span className="ml-auto flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setCompact(!compact)} className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 font-medium hover:bg-muted" title={compact ? "Hiện lại các dòng chỉ số đã chọn" : "Chỉ hiện dòng Ngân sách"}>
+              {compact ? <ChevronsUpDown className="h-3.5 w-3.5" /> : <ChevronsDownUp className="h-3.5 w-3.5" />}
+              {compact ? "Mở rộng chỉ số" : "Thu gọn chỉ số"}
+            </button>
+            {groups.length > 0 && (
+              <button type="button" onClick={() => setCollapsed(allCollapsed ? [] : groups.map((g) => g.key))} className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 font-medium hover:bg-muted">
+                {allCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                {allCollapsed ? "Mở các khu vực" : "Thu gọn các khu vực"}
+              </button>
+            )}
+          </span>
+          <label className="flex cursor-pointer items-center gap-1.5 text-muted-foreground">
             <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} className="accent-brand" />
             Ẩn SBU chưa có số trong khoảng này
           </label>
@@ -393,25 +441,45 @@ export function PeriodReport({
               </tr>
             </thead>
             <tbody>
-              {[{ u: null as AdsUnit | null }, ...visibleUnits.map((u) => ({ u }))].flatMap(({ u }) => {
-                const defs = active.filter((m) => (u ? !METRICS[m].only || METRICS[m].only!(u) : METRICS[m].inTotal));
+              {entities.flatMap((e) => {
+                const u = e.kind === "unit" ? e.u : null;
+                const isTotal = e.kind === "total";
+                const isGroup = e.kind === "group";
+                const eKey = e.kind === "total" ? "total" : e.kind === "group" ? `g:${e.g.key}` : e.u.key;
+                const funnelOf = (x: (typeof data)[number]): Funnel => (e.kind === "total" ? x.total : e.kind === "group" ? x.byGroup.get(e.g.key)! : x.byUnit.get(e.u.key)!);
+                const pool: MetricKey[] = compact ? ["spend"] : active;
+                const defs = pool.filter((m) => (e.kind === "unit" ? !METRICS[m].only || METRICS[m].only!(e.u) : e.kind === "group" ? METRICS[m].inTotal || m === "score" : METRICS[m].inTotal));
+                const stickyBg = isTotal ? "bg-muted" : isGroup ? "bg-accent" : "bg-card";
                 return defs.map((m, mi) => {
                   const def = METRICS[m];
-                  const vals = data.map((x) => def.value(u ? x.byUnit.get(u.key)! : x.total, rubric));
+                  const vals = data.map((x) => def.value(funnelOf(x), rubric));
                   const present = vals.filter((v): v is number => v != null);
                   const min = Math.min(...present);
                   const max = Math.max(...present);
                   const last = vals[vals.length - 1];
                   const before = vals[vals.length - 2];
                   const first = mi === 0;
-                  const total = u == null;
-                  const stickyBg = total ? "bg-muted" : "bg-card";
                   const field = u ? editField(m, u) : null;
                   const clickable = !!u && !!onOpenDetail && !!detailMetrics?.includes(m);
+                  const isCollapsed = e.kind === "group" && collapsed.includes(e.g.key);
                   return (
-                    <tr key={`${u?.key ?? "total"}:${m}`} className={cn("hover:bg-muted/20", first ? "border-t-2 border-border" : "border-t border-border/50", total && "bg-muted/30 font-semibold")}>
+                    <tr key={`${eKey}:${m}`} className={cn("hover:bg-muted/20", first ? "border-t-2 border-border" : "border-t border-border/50", isTotal && "bg-muted/30 font-semibold", isGroup && "bg-accent/40 font-medium")}>
                       <td className={cn("sticky left-0 z-10 whitespace-nowrap px-3 py-1", stickyBg)} title={u?.label}>
-                        {first ? (total ? "Tổng cộng" : unitName(u!)) : ""}
+                        {first ? (
+                          isTotal ? (
+                            "Tổng cộng"
+                          ) : e.kind === "group" ? (
+                            <button type="button" aria-expanded={!isCollapsed} onClick={() => toggleGroup(e.g.key)} className="inline-flex items-center gap-1 font-semibold" title={isCollapsed ? "Mở danh sách trung tâm của khu vực" : "Thu gọn khu vực"}>
+                              {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              {e.g.label}
+                              <span className="text-[11px] font-normal text-muted-foreground">· {e.members.length} TT</span>
+                            </button>
+                          ) : (
+                            <span className={cn(e.indent && "pl-5 text-muted-foreground")}>{unitName(e.u)}</span>
+                          )
+                        ) : (
+                          ""
+                        )}
                       </td>
                       <td className={cn("sticky left-44 z-10 whitespace-nowrap px-2 py-1 text-xs font-normal text-muted-foreground", stickyBg)} title={m === "hvm" && u ? u.conversionLabel : undefined}>
                         {metricLabel(m, u ?? undefined)}
@@ -420,7 +488,8 @@ export function PeriodReport({
                         const v = vals[i];
                         const row = u ? (rowsOfUnit(x.rows, u)[0] ?? null) : null;
                         const editable = canManage && !!x.bucket.editPeriod && !!field;
-                        const fromWeeks = v != null && derivedCell(x.rows, u, m);
+                        const poolRows = e.kind === "unit" ? rowsOfUnit(x.rows, e.u) : e.kind === "group" ? rowsOfGroup(x.rows, e.g.members) : x.rows;
+                        const fromWeeks = v != null && derivedCell(poolRows, m);
                         const display =
                           v == null ? (
                             <span className="text-muted-foreground/50">{editable ? "＋" : "—"}</span>
@@ -430,11 +499,11 @@ export function PeriodReport({
                             show(def.kind, v)
                           );
                         const openable = canManage && !!x.bucket.editPeriod && clickable;
-                        const tier = rubric && u?.kind === "center" ? cellTier(m, v, x.byUnit.get(u.key)!, rubric) : null;
+                        const tier = rubric && (isGroup || u?.kind === "center") ? cellTier(m, v, funnelOf(x), rubric) : null;
                         return (
                           <td
                             key={x.bucket.key}
-                            style={total || tier ? undefined : heatStyle(v, min, max, def.badWhenHigh)}
+                            style={isTotal || tier ? undefined : heatStyle(v, min, max, def.badWhenHigh)}
                             className={cn("whitespace-nowrap px-2 py-1 text-right tabular-nums", tier && TIER_CLASS[tier], tier && m === "hvm" && "font-semibold", openable && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
                             onClick={openable ? () => onOpenDetail!(u!, x.bucket) : undefined}
                             title={fromWeeks ? "Tạm tính từ các tuần của tháng (chưa có số chính thức)" : m === "score" && v != null ? effectivenessLabel(v) : openable ? "Bấm để mở form đầy đủ của SBU và kỳ này" : undefined}
@@ -454,7 +523,7 @@ export function PeriodReport({
                       })}
                       <td className="px-3 py-1 text-right">{change(last, before) != null ? <DeltaBadge delta={change(last, before)!} goodWhen={def.badWhenHigh || m === "spend" ? "down" : "up"} /> : <span className="text-muted-foreground">—</span>}</td>
                       <td className="px-3 py-1">
-                        <Sparkline values={vals} color={u?.color ?? "var(--foreground)"} width={72} />
+                        <Sparkline values={vals} color={u?.color ?? (isGroup ? "var(--series-2)" : "var(--foreground)")} width={72} />
                       </td>
                     </tr>
                   );
@@ -483,7 +552,7 @@ export function PeriodReport({
         )}
         <p className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
           Dòng <b>Hệ thống</b> mang Lead/HVM <b>tổng cả B2C</b> (CPL/CAC chia tổng ngân sách Hệ thống + trung tâm); số Lead/HVM của từng trung tâm là phần quy riêng cho ads ngân sách trung tâm — một phần của số tổng, không cộng thêm. Dòng Tổng cộng lấy số tổng B2C
-          (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT. Ô trống = chưa có số.
+          (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT. Dòng khu vực (KV1/KV2/KV3) cộng các trung tâm trong khu vực — chỉ xem, là phần quy riêng cho ads trung tâm nên không cộng thêm vào Tổng cộng; bấm tên khu vực để đóng/mở danh sách trung tâm. Ô trống = chưa có số.
         </p>
       </section>
 

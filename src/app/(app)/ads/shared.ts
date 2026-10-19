@@ -34,6 +34,8 @@ export interface SbuLite {
   id: string;
   code: string;
   name: string;
+  /** Khu vực của trung tâm (KV1/KV2/KV3) — dùng để nhóm trung tâm ở bảng theo dõi. */
+  region?: string | null;
 }
 
 export interface CampaignRow {

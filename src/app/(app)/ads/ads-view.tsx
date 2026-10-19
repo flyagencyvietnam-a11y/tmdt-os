@@ -15,7 +15,7 @@ import { OverviewView, type OverviewRange } from "./overview-view";
 import { PlanPanel } from "./plan-panel";
 import { QuarterlyView } from "./quarterly-view";
 import { RequestsView } from "./requests-view";
-import { prevQuarter, quarterKey, quarterLabel, quarterMonths, type EcomProductRow } from "./rollups";
+import { prevQuarter, quarterKey, quarterLabel, quarterMonths } from "./rollups";
 import { monthLabel, nextMonth, nextWeek, prevMonth, type CampaignRow, type MetricRow, type PlanRow, type SbuLite } from "./shared";
 import { buildAdsUnits } from "./units";
 import { WeeklyView } from "./weekly-view";
@@ -41,7 +41,6 @@ export function AdsView({
   sbus,
   campaigns,
   users,
-  ecomProducts,
   plans,
   canManage,
   currentMonth,
@@ -52,7 +51,6 @@ export function AdsView({
   sbus: SbuLite[];
   campaigns: CampaignRow[];
   users: { id: string; fullName: string }[];
-  ecomProducts: EcomProductRow[];
   plans: PlanRow[];
   canManage: boolean;
   currentMonth: string;
@@ -184,7 +182,7 @@ export function AdsView({
       </TabsContent>
 
       <TabsContent value="month" className="pt-4">
-        <MonthlyView metrics={metrics} units={units} ecomProducts={ecomProducts} canManage={canManage} currentMonth={currentMonth} months={metricMonths} rubric={rubric} />
+        <MonthlyView metrics={metrics} units={units} canManage={canManage} currentMonth={currentMonth} months={metricMonths} rubric={rubric} />
       </TabsContent>
 
       <TabsContent value="quarter" className="pt-4">

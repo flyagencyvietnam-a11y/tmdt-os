@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
-import { B2cSplit } from "./b2c-split";
 import { usePeriodRange } from "./period-range";
 import { PeriodReport, type Bucket, type MetricKey } from "./period-report";
 import { nextQuarter, quarterKey, quarterLabel, quarterMonths } from "./rollups";
@@ -42,7 +41,6 @@ export function QuarterlyView({ metrics, units, canManage, currentMonth, months,
   );
   const buckets = React.useMemo(() => range.shown.map(toBucket), [range.shown, toBucket]);
   const prevBuckets = React.useMemo(() => range.prevShown.map(toBucket), [range.prevShown, toBucket]);
-  const rangeMonths = React.useMemo(() => buckets.flatMap((b) => b.periods), [buckets]);
 
   if (range.options.length === 0 || !range.latest) {
     return <div className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">Chưa có số liệu tháng nào để tổng hợp thành quý.</div>;
@@ -66,7 +64,6 @@ export function QuarterlyView({ metrics, units, canManage, currentMonth, months,
       rubric={rubric}
       title="Bảng theo dõi quý — mọi SBU"
       description="Mỗi SBU một khối, mỗi chỉ số một dòng, mỗi quý một cột. Quý đang dở (chưa đủ 3 tháng có số) được ghi rõ ở đầu cột — tổng và Δ của quý đó chưa phản ánh đủ quý."
-      below={<B2cSplit metrics={metrics} months={rangeMonths} />}
     />
   );
 }

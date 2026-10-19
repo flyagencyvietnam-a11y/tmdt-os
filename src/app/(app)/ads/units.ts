@@ -24,6 +24,8 @@ export interface AdsUnit {
   leadField: "leads" | "mql";
   /** Tên "lượt chuyển đổi" riêng của đơn vị (HVM / HVM online / HS đăng ký DV / HV ghi danh thi). */
   conversionLabel: string;
+  /** Khu vực (chỉ trung tâm): KV1 / KV2 / KV3. */
+  region?: string;
 }
 
 /** Thứ tự cố định: Hệ thống → các trung tâm → Ecom → VMP → VMT. */
@@ -41,11 +43,31 @@ export function buildAdsUnits(centers: SbuLite[]): AdsUnit[] {
   });
   return [
     { key: "ho", code: "HO", label: "Hệ thống (HO chạy chung)", kind: "ho", line: "b2c_system", sbuId: null, color: LINE_COLORS.b2c_system, leadField: "leads", conversionLabel: "HVM" },
-    ...centers.map<AdsUnit>((s) => ({ key: s.id, code: s.code, label: `${s.code} — ${s.name}`, kind: "center", line: "b2c_center", sbuId: s.id, color: LINE_COLORS.b2c_center, leadField: "leads", conversionLabel: "HVM" })),
+    ...centers.map<AdsUnit>((s) => ({ key: s.id, code: s.code, label: `${s.code} — ${s.name}`, kind: "center", line: "b2c_center", sbuId: s.id, color: LINE_COLORS.b2c_center, leadField: "leads", conversionLabel: "HVM", region: s.region ?? undefined })),
     line("ecom", "Ecom", "Ecom (TMĐT)", "HVM online", "mql"),
     line("vmp", "VMP", "VMP (Du học)", "HS đăng ký DV"),
     line("osir", "VMT", "VMT (khảo thí)", "HV ghi danh thi"),
   ];
+}
+
+/** Nhóm trung tâm theo khu vực (SPEC Phụ lục D mục 29) — lấy từ `sbus.region`, không gõ cứng danh sách. */
+export interface AdsUnitGroup {
+  key: string;
+  label: string;
+  members: AdsUnit[];
+}
+
+/** Các khu vực có trung tâm, theo thứ tự KV1 → KV2 → KV3 (trung tâm chưa có khu vực xếp nhóm "Khác" ở cuối). */
+export function buildUnitGroups(units: AdsUnit[]): AdsUnitGroup[] {
+  const by = new Map<string, AdsUnit[]>();
+  for (const u of units) {
+    if (u.kind !== "center") continue;
+    const k = u.region && /^KV\d$/.test(u.region) ? u.region : "Khác";
+    const list = by.get(k);
+    if (list) list.push(u);
+    else by.set(k, [u]);
+  }
+  return [...by.entries()].sort(([a], [b]) => (a === "Khác" ? 1 : b === "Khác" ? -1 : a.localeCompare(b))).map(([key, members]) => ({ key, label: key, members }));
 }
 
 /** Dòng số liệu thuộc đơn vị này (cùng line, và cùng SBU nếu là trung tâm). */
@@ -102,22 +124,44 @@ function build(f: { spend: number | null; messages: number | null; leads: number
 const isB2c = (r: MetricRow) => r.line === "b2c_system" || r.line === "b2c_center";
 const leadOfRow = (r: MetricRow) => (r.line === "ecom" ? num(r.mql) : num(r.leads));
 
-/** Chỉ số của 1 đơn vị trên tập dòng `bucket` (đã lọc đúng kỳ). Dòng Hệ thống: CPL/CAC chia TỔNG ngân sách B2C (HO + trung tâm). */
-export function unitFunnel(bucket: MetricRow[], u: AdsUnit): Funnel {
-  const rows = rowsOfUnit(bucket, u);
+/**
+ * Chỉ số của 1 tập dòng `rows` (đã lọc đúng đơn vị/khu vực). `costOf(period)` cho phép đổi cơ sở chi phí để chia CPL/CAC (dòng Hệ thống chia tổng NS B2C).
+ * CPL/CAC (nhiều kỳ, vd. quý): chỉ chia chi phí của những kỳ ĐÃ nhập Lead/HVM — kỳ còn trống không kéo lệch chỉ số.
+ */
+function rowsFunnel(rows: MetricRow[], leadField: "leads" | "mql", costOf?: (periodKey: string) => number | null): Funnel {
   const a = aggregate(rows);
-  const leads = u.leadField === "mql" ? a.mql : a.leads;
-  // CPL/CAC (nhiều kỳ, vd. quý): chỉ chia chi phí của những kỳ ĐÃ nhập Lead/HVM — kỳ còn trống không kéo lệch chỉ số.
+  const leads = leadField === "mql" ? a.mql : a.leads;
   let leadCost: number | null = null;
   let hvmCost: number | null = null;
   for (const p of new Set(rows.map((r) => `${r.periodType}|${r.period}`))) {
     const pa = aggregate(rows.filter((r) => `${r.periodType}|${r.period}` === p));
-    const spend = u.kind === "ho" ? aggregate(bucket.filter((r) => `${r.periodType}|${r.period}` === p && isB2c(r))).spend : pa.spend;
-    if ((u.leadField === "mql" ? pa.mql : pa.leads) != null) leadCost = sumNullable([leadCost, spend]);
+    const spend = costOf ? costOf(p) : pa.spend;
+    if ((leadField === "mql" ? pa.mql : pa.leads) != null) leadCost = sumNullable([leadCost, spend]);
     if (pa.newStudents != null) hvmCost = sumNullable([hvmCost, spend]);
   }
   const f = build({ spend: a.spend, messages: a.messages, leads, hvm: a.newStudents, revenue: a.revenue, deals: a.deals }, a.spend);
   return { ...f, cpl: ratio(leadCost, leads), cac: ratio(hvmCost, a.newStudents) };
+}
+
+/** Chỉ số của 1 đơn vị trên tập dòng `bucket` (đã lọc đúng kỳ). Dòng Hệ thống: CPL/CAC chia TỔNG ngân sách B2C (HO + trung tâm). */
+export function unitFunnel(bucket: MetricRow[], u: AdsUnit): Funnel {
+  const costOf = u.kind === "ho" ? (p: string) => aggregate(bucket.filter((r) => `${r.periodType}|${r.period}` === p && isB2c(r))).spend : undefined;
+  return rowsFunnel(rowsOfUnit(bucket, u), u.leadField, costOf);
+}
+
+/** Dòng cộng theo KHU VỰC: cộng số liệu các trung tâm thành viên (Lead/HVM là phần quy riêng cho ads trung tâm, không cộng vào Tổng cộng). */
+export function groupFunnel(bucket: MetricRow[], members: AdsUnit[]): Funnel {
+  const ids = new Set(members.map((m) => m.sbuId));
+  return rowsFunnel(
+    bucket.filter((r) => r.line === "b2c_center" && !!r.sbuId && ids.has(r.sbuId)),
+    "leads",
+  );
+}
+
+/** Các dòng của nhóm trung tâm (để kiểm tra ô tạm tính từ tuần). */
+export function rowsOfGroup(rows: MetricRow[], members: AdsUnit[]): MetricRow[] {
+  const ids = new Set(members.map((m) => m.sbuId));
+  return rows.filter((r) => r.line === "b2c_center" && !!r.sbuId && ids.has(r.sbuId));
 }
 
 /**
