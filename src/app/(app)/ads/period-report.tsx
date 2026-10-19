@@ -8,6 +8,7 @@ import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
 import { InlineNum, useMetricSaver, type NumField } from "./ads-inline";
 import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle, Sparkline } from "./charts";
+import { isDerivedField, isSynthetic } from "./month-derive";
 import { change, fmt, fmtMoney, fmtPct, type MetricRow, type PeriodType } from "./shared";
 import { bucketRows, indexRows, rowsOfUnit, totalFunnel, unitFunnel, type AdsUnit, type Funnel } from "./units";
 
@@ -83,6 +84,26 @@ function metricLabel(m: MetricKey, u?: AdsUnit): string {
       return "ROAS";
   }
 }
+
+/** Các cột thô tạo nên mỗi chỉ số — để biết ô có dùng số tạm tính từ tuần hay không (month-derive.ts). */
+const METRIC_FIELDS: Record<MetricKey, string[]> = {
+  spend: ["budget", "centerOrderBudget", "hoTopupBudget"],
+  messages: ["messages"],
+  costPerMess: ["budget", "centerOrderBudget", "hoTopupBudget", "messages"],
+  leads: ["leads", "mql"],
+  hvm: ["newStudents"],
+  cpl: ["budget", "centerOrderBudget", "hoTopupBudget", "leads", "mql"],
+  cac: ["budget", "centerOrderBudget", "hoTopupBudget", "newStudents"],
+  cvr: ["leads", "mql", "newStudents"],
+  revenue: ["revenue"],
+  roas: ["revenue", "budget"],
+};
+
+function derivedCell(rows: MetricRow[], u: AdsUnit | null, m: MetricKey): boolean {
+  const fields = METRIC_FIELDS[m];
+  return (u ? rowsOfUnit(rows, u) : rows).some((r) => fields.some((f) => isDerivedField(r, f)));
+}
+const rowsDerived = (rows: MetricRow[]) => rows.some((r) => isSynthetic(r) || !!r.derivedFields?.length);
 
 /** Trường thô sửa được ngay trên ô cho (chỉ số, đơn vị); null = chỉ số suy ra, không sửa trực tiếp. */
 function editField(m: MetricKey, u: AdsUnit): NumField | null {
@@ -188,8 +209,8 @@ export function PeriodReport({
     kind === "quarter"
       ? "Quý = cộng 3 dòng THÁNG (không nhập trực tiếp ở đây — sửa số ở Báo cáo tháng)."
       : kind === "month"
-        ? "Số tháng nhập riêng, không cộng từ các tuần."
-        : "Số tuần nhập riêng, không cộng thành tháng.";
+        ? "Số tháng ưu tiên số nhập chính thức; ô còn trống tự cộng từ các tuần (tuần tính vào tháng chiếm nhiều ngày nhất) và hiển thị nghiêng."
+        : "Mỗi tuần được tính nguyên vẹn vào tháng chiếm nhiều ngày nhất của tuần.";
 
   return (
     <div className="space-y-4">
@@ -320,10 +341,11 @@ export function PeriodReport({
               <tr>
                 <th className="sticky left-0 z-10 w-44 min-w-44 bg-muted px-3 py-2 text-left font-medium">SBU</th>
                 <th className="sticky left-44 z-10 min-w-32 bg-muted px-2 py-2 text-left font-medium">Chỉ số</th>
-                {data.map(({ bucket }) => (
+                {data.map(({ bucket, rows }) => (
                   <th key={bucket.key} className="whitespace-nowrap px-2 py-2 text-right font-medium" title={bucket.label}>
                     {bucket.label}
                     {bucket.note && <div className="text-[10px] font-normal text-amber-600 dark:text-amber-400">{bucket.note}</div>}
+                    {rowsDerived(rows) && <div className="text-[10px] font-normal text-sky-600 dark:text-sky-400">~ gồm số tạm tính từ tuần</div>}
                   </th>
                 ))}
                 <th className="px-3 py-2 text-right font-medium">Δ {unitWord} cuối</th>
@@ -358,7 +380,15 @@ export function PeriodReport({
                         const v = vals[i];
                         const row = u ? (rowsOfUnit(x.rows, u)[0] ?? null) : null;
                         const editable = canManage && !!x.bucket.editPeriod && !!field;
-                        const display = v == null ? <span className="text-muted-foreground/50">{editable ? "＋" : "—"}</span> : show(def.kind, v);
+                        const fromWeeks = v != null && derivedCell(x.rows, u, m);
+                        const display =
+                          v == null ? (
+                            <span className="text-muted-foreground/50">{editable ? "＋" : "—"}</span>
+                          ) : fromWeeks ? (
+                            <span className="italic text-sky-700 dark:text-sky-400">{show(def.kind, v)}</span>
+                          ) : (
+                            show(def.kind, v)
+                          );
                         const openable = canManage && !!x.bucket.editPeriod && clickable;
                         return (
                           <td
@@ -366,14 +396,14 @@ export function PeriodReport({
                             style={total ? undefined : heatStyle(v, min, max, def.badWhenHigh)}
                             className={cn("whitespace-nowrap px-2 py-1 text-right tabular-nums", openable && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
                             onClick={openable ? () => onOpenDetail!(u!, x.bucket) : undefined}
-                            title={openable ? "Bấm để mở form đầy đủ của SBU và kỳ này" : undefined}
+                            title={fromWeeks ? "Tạm tính từ các tuần của tháng (chưa có số chính thức)" : openable ? "Bấm để mở form đầy đủ của SBU và kỳ này" : undefined}
                           >
                             {editable ? (
                               <InlineNum
-                                value={row?.[field!]}
+                                value={row && !isDerivedField(row, field!) ? row[field!] : null}
                                 display={display}
                                 title={`Sửa ${metricLabel(m, u!)} — ${unitName(u!)}, ${x.bucket.label}${m === "spend" && u!.kind === "center" ? " (phần NS Trung tâm order)" : ""}`}
-                                onSave={(val) => saveMetric(row, { line: u!.line, periodType, period: x.bucket.editPeriod!, sbuId: u!.sbuId }, field!, val)}
+                                onSave={(val) => saveMetric(row && !isSynthetic(row) ? row : null, { line: u!.line, periodType, period: x.bucket.editPeriod!, sbuId: u!.sbuId }, field!, val)}
                               />
                             ) : (
                               display

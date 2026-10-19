@@ -35,7 +35,7 @@ export default async function AdsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Growth Performance"
-        description="Kế hoạch và hiệu quả tăng trưởng (quảng cáo/Ads) của mọi SBU trong cùng một danh sách: Hệ thống, các trung tâm, Ecom, VMP, VMT. Luồng: lập kế hoạch tháng → request → báo cáo tuần / tháng / quý (chọn khoảng kỳ bất kỳ), và so thực tế với kế hoạch. Tuần tính từ Thứ 7 đến hết Thứ 6; số tháng nhập riêng, quý = cộng 3 tháng, không cộng từ các tuần."
+        description="Kế hoạch và hiệu quả tăng trưởng (quảng cáo/Ads) của mọi SBU trong cùng một danh sách: Hệ thống, các trung tâm, Ecom, VMP, VMT. Luồng: lập kế hoạch tháng → request → báo cáo tuần / tháng / quý (chọn khoảng kỳ bất kỳ), và so thực tế với kế hoạch. Tuần tính từ Thứ 7 đến hết Thứ 6; mỗi tuần tính nguyên vẹn vào tháng chiếm nhiều ngày nhất của tuần; số tháng chính thức nhập riêng, ô còn trống tự cộng từ các tuần (hiển thị nghiêng); quý = cộng 3 tháng."
       />
       <AdsView
         metrics={metrics.map((m) => ({

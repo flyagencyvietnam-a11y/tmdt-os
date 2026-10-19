@@ -132,7 +132,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ kind: st
         name: "HUONG_DAN",
         columns: [{ header: "Hướng dẫn — import Ads HÀNG THÁNG", key: "note", width: 120 }],
         rows: [
-          { note: "Số liệu THÁNG nhập riêng, KHÔNG phải tổng các tuần cộng lại (chu kỳ tính khác nhau). month = mm/yyyy. Quý = hệ thống tự cộng 3 tháng — không nhập quý." },
+          { note: "Số THÁNG nhập ở đây là số chính thức (theo đúng tháng dương lịch) và luôn được ưu tiên. Ô để trống thì hệ thống tự cộng từ các tuần (mỗi tuần tính nguyên vẹn vào tháng chiếm nhiều ngày nhất của tuần). month = mm/yyyy. Quý = hệ thống tự cộng 3 tháng — không nhập quý." },
           { note: "Sheet THANG — mỗi dòng 1 (tháng, SBU). Cột sbu: HO | mã trung tâm | ECOM | VMP | VMT (xem DANH_MUC)." },
           { note: "B2C: dòng HO = NS Hệ thống (budget) + Lead/HVM TỔNG của cả Hệ thống + Trung tâm (không tách). Dòng trung tâm = center_order_budget (TT chịu) + ho_topup_budget (P.MKT chạy thêm) + Lead/HVM quy riêng cho ads ngân sách TT (từ T7/2026) — là một PHẦN của số tổng, không cộng thêm." },
           { note: "Cột chỉ dùng cho: center_order_budget / ho_topup_budget / center_feedback / mkt_assessment → trung tâm; mql / revenue / actual_revenue → Ecom (Ecom dùng mql thay cho leads); budget → mọi SBU trừ trung tâm." },

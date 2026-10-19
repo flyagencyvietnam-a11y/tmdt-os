@@ -13,6 +13,7 @@ import { overdueSqlFragment } from "@/lib/services/tasks";
 import { todayVnDayStr } from "@/lib/time";
 import { ecomAggregate, prevQuarter, quarterKey, quarterLabel, quarterMonths, type EcomProductRow } from "@/app/(app)/ads/rollups";
 import { aggregate, derive, monthLabel, num, prevMonth, type MetricRow } from "@/app/(app)/ads/shared";
+import { withDerivedMonths } from "@/app/(app)/ads/month-derive";
 import { bucketRows, buildAdsUnits, indexRows, rowsOfUnit, totalFunnel, unitFunnel, type AdsUnit } from "@/app/(app)/ads/units";
 import { BRAND_COLORS, SERIES_COLORS, type ReportDoc, type ReportKind, type ReportSection, type TableSection } from "./types";
 
@@ -288,7 +289,8 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
     db.select().from(adsCampaigns).where(ne(adsCampaigns.line, "b2b")),
     db.select({ id: users.id, fullName: users.fullName }).from(users),
   ]);
-  const metrics = metricsRaw as unknown as MetricRow[];
+  // Số tháng chưa có số chính thức được tự cộng từ các tuần (SPEC Phụ lục D mục 28) — cùng quy tắc với màn hình.
+  const metrics = withDerivedMonths(metricsRaw as unknown as MetricRow[], todayVnDayStr());
   const units = buildAdsUnits(centers);
   const idx = indexRows(metrics);
   const rowsIn = (ms: string[]) => bucketRows(idx, "month", ms);
@@ -510,7 +512,7 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
     sections,
     footnotes: [
       "CPL = Chi tiêu ÷ Lead; CAC = Chi tiêu ÷ Học viên mới; CVR = Học viên mới ÷ Lead — chỉ chia chi phí của phần đã có số Lead/HVM. Điểm hiệu quả theo ngưỡng CPL/CAC cấu hình ở Cài đặt.",
-      "B2C Offline: Lead/HVM tổng nằm ở dòng Hệ thống (tính chung Hệ thống + trung tâm); số quy riêng từng trung tâm là tập con của số tổng. Quý = cộng 3 dòng tháng.",
+      "B2C Offline: Lead/HVM tổng nằm ở dòng Hệ thống (tính chung Hệ thống + trung tâm); số quy riêng từng trung tâm là tập con của số tổng. Quý = cộng 3 dòng tháng. Ô tháng chưa có số chính thức được tạm tính từ các tuần (mỗi tuần tính nguyên vẹn vào tháng chiếm nhiều ngày nhất).",
     ],
   };
 }

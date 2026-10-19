@@ -22,7 +22,7 @@ const COPY: Record<AdsImportKind, { title: string; desc: string }> = {
   },
   month: {
     title: "Nhập Excel — Hàng tháng",
-    desc: "Số liệu tháng của từng SBU (Hệ thống = tổng B2C, từng trung tâm, Ecom, VMT/OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập riêng, không cộng từ tuần.",
+    desc: "Số liệu tháng của từng SBU (Hệ thống = tổng B2C, từng trung tâm, Ecom, VMT/OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập ở đây là số chính thức; ô để trống sẽ tự cộng từ các tuần.",
   },
   request: {
     title: "Nhập Excel — Theo request",

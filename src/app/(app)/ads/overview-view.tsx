@@ -12,7 +12,7 @@ import { quarterKey, quarterLabel, quarterMonths } from "./rollups";
 import { change, fmt, fmtMoney, fmtPct, monthLabel, type MetricRow, type PlanRow } from "./shared";
 import { bucketRows, indexRows, totalFunnel, unitFunnel, type AdsUnit, type Funnel } from "./units";
 
-/** Khoảng thời gian đang xem ở Tổng quan: 1 tháng hoặc 1 quý (= cộng 3 dòng THÁNG, không cộng từ tuần). */
+/** Khoảng thời gian đang xem ở Tổng quan: 1 tháng hoặc 1 quý (= cộng 3 dòng THÁNG; số tháng thiếu đã tự cộng từ tuần). */
 export interface OverviewRange {
   kind: "month" | "quarter";
   key: string;
@@ -79,6 +79,11 @@ export function OverviewView({
 
   const sparkBuckets = buckets.slice(isQuarter ? -4 : -6);
   const vs = `vs ${range.prevLabel}`;
+  // Tháng đang chạy / chưa đủ tuần: số tự cộng từ các tuần là LŨY KẾ — nhắc để không đọc % thay đổi như cả tháng.
+  const partial = [...new Set(curRows.filter((r) => r.derivedWeeks).map((r) => r.derivedWeeks!))].filter((w) => {
+    const [a, b] = w.split("/").map(Number);
+    return a < b;
+  });
   const prevRows = rowsIn(range.prevMonths);
 
   return (
@@ -86,6 +91,12 @@ export function OverviewView({
       {isQuarter && range.filledMonths < 3 && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
           {range.label} mới có số liệu {range.filledMonths}/3 tháng — tổng và % thay đổi so với {range.prevLabel} chưa phản ánh đủ quý.
+        </div>
+      )}
+
+      {partial.length > 0 && (
+        <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-800 dark:text-sky-300">
+          {range.label} có số <b>tạm tính lũy kế từ các tuần</b> (đã có {partial.join(", ")} tuần của tháng) — chưa phản ánh đủ tháng, nên % thay đổi so với {range.prevLabel} chưa so sánh được ngang bằng.
         </div>
       )}
 

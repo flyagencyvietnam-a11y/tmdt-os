@@ -14,8 +14,8 @@ const QUARTER_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cv
 const quarterRangeText = (from: string, to: string, n: number) => (n <= 1 ? quarterLabel(to) : `${quarterLabel(from)} – ${quarterLabel(to)} (${n} quý)`);
 
 /**
- * Báo cáo QUÝ của MỌI SBU (SPEC Phụ lục D mục 26): mỗi cột là 1 quý = CỘNG 3 dòng THÁNG (số tháng nhập riêng, không bao giờ cộng
- * từ tuần). Chỉ xem — muốn sửa số, vào Báo cáo tháng. Quý đang dở được đánh dấu "x/3 tháng" để không đọc nhầm là cả quý.
+ * Báo cáo QUÝ của MỌI SBU (SPEC Phụ lục D mục 26): mỗi cột là 1 quý = CỘNG 3 dòng THÁNG (số tháng chính thức, ô trống thì tự cộng
+ * từ tuần — mục 28). Chỉ xem — muốn sửa số, vào Báo cáo tháng. Quý đang dở được đánh dấu "x/3 tháng" để không đọc nhầm là cả quý.
  */
 export function QuarterlyView({ metrics, units, canManage, currentMonth, months }: { metrics: MetricRow[]; units: AdsUnit[]; canManage: boolean; currentMonth: string; months: string[] }) {
   const dataQuarters = React.useMemo(() => [...new Set(months.map(quarterKey))].sort(), [months]);

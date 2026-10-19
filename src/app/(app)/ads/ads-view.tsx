@@ -8,6 +8,7 @@ import { todayVnDayStr } from "@/lib/time";
 import { useSessionState } from "@/lib/use-session-state";
 import { computeAdsAlerts, type AdsAlert } from "./alerts";
 import { MonthPicker, QuarterPicker, Segmented } from "./ads-ui";
+import { withDerivedMonths } from "./month-derive";
 import { AdsImportButton } from "./import-dialog";
 import { MonthlyView } from "./monthly-view";
 import { OverviewView, type OverviewRange } from "./overview-view";
@@ -36,7 +37,7 @@ const TABS: { value: Tab; label: string }[] = [
  * giữa Tổng quan và Kế hoạch; ba báo cáo có bộ chọn KHOẢNG kỳ riêng ngay trong view.
  */
 export function AdsView({
-  metrics,
+  metrics: officialMetrics,
   sbus,
   campaigns,
   users,
@@ -60,6 +61,8 @@ export function AdsView({
   rubric: EffectivenessRubric;
 }) {
   const units = React.useMemo(() => buildAdsUnits(sbus), [sbus]);
+  // Số tháng = số chính thức; ô nào chưa có thì tự cộng từ các tuần (tuần gán cho tháng chiếm nhiều ngày nhất) — SPEC Phụ lục D mục 28.
+  const metrics = React.useMemo(() => withDerivedMonths(officialMetrics, todayVnDayStr()), [officialMetrics]);
 
   // Danh sách tháng chọn được: tháng có số liệu/kế hoạch + tháng hiện tại + tháng sau (để lập kế hoạch trước khi tháng bắt đầu).
   const months = React.useMemo(
@@ -73,7 +76,7 @@ export function AdsView({
   const quarters = React.useMemo(() => [...new Set(months.map(quarterKey))].sort(), [months]);
   const [quarter, setQuarter] = useSessionState<string>("ads:quarter", quarterKey(currentMonth));
 
-  // Tổng quan: 1 tháng hoặc 1 quý (cộng 3 dòng tháng — không bao giờ cộng từ dữ liệu tuần).
+  // Tổng quan: 1 tháng hoặc 1 quý (cộng 3 dòng tháng; dòng tháng thiếu thì đã được bổ sung từ các tuần ở trên).
   const range: OverviewRange = React.useMemo(() => {
     if (mode === "month") {
       const prev = prevMonth(month);

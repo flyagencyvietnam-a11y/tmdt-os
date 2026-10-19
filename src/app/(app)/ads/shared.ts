@@ -24,6 +24,10 @@ export interface MetricRow {
   centerFeedback?: string | null;
   mktAssessment?: string | null;
   notes?: string | null;
+  /** Các trường của dòng THÁNG này đang lấy từ tổng các tuần (không phải số nhập chính thức) — xem month-derive.ts. */
+  derivedFields?: string[];
+  /** Số tuần đã có / số tuần của tháng, vd. "3/5". */
+  derivedWeeks?: string;
 }
 
 export interface SbuLite {

@@ -8,6 +8,7 @@ import { CenterTrendTable } from "./center-trend";
 import { EcomProducts } from "./ecom-products";
 import { MetricEditDialog } from "./metric-edit-dialog";
 import { usePeriodRange } from "./period-range";
+import { officialOf } from "./month-derive";
 import { PeriodReport, type Bucket, type MetricKey } from "./period-report";
 import type { EcomProductRow } from "./rollups";
 import { aggregate, derive, monthLabel, nextMonth, type MetricRow, type SbuLite } from "./shared";
@@ -20,7 +21,7 @@ const monthRangeText = (from: string, to: string, n: number) => (n <= 1 ? monthL
 
 /**
  * Báo cáo THÁNG của MỌI SBU (SPEC Phụ lục D mục 26) — cùng format với báo cáo tuần, chọn KHOẢNG tháng (Từ – Đến) thay cho so sánh
- * mặc định các tháng cũ. Số tháng nhập riêng, không cộng từ tuần. Kèm 3 khối chuyên sâu: ads riêng TT so với tổng B2C, hiệu quả theo
+ * mặc định các tháng cũ. Số tháng = số nhập chính thức; ô còn trống tự cộng từ các tuần (mục 28). Kèm 3 khối chuyên sâu: ads riêng TT so với tổng B2C, hiệu quả theo
  * trung tâm × tháng (thang điểm CPL/CAC), Ecom theo sản phẩm.
  */
 export function MonthlyView({
@@ -56,7 +57,7 @@ export function MonthlyView({
     unit: "tháng",
     presets: [3, 6, 12, 0],
     defaultCount: 6,
-    footer: "số tháng nhập riêng, không cộng từ tuần",
+    footer: "ô chưa nhập tự cộng từ các tuần",
   });
   const toBucket = React.useCallback((m: string): Bucket => ({ key: m, label: monthLabel(m), short: monthLabel(m, true), periods: [m], editPeriod: m }), []);
   const buckets = React.useMemo(() => range.shown.map(toBucket), [range.shown, toBucket]);
@@ -101,7 +102,7 @@ export function MonthlyView({
       {editing && (
         <MetricEditDialog
           key={`${editing.unit.key}-${editing.month}`}
-          target={{ row: rowsOfUnit(monthly.filter((m) => m.period === editing.month), editing.unit)[0] ?? null, sbuId: editing.unit.sbuId, label: editing.unit.label }}
+          target={{ row: officialOf(rowsOfUnit(monthly.filter((m) => m.period === editing.month), editing.unit)[0]), sbuId: editing.unit.sbuId, label: editing.unit.label }}
           line={editing.unit.line}
           period={editing.month}
           rubric={rubric}
