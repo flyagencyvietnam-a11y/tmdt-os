@@ -4,6 +4,7 @@ import { Coins, MessageCircle, Percent, Target, UserPlus, Users } from "lucide-r
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, Line as RLine, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DeltaBadge, StatCard } from "@/components/stat-card";
+import { effectivenessLabel, tierScore, type EffectivenessRubric } from "@/lib/ads-metrics";
 import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
 import { InlineNum, useMetricSaver, type NumField } from "./ads-inline";
@@ -32,13 +33,13 @@ export interface Bucket {
   note?: string;
 }
 
-export type MetricKey = "spend" | "messages" | "costPerMess" | "leads" | "hvm" | "cpl" | "cac" | "cvr" | "revenue" | "roas";
+export type MetricKey = "spend" | "messages" | "costPerMess" | "leads" | "hvm" | "cpl" | "cac" | "cvr" | "score" | "revenue" | "roas";
 
 interface MetricDef {
   chip: string;
-  kind: "money" | "count" | "pct" | "x";
+  kind: "money" | "count" | "pct" | "x" | "score";
   badWhenHigh?: boolean;
-  value: (f: Funnel) => number | null;
+  value: (f: Funnel, rubric?: EffectivenessRubric) => number | null;
   /** Chỉ hiện cho đơn vị này (vd. Doanh thu chỉ Ecom). */
   only?: (u: AdsUnit) => boolean;
   /** Có ở dòng Tổng cộng. */
@@ -54,9 +55,40 @@ export const METRICS: Record<MetricKey, MetricDef> = {
   cpl: { chip: "CPL", kind: "money", badWhenHigh: true, value: (f) => f.cpl, inTotal: true },
   cac: { chip: "CAC", kind: "money", badWhenHigh: true, value: (f) => f.cac, inTotal: true },
   cvr: { chip: "CVR", kind: "pct", value: (f) => f.cvr, inTotal: true },
+  // Điểm hiệu quả theo thang CPL/CAC ở Cài đặt — chỉ cho trung tâm (thang được xây cho ads trung tâm B2C).
+  score: { chip: "Điểm hiệu quả", kind: "score", value: (f, rubric) => (rubric ? effScore(f, rubric) : null), only: (u) => u.kind === "center", inTotal: false },
   revenue: { chip: "Doanh thu (Ecom)", kind: "money", value: (f) => f.revenue, only: (u) => u.line === "ecom", inTotal: false },
   roas: { chip: "ROAS (Ecom)", kind: "x", value: (f) => f.roas, only: (u) => u.line === "ecom", inTotal: false },
 };
+
+/** Điểm hiệu quả /5 của 1 tập số liệu — đúng công thức `computeAdsDerived` (lib/ads-metrics.ts): HVM = 0 → 1–2 điểm, còn lại trung bình mức CPL và mức CAC. */
+function effScore(f: Funnel, rubric: EffectivenessRubric): number | null {
+  if (f.leads == null || f.hvm == null || f.cpl == null) return null;
+  if (f.hvm === 0) return f.cpl > rubric.noConversionCplThreshold ? 1 : 2;
+  if (f.cac == null) return null;
+  return Math.round(((tierScore(f.cpl, rubric.cplTiers) + tierScore(f.cac, rubric.cacTiers)) / 2) * 10) / 10;
+}
+
+/** Màu đèn giao thông 5 mức — LUÔN kèm chữ/số trong ô nên không phụ thuộc riêng màu. */
+export const TIER_CLASS: Record<1 | 2 | 3 | 4 | 5, string> = {
+  5: "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300",
+  4: "bg-teal-500/15 text-teal-800 dark:text-teal-300",
+  3: "bg-amber-500/20 text-amber-800 dark:text-amber-300",
+  2: "bg-orange-500/25 text-orange-800 dark:text-orange-300",
+  1: "bg-red-500/25 text-red-800 dark:text-red-300",
+};
+const TIER_NAME: Record<1 | 2 | 3 | 4 | 5, string> = { 5: "Rất hiệu quả", 4: "Hiệu quả", 3: "Chấp nhận được", 2: "Cần tối ưu", 1: "Kém hiệu quả" };
+type Tier = 1 | 2 | 3 | 4 | 5;
+
+/** Mức màu của 1 ô trung tâm theo luật cố định (không phải min–max): CPL/CAC/Điểm theo thang Cài đặt; đã chi mà HVM = 0 → đỏ. */
+function cellTier(m: MetricKey, v: number | null, f: Funnel, rubric: EffectivenessRubric): Tier | null {
+  if (m === "hvm") return v === 0 && (f.spend ?? 0) > 0 ? 1 : null;
+  if (v == null) return null;
+  if (m === "cpl") return tierScore(v, rubric.cplTiers);
+  if (m === "cac") return tierScore(v, rubric.cacTiers);
+  if (m === "score") return Math.min(5, Math.max(1, Math.round(v))) as Tier;
+  return null;
+}
 
 /** Nhãn dòng chỉ số theo đơn vị. Dòng Hệ thống mang số TỔNG B2C nên ghi rõ. */
 function metricLabel(m: MetricKey, u?: AdsUnit): string {
@@ -78,6 +110,8 @@ function metricLabel(m: MetricKey, u?: AdsUnit): string {
       return ho ? "CAC · tổng B2C" : "CAC";
     case "cvr":
       return "CVR";
+    case "score":
+      return "Điểm hiệu quả /5";
     case "revenue":
       return "Doanh thu";
     case "roas":
@@ -95,6 +129,7 @@ const METRIC_FIELDS: Record<MetricKey, string[]> = {
   cpl: ["budget", "centerOrderBudget", "hoTopupBudget", "leads", "mql"],
   cac: ["budget", "centerOrderBudget", "hoTopupBudget", "newStudents"],
   cvr: ["leads", "mql", "newStudents"],
+  score: ["budget", "centerOrderBudget", "hoTopupBudget", "leads", "mql", "newStudents"],
   revenue: ["revenue"],
   roas: ["revenue", "budget"],
 };
@@ -125,8 +160,10 @@ function editField(m: MetricKey, u: AdsUnit): NumField | null {
 }
 
 function show(kind: MetricDef["kind"], v: number): string {
-  return kind === "money" ? fmtMoney(v) : kind === "pct" ? fmtPct(v) : kind === "x" ? `${v.toFixed(2)}x` : fmt(v);
+  return kind === "money" ? fmtMoney(v) : kind === "pct" ? fmtPct(v) : kind === "x" ? `${v.toFixed(2)}x` : kind === "score" ? v.toFixed(1) : fmt(v);
 }
+
+const kN = (n: number) => `${Math.round(n / 1000).toLocaleString("vi-VN")}N`;
 
 const unitName = (u: AdsUnit) => (u.kind === "ho" ? "Hệ thống (HO)" : u.code);
 
@@ -147,6 +184,7 @@ export function PeriodReport({
   title,
   description,
   tableActions,
+  rubric,
   detailMetrics,
   onOpenDetail,
   below,
@@ -168,6 +206,8 @@ export function PeriodReport({
   title: string;
   description: React.ReactNode;
   tableActions?: React.ReactNode;
+  /** Thang hiệu quả CPL/CAC (Cài đặt): có thì dòng trung tâm tô màu theo thang và có dòng Điểm hiệu quả. */
+  rubric?: EffectivenessRubric;
   /** Các chỉ số suy ra mà bấm vào ô sẽ mở form đầy đủ của (SBU, kỳ). */
   detailMetrics?: MetricKey[];
   onOpenDetail?: (u: AdsUnit, bucket: Bucket) => void;
@@ -357,7 +397,7 @@ export function PeriodReport({
                 const defs = active.filter((m) => (u ? !METRICS[m].only || METRICS[m].only!(u) : METRICS[m].inTotal));
                 return defs.map((m, mi) => {
                   const def = METRICS[m];
-                  const vals = data.map((x) => def.value(u ? x.byUnit.get(u.key)! : x.total));
+                  const vals = data.map((x) => def.value(u ? x.byUnit.get(u.key)! : x.total, rubric));
                   const present = vals.filter((v): v is number => v != null);
                   const min = Math.min(...present);
                   const max = Math.max(...present);
@@ -390,13 +430,14 @@ export function PeriodReport({
                             show(def.kind, v)
                           );
                         const openable = canManage && !!x.bucket.editPeriod && clickable;
+                        const tier = rubric && u?.kind === "center" ? cellTier(m, v, x.byUnit.get(u.key)!, rubric) : null;
                         return (
                           <td
                             key={x.bucket.key}
-                            style={total ? undefined : heatStyle(v, min, max, def.badWhenHigh)}
-                            className={cn("whitespace-nowrap px-2 py-1 text-right tabular-nums", openable && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
+                            style={total || tier ? undefined : heatStyle(v, min, max, def.badWhenHigh)}
+                            className={cn("whitespace-nowrap px-2 py-1 text-right tabular-nums", tier && TIER_CLASS[tier], tier && m === "hvm" && "font-semibold", openable && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
                             onClick={openable ? () => onOpenDetail!(u!, x.bucket) : undefined}
-                            title={fromWeeks ? "Tạm tính từ các tuần của tháng (chưa có số chính thức)" : openable ? "Bấm để mở form đầy đủ của SBU và kỳ này" : undefined}
+                            title={fromWeeks ? "Tạm tính từ các tuần của tháng (chưa có số chính thức)" : m === "score" && v != null ? effectivenessLabel(v) : openable ? "Bấm để mở form đầy đủ của SBU và kỳ này" : undefined}
                           >
                             {editable ? (
                               <InlineNum
@@ -422,6 +463,24 @@ export function PeriodReport({
             </tbody>
           </table>
         </div>
+        {rubric && active.some((m) => m === "cpl" || m === "cac" || m === "score" || m === "hvm") && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">Màu dòng trung tâm</span>
+            {([5, 4, 3, 2, 1] as const).map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5">
+                <span className={cn("h-3 w-5 rounded-sm", TIER_CLASS[t].split(" ")[0])} />
+                {TIER_NAME[t]}
+              </span>
+            ))}
+            <span>
+              CPL: ≤{kN(rubric.cplTiers[0])} · ≤{kN(rubric.cplTiers[1])} · ≤{kN(rubric.cplTiers[2])} · ≤{kN(rubric.cplTiers[3])} · cao hơn
+            </span>
+            <span>
+              CAC: ≤{kN(rubric.cacTiers[0])} · ≤{kN(rubric.cacTiers[1])} · ≤{kN(rubric.cacTiers[2])} · ≤{kN(rubric.cacTiers[3])} · cao hơn
+            </span>
+            <span>HVM = 0 khi đã chi: đỏ</span>
+          </div>
+        )}
         <p className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
           Dòng <b>Hệ thống</b> mang Lead/HVM <b>tổng cả B2C</b> (CPL/CAC chia tổng ngân sách Hệ thống + trung tâm); số Lead/HVM của từng trung tâm là phần quy riêng cho ads ngân sách trung tâm — một phần của số tổng, không cộng thêm. Dòng Tổng cộng lấy số tổng B2C
           (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT. Ô trống = chưa có số.

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { EffectivenessRubric } from "@/lib/ads-metrics";
 import { B2cSplit } from "./b2c-split";
 import { usePeriodRange } from "./period-range";
 import { PeriodReport, type Bucket, type MetricKey } from "./period-report";
@@ -8,8 +9,8 @@ import { nextQuarter, quarterKey, quarterLabel, quarterMonths } from "./rollups"
 import type { MetricRow } from "./shared";
 import type { AdsUnit } from "./units";
 
-const QUARTER_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas"];
-const QUARTER_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas"];
+const QUARTER_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "messages", "costPerMess", "revenue", "roas"];
+const QUARTER_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "revenue", "roas"];
 
 const quarterRangeText = (from: string, to: string, n: number) => (n <= 1 ? quarterLabel(to) : `${quarterLabel(from)} – ${quarterLabel(to)} (${n} quý)`);
 
@@ -17,7 +18,7 @@ const quarterRangeText = (from: string, to: string, n: number) => (n <= 1 ? quar
  * Báo cáo QUÝ của MỌI SBU (SPEC Phụ lục D mục 26): mỗi cột là 1 quý = CỘNG 3 dòng THÁNG (số tháng chính thức, ô trống thì tự cộng
  * từ tuần — mục 28). Chỉ xem — muốn sửa số, vào Báo cáo tháng. Quý đang dở được đánh dấu "x/3 tháng" để không đọc nhầm là cả quý.
  */
-export function QuarterlyView({ metrics, units, canManage, currentMonth, months }: { metrics: MetricRow[]; units: AdsUnit[]; canManage: boolean; currentMonth: string; months: string[] }) {
+export function QuarterlyView({ metrics, units, canManage, currentMonth, months, rubric }: { metrics: MetricRow[]; units: AdsUnit[]; canManage: boolean; currentMonth: string; months: string[]; rubric: EffectivenessRubric }) {
   const dataQuarters = React.useMemo(() => [...new Set(months.map(quarterKey))].sort(), [months]);
   const range = usePeriodRange({
     storageKey: "quarter",
@@ -61,7 +62,8 @@ export function QuarterlyView({ metrics, units, canManage, currentMonth, months 
       picker={range.picker}
       metricSet={QUARTER_METRICS}
       defaultOn={QUARTER_DEFAULT}
-      persistKey="quarter"
+      persistKey="quarter:v2"
+      rubric={rubric}
       title="Bảng theo dõi quý — mọi SBU"
       description="Mỗi SBU một khối, mỗi chỉ số một dòng, mỗi quý một cột. Quý đang dở (chưa đủ 3 tháng có số) được ghi rõ ở đầu cột — tổng và Δ của quý đó chưa phản ánh đủ quý."
       below={<B2cSplit metrics={metrics} months={rangeMonths} />}

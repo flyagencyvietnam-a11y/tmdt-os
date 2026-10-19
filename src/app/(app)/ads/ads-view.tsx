@@ -184,11 +184,11 @@ export function AdsView({
       </TabsContent>
 
       <TabsContent value="month" className="pt-4">
-        <MonthlyView metrics={metrics} units={units} centers={sbus} ecomProducts={ecomProducts} canManage={canManage} currentMonth={currentMonth} months={metricMonths} rubric={rubric} />
+        <MonthlyView metrics={metrics} units={units} ecomProducts={ecomProducts} canManage={canManage} currentMonth={currentMonth} months={metricMonths} rubric={rubric} />
       </TabsContent>
 
       <TabsContent value="quarter" className="pt-4">
-        <QuarterlyView metrics={metrics} units={units} canManage={canManage} currentMonth={currentMonth} months={metricMonths} />
+        <QuarterlyView metrics={metrics} units={units} canManage={canManage} currentMonth={currentMonth} months={metricMonths} rubric={rubric} />
       </TabsContent>
     </Tabs>
   );

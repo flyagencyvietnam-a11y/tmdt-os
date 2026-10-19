@@ -4,30 +4,28 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import type { EffectivenessRubric } from "@/lib/ads-metrics";
 import { B2cSplit } from "./b2c-split";
-import { CenterTrendTable } from "./center-trend";
 import { EcomProducts } from "./ecom-products";
 import { MetricEditDialog } from "./metric-edit-dialog";
 import { usePeriodRange } from "./period-range";
 import { officialOf } from "./month-derive";
 import { PeriodReport, type Bucket, type MetricKey } from "./period-report";
 import type { EcomProductRow } from "./rollups";
-import { aggregate, derive, monthLabel, nextMonth, type MetricRow, type SbuLite } from "./shared";
+import { monthLabel, nextMonth, type MetricRow } from "./shared";
 import { rowsOfUnit, type AdsUnit } from "./units";
 
-const MONTH_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas"];
-const MONTH_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas"];
+const MONTH_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "messages", "costPerMess", "revenue", "roas"];
+const MONTH_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "score", "revenue", "roas"];
 
 const monthRangeText = (from: string, to: string, n: number) => (n <= 1 ? monthLabel(to) : `${monthLabel(from)} – ${monthLabel(to)} (${n} tháng)`);
 
 /**
  * Báo cáo THÁNG của MỌI SBU (SPEC Phụ lục D mục 26) — cùng format với báo cáo tuần, chọn KHOẢNG tháng (Từ – Đến) thay cho so sánh
- * mặc định các tháng cũ. Số tháng = số nhập chính thức; ô còn trống tự cộng từ các tuần (mục 28). Kèm 3 khối chuyên sâu: ads riêng TT so với tổng B2C, hiệu quả theo
- * trung tâm × tháng (thang điểm CPL/CAC), Ecom theo sản phẩm.
+ * mặc định các tháng cũ. Số tháng = số nhập chính thức; ô còn trống tự cộng từ các tuần (mục 28). Điểm hiệu quả + màu theo thang CPL/CAC của trung tâm nằm
+ * ngay trong bảng chính (không còn bảng "theo trung tâm × tháng" riêng — trùng số liệu). Kèm 2 khối: ads riêng TT so với tổng B2C, Ecom theo sản phẩm.
  */
 export function MonthlyView({
   metrics,
   units,
-  centers,
   ecomProducts,
   canManage,
   currentMonth,
@@ -36,7 +34,6 @@ export function MonthlyView({
 }: {
   metrics: MetricRow[];
   units: AdsUnit[];
-  centers: SbuLite[];
   ecomProducts: EcomProductRow[];
   canManage: boolean;
   currentMonth: string;
@@ -64,8 +61,6 @@ export function MonthlyView({
   const prevBuckets = React.useMemo(() => range.prevShown.map(toBucket), [range.prevShown, toBucket]);
 
   const monthly = React.useMemo(() => metrics.filter((m) => m.periodType === "month"), [metrics]);
-  const centerRows = React.useCallback((p: string, sbuId: string) => monthly.filter((m) => m.line === "b2c_center" && m.period === p && m.sbuId === sbuId), [monthly]);
-  const der = React.useCallback((r: MetricRow[]) => derive(aggregate(r), "b2c_center", rubric), [rubric]);
 
   if (range.options.length === 0 || !range.latest) {
     return <div className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">Chưa có số liệu tháng nào. Nhập qua “Nhập Excel” hoặc bấm vào ô trong bảng khi đã có dữ liệu.</div>;
@@ -86,7 +81,8 @@ export function MonthlyView({
         picker={range.picker}
         metricSet={MONTH_METRICS}
         defaultOn={MONTH_DEFAULT}
-        persistKey="month"
+        persistKey="month:v2"
+        rubric={rubric}
         title="Bảng theo dõi tháng — mọi SBU"
         description={`Mỗi SBU một khối, mỗi chỉ số một dòng, mỗi tháng một cột. ${canManage ? "Bấm ô để sửa ngay trên bảng; bấm ô CPL/CAC để mở form đầy đủ (NS P.MKT chạy thêm, feedback trung tâm…). Trung tâm: ô Ngân sách sửa phần NS Trung tâm order." : ""}`}
         detailMetrics={["cpl", "cac"]}
@@ -94,7 +90,6 @@ export function MonthlyView({
         below={
           <div className="space-y-4">
             <B2cSplit metrics={metrics} months={range.shown} />
-            <CenterTrendTable sbus={centers} months={range.shown} rows={centerRows} der={der} rubric={rubric} activeMonth={range.to} onPickMonth={(m) => range.setRange(m, m)} />
             <EcomProducts metrics={metrics} products={ecomProducts} canManage={canManage} month={range.to} />
           </div>
         }
