@@ -1,19 +1,19 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { adsCampaigns, campaignSbus, campaigns, sbus, tasks, users } from "@/lib/db/schema";
 import { CHANNEL_LABEL, CHANNEL_METRICS, CHANNELS, engagementRate, followerGrowth, METRICS, periodLabel, prevPeriod, sameChannel, sumValues, valuesOf, type ChannelKey, type MetricValues } from "@/lib/brand-perf";
 import { ECOM_PRODUCTS } from "@/lib/ads-metrics";
 import { SBU_KIND_LABEL, SBU_REGION_LABEL, isFanOutSbu } from "@/lib/sbu-kinds";
 import { fmtDate } from "@/lib/format";
-import { ADS_GROUPS } from "@/lib/ads-lines";
 import { listAdsMetrics, listAdsPlans, listEcomProducts, loadEffectivenessRubric } from "@/lib/services/ads";
 import { listBrandPerf, listBrandSbus } from "@/lib/services/brand-perf";
 import { computeManagementMetrics } from "@/lib/services/reports";
 import { getSbuStats } from "@/lib/services/sbu-overview";
 import { overdueSqlFragment } from "@/lib/services/tasks";
 import { todayVnDayStr } from "@/lib/time";
-import { ecomAggregate, overviewAgg, overviewTotal, OVERVIEW_KEYS, OVERVIEW_LABELS, type EcomProductRow } from "@/app/(app)/ads/rollups";
-import { aggregate, derive, LINE_LABELS, monthLabel, num, prevMonth, spendOf, type MetricRow } from "@/app/(app)/ads/shared";
+import { ecomAggregate, prevQuarter, quarterKey, quarterLabel, quarterMonths, type EcomProductRow } from "@/app/(app)/ads/rollups";
+import { aggregate, derive, monthLabel, num, prevMonth, type MetricRow } from "@/app/(app)/ads/shared";
+import { bucketRows, buildAdsUnits, indexRows, rowsOfUnit, totalFunnel, unitFunnel, type AdsUnit } from "@/app/(app)/ads/units";
 import { BRAND_COLORS, SERIES_COLORS, type ReportDoc, type ReportKind, type ReportSection, type TableSection } from "./types";
 
 export interface BuildOptions {
@@ -284,40 +284,53 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
     listAdsPlans(db),
     listEcomProducts(db),
     loadEffectivenessRubric(db),
-    db.select({ id: sbus.id, code: sbus.code }).from(sbus).where(eq(sbus.kind, "center")).orderBy(asc(sbus.code)),
-    db.select().from(adsCampaigns),
+    db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.kind, "center")).orderBy(asc(sbus.code)),
+    db.select().from(adsCampaigns).where(ne(adsCampaigns.line, "b2b")),
     db.select({ id: users.id, fullName: users.fullName }).from(users),
   ]);
   const metrics = metricsRaw as unknown as MetricRow[];
-  const months = [...new Set(metrics.filter((m) => m.periodType === "month").map((m) => m.period))].sort();
-  const period = o.period ?? months.at(-1) ?? todayVnDayStr().slice(0, 7);
-  const prev = prevMonth(period);
-  const cur = overviewTotal(metrics, [period]);
-  const old = overviewTotal(metrics, [prev]);
+  const units = buildAdsUnits(centers);
+  const idx = indexRows(metrics);
+  const rowsIn = (ms: string[]) => bucketRows(idx, "month", ms);
+  const dataMonths = [...new Set(metrics.filter((m) => m.periodType === "month").map((m) => m.period))].sort();
+
+  // Kỳ báo cáo: 1 tháng (yyyy-mm) hoặc 1 quý (yyyy-Qn = cộng 3 dòng THÁNG).
+  const isQuarter = !!o.period && /^\d{4}-Q[1-4]$/.test(o.period);
+  const period = o.period ?? dataMonths.at(-1) ?? todayVnDayStr().slice(0, 7);
+  const months = isQuarter ? quarterMonths(period) : [period];
+  const prevMonths = isQuarter ? quarterMonths(prevQuarter(period)) : [prevMonth(period)];
+  const label = isQuarter ? quarterLabel(period) : monthLabel(period);
+  const prevLabel = isQuarter ? quarterLabel(prevQuarter(period)) : monthLabel(prevMonth(period), true);
+  const rowsCur = rowsIn(months);
+  const rowsOld = rowsIn(prevMonths);
+  const cur = totalFunnel(rowsCur);
+  const old = totalFunnel(rowsOld);
   const sections: ReportSection[] = [];
+  const unitName = (u: AdsUnit) => (u.kind === "ho" ? "Hệ thống (HO)" : u.code);
 
   const aS = arrow(cur.spend, old.spend, "down");
   const aL = arrow(cur.leads, old.leads);
-  const aN = arrow(cur.newStudents, old.newStudents);
+  const aN = arrow(cur.hvm, old.hvm);
   const aC = arrow(cur.cpl, old.cpl, "down");
   sections.push({
     type: "kpis",
     items: [
       { label: "Tổng chi digital", value: vnMoneyShort(cur.spend), sub: aS.sub, tone: "brand" },
       { label: "Lead / Data (Ecom tính MQL)", value: vnInt(cur.leads), sub: aL.sub, tone: aL.tone },
-      { label: "Học viên mới", value: vnInt(cur.newStudents), sub: aN.sub, tone: aN.tone },
+      { label: "Học viên mới", value: vnInt(cur.hvm), sub: aN.sub, tone: aN.tone },
       { label: "CPL bình quân", value: vnMoneyShort(cur.cpl), sub: aC.sub, tone: aC.tone },
       { label: "CAC bình quân", value: vnMoneyShort(cur.cac), sub: `CVR lead → HVM: ${pctText(cur.cvr)}`, tone: "neutral" },
     ],
   });
 
+  // So sánh các SBU (Hệ thống, trung tâm, Ecom, VMP, VMT chung một danh sách)
   const share = (v: number | null) => (cur.spend && v != null ? v / cur.spend : null);
   sections.push({
     type: "table",
-    title: `So sánh các mảng — ${monthLabel(period)}`,
-    note: "B2C Offline = Hệ thống + Trung tâm (lead/HVM tính chung). Ecom tính MQL là lead. Số tháng nhập riêng, không cộng từ các tuần.",
+    title: `So sánh các SBU — ${label}`,
+    note: "Dòng Hệ thống mang Lead/HVM TỔNG cả B2C (CPL/CAC chia tổng ngân sách B2C); Lead/HVM của từng trung tâm là phần quy riêng cho ads ngân sách trung tâm (một phần của số tổng, không cộng thêm). Ecom tính MQL là lead. Số tháng nhập riêng, quý = cộng 3 tháng.",
     columns: [
-      { header: "Mảng", key: "line", width: 24 },
+      { header: "SBU", key: "unit", width: 24 },
       { header: "Chi tiêu (₫)", key: "spend", format: "money", heat: true },
       { header: "Tỷ trọng chi", key: "share", format: "pct" },
       { header: "Lead / MQL", key: "leads", format: "int" },
@@ -325,34 +338,34 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
       { header: "CPL (₫)", key: "cpl", format: "money" },
       { header: "CAC (₫)", key: "cac", format: "money" },
       { header: "CVR", key: "cvr", format: "pct" },
-      { header: `Δ chi vs ${monthLabel(prev, true)}`, key: "ds", format: "pct" },
+      { header: `Δ chi vs ${prevLabel}`, key: "ds", format: "pct" },
     ],
-    rows: OVERVIEW_KEYS.map((k) => {
-      const c = overviewAgg(metrics, k, [period]);
-      const p = overviewAgg(metrics, k, [prev]);
-      return { line: OVERVIEW_LABELS[k], spend: nz(c.spend), share: share(c.spend), leads: nz(c.leads), hvm: nz(c.newStudents), cpl: nz(c.cpl), cac: nz(c.cac), cvr: nz(c.cvr), ds: c.spend != null && p.spend ? (c.spend - p.spend) / p.spend : null };
+    rows: units.map((u) => {
+      const c = unitFunnel(rowsCur, u);
+      const p = unitFunnel(rowsOld, u);
+      return { unit: unitName(u), spend: nz(c.spend), share: share(c.spend), leads: nz(c.leads), hvm: nz(c.hvm), cpl: nz(c.cpl), cac: nz(c.cac), cvr: nz(c.cvr), ds: c.spend != null && p.spend ? (c.spend - p.spend) / p.spend : null };
     }),
-    totals: { line: "TỔNG DIGITAL", spend: nz(cur.spend), share: cur.spend ? 1 : null, leads: nz(cur.leads), hvm: nz(cur.newStudents), cpl: nz(cur.cpl), cac: nz(cur.cac), cvr: nz(cur.cvr), ds: cur.spend != null && old.spend ? (cur.spend - old.spend) / old.spend : null },
+    totals: { unit: "TỔNG DIGITAL", spend: nz(cur.spend), share: cur.spend ? 1 : null, leads: nz(cur.leads), hvm: nz(cur.hvm), cpl: nz(cur.cpl), cac: nz(cur.cac), cvr: nz(cur.cvr), ds: cur.spend != null && old.spend ? (cur.spend - old.spend) / old.spend : null },
   });
 
-  const shares = OVERVIEW_KEYS.map((k) => ({ label: OVERVIEW_LABELS[k], value: overviewAgg(metrics, k, [period]).spend ?? 0 })).filter((x) => x.value > 0);
-  if (shares.length) sections.push({ type: "bars", title: `Cơ cấu chi theo mảng — ${monthLabel(period)}`, format: "money", items: shares.map((s, i) => ({ ...s, color: SERIES_COLORS[i % SERIES_COLORS.length] })).sort((a, b) => b.value - a.value) });
+  const shares = units.map((u) => ({ label: unitName(u), value: unitFunnel(rowsCur, u).spend ?? 0 })).filter((x) => x.value > 0);
+  if (shares.length) sections.push({ type: "bars", title: `Cơ cấu chi theo SBU — ${label}`, format: "money", items: shares.map((s, i) => ({ ...s, color: SERIES_COLORS[i % SERIES_COLORS.length] })).sort((a, b) => b.value - a.value) });
 
-  // B2C theo trung tâm
+  // Hiệu quả ads ngân sách riêng từng trung tâm
   const centerRows = centers
     .map((c) => {
-      const rows = metrics.filter((m) => m.periodType === "month" && m.line === "b2c_center" && m.period === period && m.sbuId === c.id);
+      const rows = rowsCur.filter((m) => m.line === "b2c_center" && m.sbuId === c.id);
       if (!rows.length) return null;
       const d = derive(aggregate(rows), "b2c_center", rubric);
-      const r0 = rows[0];
-      return { sbu: c.code, order: num(r0.centerOrderBudget), topup: num(r0.hoTopupBudget), spend: nz(d.spend), leads: nz(d.leads), hvm: nz(d.newStudents), cpl: nz(d.cpl), cac: nz(d.cac), cvr: nz(d.cvr), eff: d.effectivenessLabel };
+      const sumOf = (f: (r: MetricRow) => string | null) => rows.reduce<number | null>((a, r) => (num(f(r)) == null ? a : (a ?? 0) + num(f(r))!), null);
+      return { sbu: c.code, order: sumOf((r) => r.centerOrderBudget), topup: sumOf((r) => r.hoTopupBudget), spend: nz(d.spend), leads: nz(d.leads), hvm: nz(d.newStudents), cpl: nz(d.cpl), cac: nz(d.cac), cvr: nz(d.cvr), eff: d.effectivenessLabel };
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
   if (centerRows.length) {
     const sum = (f: (r: (typeof centerRows)[number]) => number | null) => centerRows.reduce((a, r) => a + (f(r) ?? 0), 0);
     sections.push({
       type: "table",
-      title: `B2C Trung tâm theo từng trung tâm — ${monthLabel(period)}`,
+      title: `Ads ngân sách riêng từng trung tâm — ${label}`,
       note: "Lead/HVM ở đây là phần quy riêng cho ads ngân sách từng trung tâm (tập con của số tổng B2C).",
       columns: [
         { header: "Trung tâm", key: "sbu", width: 12 },
@@ -371,8 +384,8 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
     });
   }
 
-  // Ecom theo sản phẩm (kỳ bắt đầu = period)
-  const ecomHere = (ecomRows as unknown as EcomProductRow[]).filter((r) => r.period === period);
+  // Ecom theo sản phẩm (kỳ bắt đầu nằm trong khoảng báo cáo)
+  const ecomHere = (ecomRows as unknown as EcomProductRow[]).filter((r) => months.includes(r.period));
   if (ecomHere.length) {
     const rows = ECOM_PRODUCTS.map((p) => {
       const a = ecomAggregate(ecomHere.filter((r) => r.product === p.key));
@@ -381,7 +394,7 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
     const t = ecomAggregate(ecomHere);
     sections.push({
       type: "table",
-      title: `Ecom theo sản phẩm — ${monthLabel(period)}`,
+      title: `Ecom theo sản phẩm — ${label}`,
       columns: [
         { header: "Sản phẩm", key: "product", width: 30 },
         { header: "Chi tiêu (₫)", key: "spend", format: "money", heat: true },
@@ -397,20 +410,22 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
     });
   }
 
-  // Request ads của tháng
-  const reqHere = adsReq.filter((r) => r.period === period);
+  // Request ads trong kỳ
+  const reqHere = adsReq.filter((r) => months.includes(r.period));
   if (reqHere.length) {
-    const codeOf = new Map((await db.select({ id: sbus.id, code: sbus.code }).from(sbus)).map((s) => [s.id, s.code]));
-    const labelOf = (r: { sbuId: string | null; line: string }) => (r.sbuId ? (codeOf.get(r.sbuId) ?? "?") : (LINE_LABELS[r.line as keyof typeof LINE_LABELS] ?? r.line));
+    const labelOf = (r: { sbuId: string | null; line: string }) => {
+      const u = units.find((x) => x.line === r.line && (x.kind === "center" ? x.sbuId === r.sbuId : true));
+      return u ? unitName(u) : r.line;
+    };
     const nameOf = new Map(allUsers.map((u) => [u.id, u.fullName]));
     const spendSum = reqHere.reduce((a, r) => a + Number(r.spend || 0), 0);
     const planSum = reqHere.reduce((a, r) => a + (num(r.plannedBudget) ?? 0), 0);
     sections.push({
       type: "table",
-      title: `Request ads — ${monthLabel(period)}`,
-      note: "Mỗi dòng = 1 chiến dịch/request ads (trung tâm hoặc mảng); % KH = chi tiêu thực tế ÷ ngân sách kế hoạch.",
+      title: `Request ads — ${label}`,
+      note: "Mỗi dòng = 1 chiến dịch/request ads của 1 SBU; % KH = chi tiêu thực tế ÷ ngân sách kế hoạch.",
       columns: [
-        { header: "Mảng / SBU", key: "sbu", width: 16 },
+        { header: "SBU", key: "sbu", width: 16 },
         { header: "Chiến dịch / request", key: "name", width: 44 },
         { header: "Người chạy", key: "runner", width: 18 },
         { header: "NS kế hoạch (₫)", key: "plan", format: "money" },
@@ -423,27 +438,33 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
         .slice()
         .sort((a, b) => labelOf(a).localeCompare(labelOf(b)))
         .map((r) => {
-          const plan = num(r.plannedBudget);
+          const planned = num(r.plannedBudget);
           const mess = num(r.messages);
-          return { sbu: labelOf(r), name: r.campaignName, runner: r.runnerId ? (nameOf.get(r.runnerId) ?? "") : "", plan, spend: Number(r.spend || 0), used: plan ? Number(r.spend || 0) / plan : null, mess, cpm: mess ? Number(r.spend || 0) / mess : null };
+          return { sbu: labelOf(r), name: r.campaignName, runner: r.runnerId ? (nameOf.get(r.runnerId) ?? "") : "", plan: planned, spend: Number(r.spend || 0), used: planned ? Number(r.spend || 0) / planned : null, mess, cpm: mess ? Number(r.spend || 0) / mess : null };
         }),
       totals: { sbu: "Tổng", name: `${reqHere.length} request`, plan: planSum || null, spend: spendSum, used: planSum ? spendSum / planSum : null },
     });
   }
 
-  // Kế hoạch so với thực tế theo mảng (kế hoạch = Σ ngân sách KH các dòng của mảng trong tháng)
-  const planHere = plan.filter((p) => p.period === period && p.plannedBudget != null);
-  if (planHere.length) {
-    const planRows = ADS_GROUPS.map((g) => {
-      const planned = planHere.filter((p) => g.lines.includes(p.line)).reduce((acc, p) => acc + Number(p.plannedBudget), 0);
-      const actual = aggregate(metrics.filter((m) => m.periodType === "month" && g.lines.includes(m.line) && m.period === period)).spend;
-      return { line: g.label, plan: planned || null, actual: nz(actual), pct: planned && actual != null ? actual / planned : null };
-    }).filter((r) => r.plan != null);
+  // Kế hoạch so với thực tế theo SBU — chỉ so trên các tháng SBU đó ĐÃ lập ngân sách kế hoạch (cả hai vế cùng tập tháng)
+  const planRows = units
+    .map((u) => {
+      const up = plan.filter((p) => p.line === u.line && months.includes(p.period) && p.plannedBudget != null && (u.kind === "center" ? p.sbuId === u.sbuId : !p.sbuId));
+      if (!up.length) return null;
+      const planned = up.reduce((acc, p) => acc + Number(p.plannedBudget), 0);
+      const pm = up.map((p) => p.period);
+      const rows = rowsOfUnit(rowsIn(pm), u);
+      const actual = rows.length ? aggregate(rows).spend : null;
+      return { unit: unitName(u), plan: planned || null, actual: nz(actual), pct: planned && actual != null ? actual / planned : null };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+  if (planRows.length) {
     sections.push({
       type: "table",
-      title: `Kế hoạch ngân sách so với thực tế — ${monthLabel(period)}`,
+      title: `Kế hoạch ngân sách so với thực tế — ${label}`,
+      note: "Chỉ so trên các tháng SBU đó đã lập kế hoạch.",
       columns: [
-        { header: "Mảng", key: "line", width: 26 },
+        { header: "SBU", key: "unit", width: 26 },
         { header: "Kế hoạch (₫)", key: "plan", format: "money" },
         { header: "Thực tế (₫)", key: "actual", format: "money", heat: true },
         { header: "% đã dùng", key: "pct", format: "pct" },
@@ -452,36 +473,44 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
     });
   }
 
-  const tp = lastMonths(months, period, 6);
+  // Xu hướng: 6 tháng gần nhất (hoặc 4 quý khi báo cáo theo quý) — tổng mọi SBU
+  const buckets = isQuarter
+    ? [...new Set([...dataMonths.map(quarterKey), period])].filter((q) => q <= period).sort().slice(-4).map((q) => ({ label: quarterLabel(q), months: quarterMonths(q) }))
+    : lastMonths(dataMonths, period, 6).map((p) => ({ label: monthLabel(p), months: [p] }));
+  const trendTotals = buckets.map((b) => totalFunnel(rowsIn(b.months)));
   sections.push({
     type: "trend",
-    title: "Chi tiêu theo tháng (tách theo mảng)",
+    title: isQuarter ? "Tổng chi theo quý" : "Tổng chi theo tháng",
+    note: "Tổng mọi SBU.",
     format: "money",
-    periods: tp.map((p) => monthLabel(p)),
-    mode: "stacked",
-    series: OVERVIEW_KEYS.map((k, i) => ({ label: OVERVIEW_LABELS[k], color: SERIES_COLORS[i % SERIES_COLORS.length], values: tp.map((p) => nz(overviewAgg(metrics, k, [p]).spend)) })),
+    periods: buckets.map((b) => b.label),
+    mode: "grouped",
+    series: [{ label: "Tổng chi", color: SERIES_COLORS[0], values: trendTotals.map((t) => nz(t.spend)) }],
   });
   sections.push({
     type: "trend",
-    title: "Học viên mới theo tháng (tách theo mảng)",
-    periods: tp.map((p) => monthLabel(p)),
-    mode: "stacked",
-    series: OVERVIEW_KEYS.map((k, i) => ({ label: OVERVIEW_LABELS[k], color: SERIES_COLORS[i % SERIES_COLORS.length], values: tp.map((p) => nz(overviewAgg(metrics, k, [p]).newStudents)) })),
+    title: isQuarter ? "Lead và học viên mới theo quý" : "Lead và học viên mới theo tháng",
+    note: "Tổng mọi SBU (B2C lấy số tổng của dòng Hệ thống; Ecom tính MQL).",
+    periods: buckets.map((b) => b.label),
+    mode: "grouped",
+    series: [
+      { label: "Lead / MQL", color: SERIES_COLORS[0], values: trendTotals.map((t) => nz(t.leads)) },
+      { label: "Học viên mới", color: SERIES_COLORS[2 % SERIES_COLORS.length], values: trendTotals.map((t) => nz(t.hvm)) },
+    ],
   });
-  void spendOf;
 
   return {
     kind: "growth",
     title: "Báo cáo Growth Performance",
-    subtitle: "Hiệu quả quảng cáo & tăng trưởng (Ads): chi tiêu, lead, học viên mới, CPL, CAC",
-    periodLabel: `Tháng ${period.slice(5)}/${period.slice(0, 4)}`,
+    subtitle: "Hiệu quả quảng cáo & tăng trưởng (Ads) theo SBU: chi tiêu, lead, học viên mới, CPL, CAC",
+    periodLabel: isQuarter ? `Quý ${period.slice(6)}/${period.slice(0, 4)}` : `Tháng ${period.slice(5)}/${period.slice(0, 4)}`,
     generatedAt: new Date().toISOString(),
     generatedBy: o.userName,
     orientation: "landscape",
     sections,
     footnotes: [
-      "CPL = Chi tiêu ÷ Lead; CAC = Chi tiêu ÷ Học viên mới; CVR = Học viên mới ÷ Lead. Điểm hiệu quả theo ngưỡng CPL/CAC cấu hình ở Cài đặt.",
-      "B2C Offline: Lead/HVM tổng tính chung cho Hệ thống + Trung tâm; số quy riêng từng trung tâm là tập con của số tổng.",
+      "CPL = Chi tiêu ÷ Lead; CAC = Chi tiêu ÷ Học viên mới; CVR = Học viên mới ÷ Lead — chỉ chia chi phí của phần đã có số Lead/HVM. Điểm hiệu quả theo ngưỡng CPL/CAC cấu hình ở Cài đặt.",
+      "B2C Offline: Lead/HVM tổng nằm ở dòng Hệ thống (tính chung Hệ thống + trung tâm); số quy riêng từng trung tâm là tập con của số tổng. Quý = cộng 3 dòng tháng.",
     ],
   };
 }

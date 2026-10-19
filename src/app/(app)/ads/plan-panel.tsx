@@ -79,14 +79,14 @@ function usePlanSaver() {
   );
 }
 
-const ALL_LINES: AdsLine[] = ["b2c_system", "b2c_center", "ecom", "b2b", "osir", "vmp"];
+const ALL_LINES: AdsLine[] = ["b2c_system", "b2c_center", "ecom", "osir", "vmp"];
 
 /** Dòng kế hoạch của 1 SBU trong 1 tháng. */
 const planOfUnit = (plans: PlanRow[], u: AdsUnit, period: string) => plans.find((p) => p.line === u.line && p.period === period && (u.kind === "center" ? p.sbuId === u.sbuId : !p.sbuId));
 
 /**
  * KẾ HOẠCH & TIẾN ĐỘ của MỌI SBU trong 1 tháng — điểm đầu của luồng Kế hoạch → Request → Báo cáo (SPEC Phụ lục D mục 26: Hệ thống, trung tâm,
- * Ecom, VMP, VMT, B2B chung một danh sách). Lập ngân sách + mục tiêu đầu tháng, so ngay với thực tế (suy ra từ báo cáo tháng).
+ * Ecom, VMP, VMT chung một danh sách). Lập ngân sách + mục tiêu đầu tháng, so ngay với thực tế (suy ra từ báo cáo tháng).
  * Sửa trực tiếp trên ô (kiểu Excel); mọi thay đổi ghi nhật ký.
  */
 export function PlanPanel({
@@ -374,7 +374,7 @@ export function PlanPanel({
   );
 }
 
-/** Mục tiêu phễu của 1 SBU "chủ" (Hệ thống = tổng B2C; Ecom/VMP/VMT/B2B). Phễu lấy theo cấu hình line (lib/ads-lines.ts). */
+/** Mục tiêu phễu của 1 SBU "chủ" (Hệ thống = tổng B2C; Ecom/VMP/VMT). Phễu lấy theo cấu hình line (lib/ads-lines.ts). */
 function FunnelBlock({
   unit,
   month,

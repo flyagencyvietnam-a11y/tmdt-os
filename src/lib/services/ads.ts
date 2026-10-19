@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { DB } from "@/lib/db";
 import { adsCampaigns, adsEcomProducts, adsMetrics, adsPlans, appSettings, type AdsCampaign, type AdsMetric, type AdsPlan } from "@/lib/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -28,6 +28,9 @@ export async function loadEffectivenessRubric(db: DB): Promise<EffectivenessRubr
   return { ...DEFAULT_EFFECTIVENESS_RUBRIC, ...v };
 }
 
+/** B2B đã bỏ khỏi Growth Performance (SPEC Phụ lục D mục 27): dòng cũ còn trong DB nhưng KHÔNG đưa vào giao diện/báo cáo. */
+const NOT_B2B = ne(adsMetrics.line, "b2b");
+
 export async function listAdsMetrics(db: DB, filters: { line?: AdsMetric["line"]; period?: string; periodType?: AdsMetric["periodType"] } = {}) {
   const rubric = await loadEffectivenessRubric(db);
   const rows = await db
@@ -35,6 +38,7 @@ export async function listAdsMetrics(db: DB, filters: { line?: AdsMetric["line"]
     .from(adsMetrics)
     .where(
       and(
+        NOT_B2B,
         filters.line ? eq(adsMetrics.line, filters.line) : undefined,
         filters.period ? eq(adsMetrics.period, filters.period) : undefined,
         filters.periodType ? eq(adsMetrics.periodType, filters.periodType) : undefined,
@@ -104,6 +108,7 @@ export async function listAdsCampaigns(db: DB, filters: { sbuId?: string; period
     .from(adsCampaigns)
     .where(
       and(
+        ne(adsCampaigns.line, "b2b"),
         filters.sbuId ? eq(adsCampaigns.sbuId, filters.sbuId) : undefined,
         filters.period ? eq(adsCampaigns.period, filters.period) : undefined,
         filters.line ? eq(adsCampaigns.line, filters.line) : undefined,
@@ -221,7 +226,7 @@ export async function listAdsPlans(db: DB, period?: string) {
   return db
     .select()
     .from(adsPlans)
-    .where(period ? eq(adsPlans.period, period) : undefined)
+    .where(and(ne(adsPlans.line, "b2b"), period ? eq(adsPlans.period, period) : undefined))
     .orderBy(asc(adsPlans.period));
 }
 

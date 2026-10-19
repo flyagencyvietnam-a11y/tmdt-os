@@ -13,7 +13,7 @@ import { bucketRows, indexRows, rowsOfUnit, totalFunnel, unitFunnel, type AdsUni
 
 /**
  * KHUNG BÁO CÁO CHUNG cho Báo cáo TUẦN / THÁNG / QUÝ (SPEC Phụ lục D mục 26). Ma trận: mỗi SBU là một khối, mỗi chỉ số một dòng,
- * mỗi kỳ một cột (format B2C cũ) — Hệ thống, 10 trung tâm, Ecom, VMP, VMT, B2B cùng một danh sách, có dòng Tổng cộng.
+ * mỗi kỳ một cột (format B2C cũ) — Hệ thống, 10 trung tâm, Ecom, VMP, VMT cùng một danh sách, có dòng Tổng cộng.
  * Ba báo cáo chỉ khác nhau ở: loại kỳ đọc từ DB (tuần/tháng), tập chỉ số, và có cho sửa ô hay không (quý = cộng 3 tháng, chỉ xem).
  */
 
@@ -31,7 +31,7 @@ export interface Bucket {
   note?: string;
 }
 
-export type MetricKey = "spend" | "messages" | "costPerMess" | "leads" | "hvm" | "cpl" | "cac" | "cvr" | "revenue" | "roas" | "deals";
+export type MetricKey = "spend" | "messages" | "costPerMess" | "leads" | "hvm" | "cpl" | "cac" | "cvr" | "revenue" | "roas";
 
 interface MetricDef {
   chip: string;
@@ -55,7 +55,6 @@ export const METRICS: Record<MetricKey, MetricDef> = {
   cvr: { chip: "CVR", kind: "pct", value: (f) => f.cvr, inTotal: true },
   revenue: { chip: "Doanh thu (Ecom)", kind: "money", value: (f) => f.revenue, only: (u) => u.line === "ecom", inTotal: false },
   roas: { chip: "ROAS (Ecom)", kind: "x", value: (f) => f.roas, only: (u) => u.line === "ecom", inTotal: false },
-  deals: { chip: "Deal (B2B)", kind: "count", value: (f) => f.deals, only: (u) => u.line === "b2b", inTotal: false },
 };
 
 /** Nhãn dòng chỉ số theo đơn vị. Dòng Hệ thống mang số TỔNG B2C nên ghi rõ. */
@@ -82,8 +81,6 @@ function metricLabel(m: MetricKey, u?: AdsUnit): string {
       return "Doanh thu";
     case "roas":
       return "ROAS";
-    case "deals":
-      return "Deal chốt";
   }
 }
 
@@ -101,8 +98,6 @@ function editField(m: MetricKey, u: AdsUnit): NumField | null {
       return "newStudents";
     case "revenue":
       return "revenue";
-    case "deals":
-      return "deals";
     default:
       return null;
   }
@@ -399,7 +394,7 @@ export function PeriodReport({
         </div>
         <p className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
           Dòng <b>Hệ thống</b> mang Lead/HVM <b>tổng cả B2C</b> (CPL/CAC chia tổng ngân sách Hệ thống + trung tâm); số Lead/HVM của từng trung tâm là phần quy riêng cho ads ngân sách trung tâm — một phần của số tổng, không cộng thêm. Dòng Tổng cộng lấy số tổng B2C
-          (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT + B2B. Ô trống = chưa có số.
+          (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT. Ô trống = chưa có số.
         </p>
       </section>
 

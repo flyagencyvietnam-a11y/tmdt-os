@@ -16,7 +16,7 @@ export default async function ReportPrintPage({ params, searchParams }: { params
   const kind = parseKind(kindParam);
   if (!kind) notFound();
   if (!canExportReport(user.role, kind)) redirect("/khong-co-quyen");
-  const period = parsePeriod(sp.period);
+  const period = parsePeriod(sp.period, kind);
   const doc = await buildReport(db, kind, { period, userName: user.fullName });
   const excelHref = `/api/export/report?kind=${kind}${period ? `&period=${period}` : ""}`;
   return (

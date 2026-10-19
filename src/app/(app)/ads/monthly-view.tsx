@@ -13,8 +13,8 @@ import type { EcomProductRow } from "./rollups";
 import { aggregate, derive, monthLabel, nextMonth, type MetricRow, type SbuLite } from "./shared";
 import { rowsOfUnit, type AdsUnit } from "./units";
 
-const MONTH_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas", "deals"];
-const MONTH_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas", "deals"];
+const MONTH_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas"];
+const MONTH_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas"];
 
 const monthRangeText = (from: string, to: string, n: number) => (n <= 1 ? monthLabel(to) : `${monthLabel(from)} – ${monthLabel(to)} (${n} tháng)`);
 

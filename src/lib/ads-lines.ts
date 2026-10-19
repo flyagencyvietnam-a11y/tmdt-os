@@ -5,11 +5,14 @@
  * Thuần (client-safe), không đụng DB.
  */
 
-/** Giá trị enum `ads_line` lưu trong DB. */
+/**
+ * Giá trị enum `ads_line` lưu trong DB. `b2b` còn trong enum (dữ liệu cũ, không migrate) nhưng ĐÃ BỎ khỏi mọi màn hình/báo cáo/import —
+ * B2B không phải SBU của Growth Performance (SPEC Phụ lục D mục 27).
+ */
 export type AdsLine = "b2c_system" | "b2c_center" | "ecom" | "b2b" | "osir" | "vmp";
 
 /** Tab lớn trên giao diện. B2C gộp 2 line DB (Hệ thống + Trung tâm); các mảng còn lại 1 line. */
-export type AdsGroupKey = "b2c" | "ecom" | "b2b" | "osir" | "vmp";
+export type AdsGroupKey = "b2c" | "ecom" | "osir" | "vmp";
 
 /** Các chỉ số phễu có thể đặt mục tiêu / báo cáo theo tuần. Khoá trùng cột `ads_metrics`. */
 export type FunnelField = "leads" | "mql" | "messages" | "newStudents" | "revenue" | "deals";
@@ -61,7 +64,6 @@ const LEADS: FunnelDef = { field: "leads", label: "Lead / Data", kind: "count" }
 const MQL: FunnelDef = { field: "mql", label: "MQL", kind: "count" };
 const MESS: FunnelDef = { field: "messages", label: "Mess", kind: "count" };
 const REVENUE: FunnelDef = { field: "revenue", label: "Doanh thu", kind: "money" };
-const DEALS: FunnelDef = { field: "deals", label: "Deal chốt", kind: "count" };
 const conv = (label: string): FunnelDef => ({ field: "newStudents", label, kind: "count" });
 
 export const ADS_GROUPS: AdsGroupConfig[] = [
@@ -87,18 +89,6 @@ export const ADS_GROUPS: AdsGroupConfig[] = [
     leadField: "mql",
     conversionLabel: "HVM online",
     weeklyFields: ["mql", "newStudents", "revenue", "messages"],
-    expectWeekly: false,
-  },
-  {
-    key: "b2b",
-    label: "B2B",
-    color: "var(--series-4)",
-    lines: ["b2b"],
-    primaryLine: "b2b",
-    funnel: [LEADS, conv("HVM"), MESS, DEALS],
-    leadField: "leads",
-    conversionLabel: "HVM",
-    weeklyFields: ["leads", "messages", "newStudents", "deals"],
     expectWeekly: false,
   },
   {

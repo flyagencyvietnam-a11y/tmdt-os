@@ -111,9 +111,55 @@ const summarize = (nums: Record<string, string>, labels: Record<string, string>)
     .map(([k, v]) => `${labels[k] ?? k} ${money(Number(v))}`)
     .join(" · ");
 
+/** Chỉ các TRUNG TÂM (kind=center): mã SBU brand như VMP/VMT trùng tên với SBU ads nên không được coi là trung tâm. */
 async function loadSbus(db: DB) {
-  const rows = await db.select({ id: sbus.id, code: sbus.code }).from(sbus);
+  const rows = await db.select({ id: sbus.id, code: sbus.code }).from(sbus).where(eq(sbus.kind, "center"));
   return new Map(rows.map((s) => [s.code.toUpperCase(), s.id]));
+}
+
+// ---------------------------------------------------------------------------
+// Đối tượng của dòng = 1 SBU (SPEC Phụ lục D mục 26): cột `sbu` = HO | mã trung tâm | ECOM | VMP | VMT. Vẫn đọc được template cũ
+// (cột `line` + `sbu_code`). B2B đã bỏ (mục 27) — dòng B2B bị báo lỗi, không ghi.
+// ---------------------------------------------------------------------------
+
+const SBU_ALIAS: Record<string, Line> = { HO: "b2c_system", HE_THONG: "b2c_system", HETHONG: "b2c_system", ECOM: "ecom", VMP: "vmp", VMT: "osir", OSIR: "osir" };
+const B2B_REMOVED = "B2B đã bỏ khỏi Growth Performance — không nhập";
+
+type TargetMode = "week" | "month" | "plan" | "request";
+
+function resolveTarget(r: ParsedRow, centers: Map<string, string>, mode: TargetMode, errors: string[]): { line: Line | undefined; sbuId: string | null; code: string } {
+  const sbuRaw = (r.data.sbu ?? "").trim().toUpperCase();
+  const lineRaw = (r.data.line ?? "").trim().toLowerCase();
+  const codeRaw = (r.data.sbu_code ?? "").trim().toUpperCase();
+  let line: Line | undefined;
+  let code = codeRaw;
+  if (sbuRaw) {
+    if (lineRaw || codeRaw) errors.push("Chỉ dùng cột sbu (không kèm line / sbu_code)");
+    if (sbuRaw === "B2B") errors.push(B2B_REMOVED);
+    else if (SBU_ALIAS[sbuRaw]) {
+      line = SBU_ALIAS[sbuRaw];
+      code = "";
+    } else if (centers.has(sbuRaw)) {
+      line = "b2c_center";
+      code = sbuRaw;
+    } else errors.push(`sbu không hợp lệ: "${r.data.sbu}" (HO, mã trung tâm, ECOM, VMP, VMT — xem sheet DANH_MUC)`);
+  } else if (lineRaw === "b2b") {
+    errors.push(B2B_REMOVED);
+  } else if (lineRaw) {
+    line = LINE_ALIAS[lineRaw];
+    if (!line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_center, ecom, osir/vmt, vmp)`);
+  } else if (mode === "week") line = codeRaw ? "b2c_center" : "b2c_system";
+  else if (mode === "request") line = "b2c_center";
+  else errors.push("Thiếu sbu (hoặc line)");
+
+  let sbuId: string | null = null;
+  if (line === "b2c_center") {
+    if (!code) errors.push(mode === "request" ? "Thiếu sbu_code" : "line b2c_center bắt buộc có sbu_code");
+    else if (!centers.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
+    else sbuId = centers.get(code)!;
+  } else if (line && code && !sbuRaw) errors.push(`line ${line} không dùng sbu_code`);
+  if (mode === "request" && line === "b2c_system") errors.push("Hệ thống (HO) không có request riêng — request của trung tâm dùng sbu = mã trung tâm; của Ecom/VMP/VMT dùng sbu tương ứng");
+  return { line, sbuId, code };
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +168,7 @@ async function loadSbus(db: DB) {
 // (tương thích template cũ). Cột nào dùng được tuỳ mảng — khai báo ở `weeklyFields` trong lib/ads-lines.ts.
 // ---------------------------------------------------------------------------
 
-const WEEK_LABELS = { budget: "NS", mess: "Mess", impression: "Impression", leads: "Lead", mql: "MQL", new_students: "HVM/chuyển đổi", revenue: "Doanh thu", deals: "Deal" };
+const WEEK_LABELS = { budget: "NS", mess: "Mess", impression: "Impression", leads: "Lead", mql: "MQL", new_students: "HVM/chuyển đổi", revenue: "Doanh thu" };
 
 /** Cột số của sheet TUAN → trường ads_metrics (ngân sách và impression xử lý riêng). */
 const WEEK_COLS: { col: string; field: FunnelField | "impressions" }[] = [
@@ -131,7 +177,6 @@ const WEEK_COLS: { col: string; field: FunnelField | "impressions" }[] = [
   { col: "mql", field: "mql" },
   { col: "new_students", field: "newStudents" },
   { col: "revenue", field: "revenue" },
-  { col: "deals", field: "deals" },
   { col: "impression", field: "impressions" },
 ];
 
@@ -152,16 +197,7 @@ async function planWeek(db: DB, sheets: Record<string, ParsedRow[]>): Promise<Ad
     else if (!week) errors.push(`week_start sai định dạng: "${r.data.week_start}" (dùng dd/mm/yyyy)`);
     else if (new Date(`${week}T00:00:00Z`).getUTCDay() !== 6) errors.push(`week_start ${r.data.week_start} không phải Thứ 7 — tuần tính từ Thứ 7 đến hết Thứ 6`);
 
-    const code = (r.data.sbu_code ?? "").trim().toUpperCase();
-    const lineRaw = (r.data.line ?? "").trim().toLowerCase();
-    const line: Line | undefined = lineRaw ? LINE_ALIAS[lineRaw] : code ? "b2c_center" : "b2c_system";
-    if (lineRaw && !line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_center, ecom, b2b, osir/vmt, vmp)`);
-    let sbuId: string | null = null;
-    if (line === "b2c_center") {
-      if (!code) errors.push("line b2c_center bắt buộc có sbu_code");
-      else if (!sbuByCode.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
-      else sbuId = sbuByCode.get(code)!;
-    } else if (line && code) errors.push(`line ${line} không dùng sbu_code`);
+    const { line, sbuId, code } = resolveTarget(r, sbuByCode, "week", errors);
 
     const nums = readNumbers(r, [{ col: "budget", label: "" }, ...WEEK_COLS.map((c) => ({ col: c.col, label: "" }))], errors);
     // Cột chỉ hợp lệ với mảng của nó (chỉ số tuần khai báo ở weeklyFields; impression chỉ B2C).
@@ -208,7 +244,6 @@ const LINE_ALIAS: Record<string, Line> = {
   b2c_center: "b2c_center",
   trung_tam: "b2c_center",
   ecom: "ecom",
-  b2b: "b2b",
   osir: "osir",
   vmt: "osir",
   vmp: "vmp",
@@ -217,16 +252,15 @@ const LINE_NAME: Record<Line, string> = { b2c_system: "B2C Hệ thống (tổng 
 
 /** Cột số của sheet THANG → trường ads_metrics + mảng được phép dùng. */
 const MONTH_FIELDS: { col: string; field: keyof UpsertAdsMetricInput; lines: Line[]; label: string }[] = [
-  { col: "budget", field: "budget", lines: ["b2c_system", "ecom", "b2b", "osir", "vmp"], label: "NS" },
+  { col: "budget", field: "budget", lines: ["b2c_system", "ecom", "osir", "vmp"], label: "NS" },
   { col: "center_order_budget", field: "centerOrderBudget", lines: ["b2c_center"], label: "NS TT order" },
   { col: "ho_topup_budget", field: "hoTopupBudget", lines: ["b2c_center"], label: "NS MKT thêm" },
-  { col: "leads", field: "leads", lines: ["b2c_system", "b2c_center", "b2b", "osir", "vmp"], label: "Lead" },
-  { col: "new_students", field: "newStudents", lines: ["b2c_system", "b2c_center", "ecom", "b2b", "osir", "vmp"], label: "HVM" },
-  { col: "messages", field: "messages", lines: ["b2b"], label: "Mess" },
+  { col: "leads", field: "leads", lines: ["b2c_system", "b2c_center", "osir", "vmp"], label: "Lead" },
+  { col: "new_students", field: "newStudents", lines: ["b2c_system", "b2c_center", "ecom", "osir", "vmp"], label: "HVM" },
+  { col: "messages", field: "messages", lines: ["b2c_system", "b2c_center", "ecom", "osir", "vmp"], label: "Mess" },
   { col: "mql", field: "mql", lines: ["ecom"], label: "MQL" },
   { col: "revenue", field: "revenue", lines: ["ecom"], label: "Doanh thu" },
   { col: "actual_revenue", field: "actualRevenue", lines: ["ecom"], label: "Thực thu" },
-  { col: "deals", field: "deals", lines: ["b2b"], label: "Deal" },
 ];
 
 async function planMonth(db: DB, sheets: Record<string, ParsedRow[]>): Promise<AdsImportPlan> {
@@ -247,18 +281,7 @@ async function planMonth(db: DB, sheets: Record<string, ParsedRow[]>): Promise<A
     const period = parseMonthCell(r.data.month);
     if (!r.data.month) errors.push("Thiếu month");
     else if (!period) errors.push(`month sai định dạng: "${r.data.month}" (dùng mm/yyyy, vd. 09/2026)`);
-    const lineRaw = (r.data.line ?? "").trim().toLowerCase();
-    const line = LINE_ALIAS[lineRaw];
-    if (!lineRaw) errors.push("Thiếu line");
-    else if (!line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_center, ecom, b2b, osir, vmp)`);
-
-    const code = (r.data.sbu_code ?? "").trim().toUpperCase();
-    let sbuId: string | null = null;
-    if (line === "b2c_center") {
-      if (!code) errors.push("line b2c_center bắt buộc có sbu_code");
-      else if (!sbuByCode.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
-      else sbuId = sbuByCode.get(code)!;
-    } else if (line && code) errors.push(`line ${line} không dùng sbu_code`);
+    const { line, sbuId, code } = resolveTarget(r, sbuByCode, "month", errors);
 
     const nums = readNumbers(r, MONTH_FIELDS.map((f) => ({ col: f.col, label: f.label })), errors);
     const values: Record<string, string> = {};
@@ -375,18 +398,8 @@ async function planRequest(db: DB, sheets: Record<string, ParsedRow[]>): Promise
     const period = parseMonthCell(r.data.month);
     if (!r.data.month) errors.push("Thiếu month");
     else if (!period) errors.push(`month sai định dạng: "${r.data.month}" (dùng mm/yyyy)`);
-    // line trống = request của trung tâm B2C (tương thích template cũ); mảng khác: ecom/b2b/osir(vmt)/vmp, không có sbu_code.
-    const lineRaw = (r.data.line ?? "").trim().toLowerCase();
-    const line: Line | undefined = lineRaw ? LINE_ALIAS[lineRaw] : "b2c_center";
-    if (lineRaw && !line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_center, ecom, b2b, osir/vmt, vmp)`);
-    else if (line === "b2c_system") errors.push("Request của B2C là request của TRUNG TÂM: dùng line b2c_center + sbu_code (hoặc để trống line)");
-    const code = (r.data.sbu_code ?? "").trim().toUpperCase();
-    let sbuId: string | null = null;
-    if (line === "b2c_center") {
-      if (!code) errors.push("Thiếu sbu_code");
-      else if (!sbuByCode.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
-      else sbuId = sbuByCode.get(code)!;
-    } else if (line && code) errors.push(`line ${line} không dùng sbu_code`);
+    // Cột sbu (mã trung tâm | ECOM | VMP | VMT); template cũ: line trống = request của trung tâm (kèm sbu_code).
+    const { line, sbuId, code } = resolveTarget(r, sbuByCode, "request", errors);
     const name = (r.data.campaign_name ?? "").trim();
     if (!name) errors.push("Thiếu campaign_name");
     const nums = readNumbers(r, CAMPAIGN_NUMS, errors);
@@ -435,7 +448,6 @@ const PLAN_COLS: { col: string; field: FunnelField | "plannedBudget"; label: str
   { col: "target_messages", field: "messages", label: "MT Mess" },
   { col: "target_mql", field: "mql", label: "MT MQL" },
   { col: "target_revenue", field: "revenue", label: "MT Doanh thu" },
-  { col: "target_deals", field: "deals", label: "MT Deal" },
 ];
 
 async function planPlan(db: DB, sheets: Record<string, ParsedRow[]>): Promise<AdsImportPlan> {
@@ -454,18 +466,7 @@ async function planPlan(db: DB, sheets: Record<string, ParsedRow[]>): Promise<Ad
     const period = parseMonthCell(r.data.month);
     if (!r.data.month) errors.push("Thiếu month");
     else if (!period) errors.push(`month sai định dạng: "${r.data.month}" (dùng mm/yyyy, vd. 11/2026)`);
-    const lineRaw = (r.data.line ?? "").trim().toLowerCase();
-    const line = LINE_ALIAS[lineRaw];
-    if (!lineRaw) errors.push("Thiếu line");
-    else if (!line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_center, ecom, b2b, osir/vmt, vmp)`);
-
-    const code = (r.data.sbu_code ?? "").trim().toUpperCase();
-    let sbuId: string | null = null;
-    if (line === "b2c_center") {
-      if (!code) errors.push("line b2c_center bắt buộc có sbu_code");
-      else if (!sbuByCode.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
-      else sbuId = sbuByCode.get(code)!;
-    } else if (line && code) errors.push(`line ${line} không dùng sbu_code`);
+    const { line, sbuId, code } = resolveTarget(r, sbuByCode, "plan", errors);
 
     const nums = readNumbers(r, PLAN_COLS.map((c) => ({ col: c.col, label: c.label })), errors);
     const values: Record<string, string> = {};

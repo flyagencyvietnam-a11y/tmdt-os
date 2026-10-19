@@ -96,16 +96,9 @@ export function MetricEditDialog({
                 </F>
               </>
             )}
-            {line === "b2b" && (
-              <>
-                <F label="Mess">
-                  <Input type="number" value={f.messages} onChange={(e) => set("messages", e.target.value)} />
-                </F>
-                <F label="Hợp đồng / Deal chốt">
-                  <Input type="number" value={f.deals} onChange={(e) => set("deals", e.target.value)} />
-                </F>
-              </>
-            )}
+            <F label="Mess">
+              <Input type="number" value={f.messages} onChange={(e) => set("messages", e.target.value)} />
+            </F>
           </div>
 
           <div className="grid grid-cols-4 gap-2 rounded-lg bg-muted/50 p-3 text-xs">

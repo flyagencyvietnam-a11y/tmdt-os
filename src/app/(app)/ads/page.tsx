@@ -4,8 +4,8 @@ import { requireUser } from "@/lib/auth/session";
 import { canSee } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { adsCampaigns, sbus, users } from "@/lib/db/schema";
-import { listAdsMetrics, listAdsPlans, listEcomProducts, loadEffectivenessRubric } from "@/lib/services/ads";
+import { sbus, users } from "@/lib/db/schema";
+import { listAdsCampaigns, listAdsMetrics, listAdsPlans, listEcomProducts, loadEffectivenessRubric } from "@/lib/services/ads";
 import { PageHeader } from "@/components/shell/page-header";
 import { todayVnDayStr } from "@/lib/time";
 import { AdsView } from "./ads-view";
@@ -14,7 +14,7 @@ export const metadata = { title: "Growth Performance — VMG MKT OS" };
 export const dynamic = "force-dynamic";
 
 /**
- * SPEC Mục 9.4 + Phụ lục D mục 26: mọi SBU (Hệ thống, trung tâm, Ecom, VMP, VMT, B2B) chung một danh sách; tab
+ * SPEC Mục 9.4 + Phụ lục D mục 26: mọi SBU (Hệ thống, trung tâm, Ecom, VMP, VMT) chung một danh sách; tab
  * Tổng quan · Kế hoạch & tiến độ · Request · Báo cáo tuần · Báo cáo tháng · Báo cáo quý.
  */
 export default async function AdsPage() {
@@ -24,7 +24,7 @@ export default async function AdsPage() {
   const [metrics, allSbus, campaigns, ecomProducts, plans, rubric, allUsers] = await Promise.all([
     listAdsMetrics(db),
     db.select({ id: sbus.id, code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.kind, "center")),
-    db.select().from(adsCampaigns),
+    listAdsCampaigns(db),
     listEcomProducts(db),
     listAdsPlans(db),
     loadEffectivenessRubric(db),
@@ -35,7 +35,7 @@ export default async function AdsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Growth Performance"
-        description="Kế hoạch và hiệu quả tăng trưởng (quảng cáo/Ads) của mọi SBU trong cùng một danh sách: Hệ thống, các trung tâm, Ecom, VMP, VMT, B2B. Luồng: lập kế hoạch tháng → request → báo cáo tuần / tháng / quý (chọn khoảng kỳ bất kỳ), và so thực tế với kế hoạch. Tuần tính từ Thứ 7 đến hết Thứ 6; số tháng nhập riêng, quý = cộng 3 tháng, không cộng từ các tuần."
+        description="Kế hoạch và hiệu quả tăng trưởng (quảng cáo/Ads) của mọi SBU trong cùng một danh sách: Hệ thống, các trung tâm, Ecom, VMP, VMT. Luồng: lập kế hoạch tháng → request → báo cáo tuần / tháng / quý (chọn khoảng kỳ bất kỳ), và so thực tế với kế hoạch. Tuần tính từ Thứ 7 đến hết Thứ 6; số tháng nhập riêng, quý = cộng 3 tháng, không cộng từ các tuần."
       />
       <AdsView
         metrics={metrics.map((m) => ({

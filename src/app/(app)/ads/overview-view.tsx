@@ -26,7 +26,7 @@ export interface OverviewRange {
 }
 
 /**
- * Tổng quan: số của TẤT CẢ SBU (Hệ thống, trung tâm, Ecom, VMP, VMT, B2B chung một danh sách) trong 1 tháng hoặc 1 quý.
+ * Tổng quan: số của TẤT CẢ SBU (Hệ thống, trung tâm, Ecom, VMP, VMT chung một danh sách) trong 1 tháng hoặc 1 quý.
  * Chi tiết theo nhiều kỳ nằm ở các tab Báo cáo tuần / tháng / quý.
  */
 export function OverviewView({

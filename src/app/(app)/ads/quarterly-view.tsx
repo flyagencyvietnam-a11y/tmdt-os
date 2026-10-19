@@ -8,8 +8,8 @@ import { nextQuarter, quarterKey, quarterLabel, quarterMonths } from "./rollups"
 import type { MetricRow } from "./shared";
 import type { AdsUnit } from "./units";
 
-const QUARTER_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas", "deals"];
-const QUARTER_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas", "deals"];
+const QUARTER_METRICS: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "messages", "costPerMess", "revenue", "roas"];
+const QUARTER_DEFAULT: MetricKey[] = ["spend", "leads", "hvm", "cpl", "cac", "cvr", "revenue", "roas"];
 
 const quarterRangeText = (from: string, to: string, n: number) => (n <= 1 ? quarterLabel(to) : `${quarterLabel(from)} – ${quarterLabel(to)} (${n} quý)`);
 

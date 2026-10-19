@@ -56,7 +56,7 @@ describe("cấu hình mảng", () => {
   it("mọi line thuộc đúng 1 mảng; osir hiển thị là VMT", () => {
     const all = ADS_GROUPS.flatMap((g) => g.lines);
     expect(new Set(all).size).toBe(all.length);
-    expect([...all].sort()).toEqual(["b2b", "b2c_center", "b2c_system", "ecom", "osir", "vmp"]);
+    expect([...all].sort()).toEqual(["b2c_center", "b2c_system", "ecom", "osir", "vmp"]);
     expect(groupOfLine("osir").label).toContain("VMT");
     expect(groupOfLine("b2c_center").key).toBe("b2c");
   });

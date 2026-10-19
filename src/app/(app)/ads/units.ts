@@ -2,7 +2,7 @@ import type { AdsLine } from "@/lib/ads-lines";
 import { aggregate, LINE_COLORS, num, type MetricRow, type PeriodType, type SbuLite } from "./shared";
 
 /**
- * "Đơn vị" của Growth Performance (SPEC Phụ lục D mục 26): Hệ thống (HO), từng trung tâm, Ecom, VMP, VMT, B2B là SBU NGANG HÀNG
+ * "Đơn vị" của Growth Performance (SPEC Phụ lục D mục 26): Hệ thống (HO), từng trung tâm, Ecom, VMP, VMT là SBU NGANG HÀNG
  * trong một danh sách duy nhất — không còn cấp "mảng". Mỗi đơn vị = (line, sbuId) của bảng `ads_metrics`. THUẦN (client-safe, không DB).
  *
  * Quy ước Lead/HVM B2C giữ nguyên (CLAUDE.md "Ads — logic B2C"): dòng Hệ thống (HO) mang Lead/HVM TỔNG cả B2C, còn Lead/HVM của từng
@@ -26,7 +26,7 @@ export interface AdsUnit {
   conversionLabel: string;
 }
 
-/** Thứ tự cố định: Hệ thống → các trung tâm → Ecom → VMP → VMT → B2B. */
+/** Thứ tự cố định: Hệ thống → các trung tâm → Ecom → VMP → VMT. */
 export function buildAdsUnits(centers: SbuLite[]): AdsUnit[] {
   const line = (key: AdsLine, code: string, label: string, conversionLabel: string, leadField: "leads" | "mql" = "leads"): AdsUnit => ({
     key,
@@ -45,7 +45,6 @@ export function buildAdsUnits(centers: SbuLite[]): AdsUnit[] {
     line("ecom", "Ecom", "Ecom (TMĐT)", "HVM online", "mql"),
     line("vmp", "VMP", "VMP (Du học)", "HS đăng ký DV"),
     line("osir", "VMT", "VMT (khảo thí)", "HV ghi danh thi"),
-    line("b2b", "B2B", "B2B", "HVM"),
   ];
 }
 
@@ -123,7 +122,7 @@ export function unitFunnel(bucket: MetricRow[], u: AdsUnit): Funnel {
 
 /**
  * Dòng "Tổng cộng" mọi đơn vị: ngân sách cộng tất cả; Lead/HVM = số TỔNG B2C (dòng Hệ thống; nếu kỳ đó chưa nhập thì tạm cộng từ các
- * trung tâm) + Lead(MQL)/HVM của Ecom/VMP/VMT/B2B. Trung tâm KHÔNG cộng thêm khi đã có số tổng (tập con). Fallback tính theo từng kỳ.
+ * trung tâm) + Lead(MQL)/HVM của Ecom/VMP/VMT. Trung tâm KHÔNG cộng thêm khi đã có số tổng (tập con). Fallback tính theo từng kỳ.
  * CPL/CAC chỉ chia chi phí của phần ĐÃ có Lead/HVM (SBU còn trống không kéo lệch).
  */
 export function totalFunnel(bucket: MetricRow[]): Funnel {

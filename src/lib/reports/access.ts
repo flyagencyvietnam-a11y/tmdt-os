@@ -19,6 +19,9 @@ export function parseKind(v: string | null | undefined): ReportKind | null {
   return v === "sbu" || v === "brand" || v === "growth" || v === "management" ? v : null;
 }
 
-export function parsePeriod(v: string | null | undefined): string | undefined {
-  return v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v) ? v : undefined;
+/** Kỳ báo cáo: tháng yyyy-mm; riêng báo cáo Growth nhận thêm quý yyyy-Qn (cộng 3 tháng). */
+export function parsePeriod(v: string | null | undefined, kind?: ReportKind | null): string | undefined {
+  if (!v) return undefined;
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) return v;
+  return kind === "growth" && /^\d{4}-Q[1-4]$/.test(v) ? v : undefined;
 }

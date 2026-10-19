@@ -22,11 +22,11 @@ const COPY: Record<AdsImportKind, { title: string; desc: string }> = {
   },
   month: {
     title: "Nhập Excel — Hàng tháng",
-    desc: "Số liệu tháng của từng SBU (Hệ thống = tổng B2C, từng trung tâm, Ecom, B2B, VMT/OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập riêng, không cộng từ tuần.",
+    desc: "Số liệu tháng của từng SBU (Hệ thống = tổng B2C, từng trung tâm, Ecom, VMT/OSIR, VMP) + Ecom theo sản phẩm. Số tháng nhập riêng, không cộng từ tuần.",
   },
   request: {
     title: "Nhập Excel — Theo request",
-    desc: "Từng request/chiến dịch ads (chi phí, ngân sách kế hoạch, người chạy, tin nhắn, tiếp cận, tương tác…) — của trung tâm hoặc của Ecom/VMP/VMT/B2B.",
+    desc: "Từng request/chiến dịch ads (chi phí, ngân sách kế hoạch, người chạy, tin nhắn, tiếp cận, tương tác…) — của trung tâm hoặc của Ecom/VMP/VMT.",
   },
 };
 

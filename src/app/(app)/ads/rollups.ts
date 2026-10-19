@@ -143,19 +143,17 @@ export function b2cSummary(rows: MetricRow[], periods: string[], periodType: "mo
 // Tổng quan toàn phòng — 5 mảng như sheet "Tổng hợp" (B2C gộp Hệ thống + TT)
 // ---------------------------------------------------------------------------
 
-export type OverviewKey = "b2c" | "ecom" | "b2b" | "osir" | "vmp";
-export const OVERVIEW_KEYS: OverviewKey[] = ["b2c", "ecom", "b2b", "osir", "vmp"];
+export type OverviewKey = "b2c" | "ecom" | "osir" | "vmp";
+export const OVERVIEW_KEYS: OverviewKey[] = ["b2c", "ecom", "osir", "vmp"];
 export const OVERVIEW_LABELS: Record<OverviewKey, string> = {
   b2c: "B2C Offline",
   ecom: LINE_LABELS.ecom,
-  b2b: LINE_LABELS.b2b,
   osir: LINE_LABELS.osir,
   vmp: LINE_LABELS.vmp,
 };
 export const OVERVIEW_COLORS: Record<OverviewKey, string> = {
   b2c: LINE_COLORS.b2c_system,
   ecom: LINE_COLORS.ecom,
-  b2b: LINE_COLORS.b2b,
   osir: LINE_COLORS.osir,
   vmp: LINE_COLORS.vmp,
 };

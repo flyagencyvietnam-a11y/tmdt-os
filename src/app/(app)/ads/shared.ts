@@ -71,7 +71,8 @@ export interface PlanRow {
   notes: string | null;
 }
 
-export const LINES: Line[] = ["b2c_system", "b2c_center", "ecom", "b2b", "osir", "vmp"];
+/** Các line còn dùng trên giao diện (b2b đã bỏ — xem lib/ads-lines.ts). */
+export const LINES: Line[] = ["b2c_system", "b2c_center", "ecom", "osir", "vmp"];
 
 export const LINE_LABELS: Record<Line, string> = {
   b2c_system: "B2C Hệ thống",

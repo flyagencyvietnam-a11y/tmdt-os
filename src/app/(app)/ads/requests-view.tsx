@@ -22,7 +22,7 @@ import { fmt, fmtMoney, monthLabel, num, type CampaignRow } from "./shared";
 import { unitKeyOf, type AdsUnit } from "./units";
 
 /**
- * Report THEO REQUEST — mỗi dòng là 1 chiến dịch/request ads của 1 SBU (trung tâm, Ecom, VMP, VMT, B2B — chung một danh sách;
+ * Report THEO REQUEST — mỗi dòng là 1 chiến dịch/request ads của 1 SBU (trung tâm, Ecom, VMP, VMT — chung một danh sách;
  * sheet gốc "ads tt.xlsx"), KHÔNG gộp theo kỳ như tab Tuần/Tháng. "Cộng dồn vào tháng" chỉ tổng hợp thủ công khi cần đối
  * chiếu với report tháng — xem SPEC Mục 9.4 / CLAUDE.md "Ads redesign".
  *
@@ -33,7 +33,7 @@ const INITIAL_VIEW = { sorts: [{ field: "period", direction: "asc" as const }, {
 const EMPTY_FORM = { unitKey: "", period: "", campaignName: "", runnerId: "", plannedBudget: "", misaRequestUrl: "", messages: "", impressions: "", spend: "" };
 
 export function RequestsView({ campaigns, units, users, canManage }: { campaigns: CampaignRow[]; units: AdsUnit[]; users: { id: string; fullName: string }[]; canManage: boolean }) {
-  // Mọi SBU chung một danh sách: trung tâm (line b2c_center + sbu_id), còn Ecom/VMP/VMT/B2B là request cấp line, không có sbu_id.
+  // Mọi SBU chung một danh sách: trung tâm (line b2c_center + sbu_id), còn Ecom/VMP/VMT là request cấp line, không có sbu_id.
   // Hệ thống (HO) không có request riêng — ngân sách HO nằm ở kế hoạch/báo cáo.
   const reqUnits = React.useMemo(() => units.filter((u) => u.kind !== "ho"), [units]);
   const router = useRouter();
@@ -316,7 +316,7 @@ export function RequestsView({ campaigns, units, users, canManage }: { campaigns
       )}
 
       <p className="text-xs text-muted-foreground">
-        Mỗi dòng = 1 request/chiến dịch ads của 1 SBU (trung tâm, Ecom, VMP, VMT, B2B), độc lập chu kỳ tuần/tháng; ngân sách kế hoạch của request được cộng vào “Đã phân bổ” ở tab Kế hoạch. {canManage ? "Bấm ô để sửa ngay trên bảng (Enter/Tab sang ô kế, Ctrl+V để dán từ Excel); dấu + ở cuối hàng tiêu đề để thêm cột. " : ""}Nút ⟳ “Cộng dồn” (request của trung tâm) đưa tổng chi tiêu các request của 1 trung tâm + kỳ vào báo cáo tháng.
+        Mỗi dòng = 1 request/chiến dịch ads của 1 SBU (trung tâm, Ecom, VMP, VMT), độc lập chu kỳ tuần/tháng; ngân sách kế hoạch của request được cộng vào “Đã phân bổ” ở tab Kế hoạch. {canManage ? "Bấm ô để sửa ngay trên bảng (Enter/Tab sang ô kế, Ctrl+V để dán từ Excel); dấu + ở cuối hàng tiêu đề để thêm cột. " : ""}Nút ⟳ “Cộng dồn” (request của trung tâm) đưa tổng chi tiêu các request của 1 trung tâm + kỳ vào báo cáo tháng.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <SimpleSelect

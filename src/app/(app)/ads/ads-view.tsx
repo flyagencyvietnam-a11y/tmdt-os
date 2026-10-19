@@ -31,7 +31,7 @@ const TABS: { value: Tab; label: string }[] = [
 ];
 
 /**
- * Container Growth Performance (SPEC Phụ lục D mục 26): KHÔNG còn tab theo mảng — Hệ thống, trung tâm, Ecom, VMP, VMT, B2B là SBU ngang hàng
+ * Container Growth Performance (SPEC Phụ lục D mục 26): KHÔNG còn tab theo mảng — Hệ thống, trung tâm, Ecom, VMP, VMT là SBU ngang hàng
  * trong cùng một danh sách. Tab: Tổng quan · Kế hoạch & tiến độ · Request · Báo cáo tuần · Báo cáo tháng · Báo cáo quý. Tháng đang xem dùng chung
  * giữa Tổng quan và Kế hoạch; ba báo cáo có bộ chọn KHOẢNG kỳ riêng ngay trong view.
  */
@@ -140,7 +140,7 @@ export function AdsView({
           )}
           {showMonthPicker && <MonthPicker months={months} value={month} onChange={setMonth} />}
           {tab === "overview" && mode === "quarter" && <QuarterPicker quarters={quarters} value={quarter} onChange={setQuarter} />}
-          {showExport && <ExportMenu kind="growth" period={tab === "overview" && mode === "quarter" ? undefined : month} />}
+          {showExport && <ExportMenu kind="growth" period={tab === "overview" && mode === "quarter" ? quarter : month} />}
           {canManage && importKind && <AdsImportButton key={importKind} kind={importKind} templateQuery={importQuery.toString()} />}
         </div>
       </div>
