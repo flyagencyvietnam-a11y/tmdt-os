@@ -207,7 +207,7 @@ async function planWeek(db: DB, sheets: Record<string, ParsedRow[]>): Promise<Ad
     const week = parseDayCell(r.data.week_start);
     if (!r.data.week_start) errors.push("Thiếu week_start");
     else if (!week) errors.push(`week_start sai định dạng: "${r.data.week_start}" (dùng dd/mm/yyyy)`);
-    else if (new Date(`${week}T00:00:00Z`).getUTCDay() !== 6) errors.push(`week_start ${r.data.week_start} không phải Thứ 7 — tuần tính từ Thứ 7 đến hết Thứ 6`);
+    else if (new Date(`${week}T00:00:00Z`).getUTCDay() !== 1) errors.push(`week_start ${r.data.week_start} không phải Thứ 2 — tuần tính từ Thứ 2 đến hết Chủ nhật`);
 
     const { line, sbuId, code } = resolveTarget(r, sbuByCode, "week", errors);
 

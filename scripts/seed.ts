@@ -353,7 +353,7 @@ async function seedRecurringRules(adminId: string) {
       ruleCode: "ADS-01",
       name: "Báo cáo ads tuần (B2C trung tâm)",
       description:
-        "Chu kỳ Thứ 7 tuần trước → hết Thứ 6 tuần này (khớp reportWeekBounds trong lib/time.ts), theo dữ liệu " +
+        "Chu kỳ Thứ 2 → hết Chủ nhật (khớp reportWeekBounds trong lib/time.ts), theo dữ liệu " +
         "thật ở file VMG_Digital_Tracker_2026 sheet 'Tracking Tuần'. checklist_per_owner theo 10 SBU B2C offline " +
         "(Khiết/Đạt) — cập nhật Ngân sách + Mess cho mỗi trung tâm ở /ads.",
       taskTemplate: { title: "Báo cáo ads tuần — hạn {{due_date}}", type: "ads", priority: "high" },

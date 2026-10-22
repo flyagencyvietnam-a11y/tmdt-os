@@ -101,7 +101,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ kind: st
         name: "HUONG_DAN",
         columns: [{ header: "Hướng dẫn — import Ads HÀNG TUẦN", key: "note", width: 120 }],
         rows: [
-          { note: "Tuần tính từ THỨ 7 đến hết Thứ 6. week_start là ngày Thứ 7 đầu tuần (dd/mm/yyyy). Mặc định đã điền sẵn tuần cần nhập." },
+          { note: "Tuần tính từ THỨ 2 đến hết Chủ nhật. week_start là ngày Thứ 2 đầu tuần (dd/mm/yyyy). Mặc định đã điền sẵn tuần cần nhập." },
           { note: "Mỗi dòng 1 (tuần, SBU). Cột sbu: HO | mã trung tâm | ECOM | VMP | VMT (xem DANH_MUC). Mọi SBU dùng chung các cột: budget (ngân sách tuần; trung tâm: TT order + P.MKT chạy thêm), mess, leads (Lead), new_students (HVM), impression (chỉ B2C: HO + trung tâm)." },
           { note: "Ecom: Lead nhập ở cột mql (không dùng leads); ngoài ra có revenue (doanh thu). CPL, CAC, CP/mess do hệ thống tự tính." },
           { note: "Dòng HO: leads/new_students là số TỔNG cả B2C (Hệ thống + trung tâm); số của từng trung tâm là phần quy riêng cho ads ngân sách trung tâm — một phần của số tổng, không cộng thêm." },

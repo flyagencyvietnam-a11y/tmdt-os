@@ -77,14 +77,14 @@ describe("monthsOfYear / weeksOfMonth", () => {
     expect(ms[11].value).toBe("2026-12");
   });
 
-  it("weeksOfMonth: tuần báo cáo T7→T6 giao với tháng, value 'week:<T7>'", () => {
+  it("weeksOfMonth: tuần báo cáo T2→CN giao với tháng, value 'week:<T2>'", () => {
     const ws = weeksOfMonth(2026, 8);
     expect(ws.length).toBeGreaterThanOrEqual(4);
     expect(ws.length).toBeLessThanOrEqual(6);
     for (const w of ws) {
       expect(w.value).toBe(`week:${w.from}`);
-      // mỗi tuần 7 ngày, bắt đầu Thứ 7 (UTC getUTCDay === 6)
-      expect(new Date(`${w.from}T00:00:00Z`).getUTCDay()).toBe(6);
+      // mỗi tuần 7 ngày, bắt đầu Thứ 2 (UTC getUTCDay === 1)
+      expect(new Date(`${w.from}T00:00:00Z`).getUTCDay()).toBe(1);
       // có giao với tháng 8
       expect(w.to >= "2026-08-01" && w.from <= "2026-08-31").toBe(true);
     }

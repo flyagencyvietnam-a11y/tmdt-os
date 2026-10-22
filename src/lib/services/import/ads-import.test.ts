@@ -51,20 +51,20 @@ describe("import Ads từ Excel", () => {
     return { plan, applied: await applyAdsImport(d, kind, plan, (await db.select().from(users))[0].id) };
   };
 
-  it("HÀNG TUẦN: Hệ thống + Trung tâm, bỏ qua dòng chưa điền, báo lỗi không phải Thứ 7", async () => {
+  it("HÀNG TUẦN: Hệ thống + Trung tâm, bỏ qua dòng chưa điền, báo lỗi không phải Thứ 2", async () => {
     const buf = await file("TUAN", ["week_start*", "sbu_code", "budget", "mess", "impression"], [
-      { week_start: "03/10/2026", sbu_code: "", budget: "10.000.000", mess: 120, impression: 300000 },
-      { week_start: "03/10/2026", sbu_code: "VTS", budget: 900000, mess: 8 },
-      { week_start: "03/10/2026", sbu_code: "XXX", budget: 1 },
-      { week_start: "04/10/2026", sbu_code: "VTS", budget: 1 },
-      { week_start: "03/10/2026", sbu_code: "", budget: "", mess: "" },
+      { week_start: "05/10/2026", sbu_code: "", budget: "10.000.000", mess: 120, impression: 300000 },
+      { week_start: "05/10/2026", sbu_code: "VTS", budget: 900000, mess: 8 },
+      { week_start: "05/10/2026", sbu_code: "XXX", budget: 1 },
+      { week_start: "06/10/2026", sbu_code: "VTS", budget: 1 },
+      { week_start: "05/10/2026", sbu_code: "", budget: "", mess: "" },
     ]);
     const { plan, applied } = await run("week", buf);
     expect(plan.rows.map((r) => r.action)).toEqual(["create", "create", "error", "error", "skip"]);
     expect(plan.rows[2].errors[0]).toMatch(/sbu_code không tồn tại/);
-    expect(plan.rows[3].errors[0]).toMatch(/không phải Thứ 7/);
+    expect(plan.rows[3].errors[0]).toMatch(/không phải Thứ 2/);
     expect(applied).toMatchObject({ created: 2, skipped: 1, errors: 2 });
-    const sys = await db.select().from(adsMetrics).where(and(eq(adsMetrics.line, "b2c_system"), eq(adsMetrics.period, "2026-10-03")));
+    const sys = await db.select().from(adsMetrics).where(and(eq(adsMetrics.line, "b2c_system"), eq(adsMetrics.period, "2026-10-05")));
     expect(sys[0].budget).toBe("10000000");
     expect(sys[0].messages).toBe("120");
     const ctr = await db.select().from(adsMetrics).where(and(eq(adsMetrics.line, "b2c_center"), eq(adsMetrics.sbuId, vts)));
@@ -72,10 +72,10 @@ describe("import Ads từ Excel", () => {
   });
 
   it("nạp lại cùng file = cập nhật, không nhân đôi; ô trống giữ nguyên số cũ", async () => {
-    const buf = await file("TUAN", ["week_start*", "sbu_code", "budget", "mess", "impression"], [{ week_start: "03/10/2026", sbu_code: "", budget: 11000000 }]);
+    const buf = await file("TUAN", ["week_start*", "sbu_code", "budget", "mess", "impression"], [{ week_start: "05/10/2026", sbu_code: "", budget: 11000000 }]);
     const { plan } = await run("week", buf);
     expect(plan.rows[0].action).toBe("update");
-    const sys = await db.select().from(adsMetrics).where(and(eq(adsMetrics.line, "b2c_system"), eq(adsMetrics.period, "2026-10-03")));
+    const sys = await db.select().from(adsMetrics).where(and(eq(adsMetrics.line, "b2c_system"), eq(adsMetrics.period, "2026-10-05")));
     expect(sys).toHaveLength(1);
     expect(sys[0].budget).toBe("11000000");
     expect(sys[0].messages).toBe("120"); // không bị xoá
@@ -135,11 +135,11 @@ describe("import Ads từ Excel", () => {
   it("HÀNG TUẦN mở cho mảng khác: cột theo phễu của mảng, báo lỗi cột không áp dụng", async () => {
     const headers = ["week_start*", "line", "sbu_code", "budget", "mess", "leads", "mql", "new_students", "revenue", "deals"];
     const buf = await file("TUAN", headers, [
-      { week_start: "03/10/2026", line: "ecom", budget: 5000000, mql: 30, new_students: 2, revenue: 12000000 },
-      { week_start: "03/10/2026", line: "vmt", budget: 1000000, leads: 9 },
-      { week_start: "03/10/2026", line: "ecom", budget: 1, leads: 4 },
-      { week_start: "03/10/2026", line: "vmp", sbu_code: "VTS", budget: 1 },
-      { week_start: "03/10/2026", line: "b2b", budget: 2000000, mess: 7 },
+      { week_start: "05/10/2026", line: "ecom", budget: 5000000, mql: 30, new_students: 2, revenue: 12000000 },
+      { week_start: "05/10/2026", line: "vmt", budget: 1000000, leads: 9 },
+      { week_start: "05/10/2026", line: "ecom", budget: 1, leads: 4 },
+      { week_start: "05/10/2026", line: "vmp", sbu_code: "VTS", budget: 1 },
+      { week_start: "05/10/2026", line: "b2b", budget: 2000000, mess: 7 },
     ]);
     const { plan } = await run("week", buf);
     expect(plan.rows.map((r) => r.action)).toEqual(["create", "create", "error", "error", "error"]);
@@ -155,14 +155,14 @@ describe("import Ads từ Excel", () => {
   it("cột sbu: HO | mã trung tâm | ECOM | VMP | VMT — Lead/HVM/Mess tuần cho mọi SBU; B2B bị chặn", async () => {
     const headers = ["week_start*", "sbu*", "budget", "mess", "leads", "mql", "new_students"];
     const buf = await file("TUAN", headers, [
-      { week_start: "10/10/2026", sbu: "HO", budget: 8000000, mess: 90, leads: 40, new_students: 5 },
-      { week_start: "10/10/2026", sbu: "vts", budget: 600000, mess: 7, leads: 6, new_students: 1 },
-      { week_start: "10/10/2026", sbu: "ECOM", budget: 3000000, mql: 25, new_students: 2, mess: 4 },
-      { week_start: "10/10/2026", sbu: "VMT", budget: 500000, leads: 3, new_students: 1 },
-      { week_start: "10/10/2026", sbu: "ECOM", leads: 9 },
-      { week_start: "10/10/2026", sbu: "B2B", budget: 1 },
-      { week_start: "10/10/2026", sbu: "XYZ", budget: 1 },
-      { week_start: "10/10/2026", sbu: "HO", budget: 1 },
+      { week_start: "12/10/2026", sbu: "HO", budget: 8000000, mess: 90, leads: 40, new_students: 5 },
+      { week_start: "12/10/2026", sbu: "vts", budget: 600000, mess: 7, leads: 6, new_students: 1 },
+      { week_start: "12/10/2026", sbu: "ECOM", budget: 3000000, mql: 25, new_students: 2, mess: 4 },
+      { week_start: "12/10/2026", sbu: "VMT", budget: 500000, leads: 3, new_students: 1 },
+      { week_start: "12/10/2026", sbu: "ECOM", leads: 9 },
+      { week_start: "12/10/2026", sbu: "B2B", budget: 1 },
+      { week_start: "12/10/2026", sbu: "XYZ", budget: 1 },
+      { week_start: "12/10/2026", sbu: "HO", budget: 1 },
     ]);
     const { plan } = await run("week", buf);
     expect(plan.rows.map((r) => r.action)).toEqual(["create", "create", "create", "create", "error", "error", "error", "error"]);
@@ -170,7 +170,7 @@ describe("import Ads từ Excel", () => {
     expect(plan.rows[5].errors.join()).toMatch(/B2B đã bỏ/);
     expect(plan.rows[6].errors.join()).toMatch(/sbu không hợp lệ/);
     expect(plan.rows[7].errors.join()).toMatch(/Trùng/);
-    const wk = await db.select().from(adsMetrics).where(and(eq(adsMetrics.periodType, "week"), eq(adsMetrics.period, "2026-10-10")));
+    const wk = await db.select().from(adsMetrics).where(and(eq(adsMetrics.periodType, "week"), eq(adsMetrics.period, "2026-10-12")));
     const by = (line: string) => wk.find((r) => r.line === line);
     expect(by("b2c_system")).toMatchObject({ budget: "8000000", messages: "90", leads: "40", newStudents: "5" });
     expect(wk.find((r) => r.line === "b2c_center")).toMatchObject({ sbuId: vts, centerOrderBudget: "600000", leads: "6", newStudents: "1" });

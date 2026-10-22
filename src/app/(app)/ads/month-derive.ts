@@ -2,23 +2,23 @@ import { addDaysStr, monthBounds } from "@/lib/time";
 import { num, type MetricRow } from "./shared";
 
 /**
- * TUẦN TỰ CỘNG VÀO THÁNG (SPEC Phụ lục D mục 28). Tuần chạy Thứ 7 → Thứ 6 nên cắt ngang ranh giới tháng; mỗi tuần được gán NGUYÊN VẸN cho
- * tháng chiếm nhiều ngày nhất của tuần (= tháng chứa Thứ 3). Số tháng = số nhập chính thức nếu có, ô nào còn trống thì lấy tổng các tuần.
+ * TUẦN TỰ CỘNG VÀO THÁNG (SPEC Phụ lục D mục 28). Tuần chạy Thứ 2 → Chủ nhật nên có thể cắt ngang ranh giới tháng; mỗi tuần được gán NGUYÊN VẸN cho
+ * tháng chiếm nhiều ngày nhất của tuần (= tháng chứa Thứ 5). Số tháng = số nhập chính thức nếu có, ô nào còn trống thì lấy tổng các tuần.
  * THUẦN (client-safe): chỉ tạo dòng số liệu ảo để hiển thị/tổng hợp, KHÔNG ghi DB.
  */
 
-/** Tháng đa số ngày của tuần bắt đầu Thứ 7 `sat`: tháng chứa Thứ 3 (ngày thứ 4 của tuần). Vd. 2026-08-29 → "2026-09". */
-export function weekMonth(sat: string): string {
-  return addDaysStr(sat, 3).slice(0, 7);
+/** Tháng đa số ngày của tuần bắt đầu Thứ 2 `mon`: tháng chứa Thứ 5 (ngày thứ 4 của tuần). Vd. 2026-08-31 → "2026-09". */
+export function weekMonth(mon: string): string {
+  return addDaysStr(mon, 3).slice(0, 7);
 }
 
-const isSaturday = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay() === 6;
+const isMonday = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay() === 1;
 
-/** Mọi tuần (Thứ 7 bắt đầu) thuộc `month` theo quy tắc đa số ngày, cũ → mới. */
+/** Mọi tuần (Thứ 2 bắt đầu) thuộc `month` theo quy tắc đa số ngày, cũ → mới. */
 export function expectedWeeks(month: string): string[] {
   const [first, last] = monthBounds(`${month}-01`);
   let d = addDaysStr(first, -6);
-  for (let i = 0; i < 7 && !isSaturday(d); i++) d = addDaysStr(d, 1);
+  for (let i = 0; i < 7 && !isMonday(d); i++) d = addDaysStr(d, 1);
   const out: string[] = [];
   for (; d <= last; d = addDaysStr(d, 7)) if (weekMonth(d) === month) out.push(d);
   return out;

@@ -149,16 +149,16 @@ function shiftDay(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Tuần = Thứ 7 (period) → hết Thứ 6. "19/09 – 25/09". */
-export function weekLabel(sat: string): string {
-  const end = shiftDay(sat, 6);
-  return `${sat.slice(8, 10)}/${sat.slice(5, 7)} – ${end.slice(8, 10)}/${end.slice(5, 7)}/${end.slice(0, 4)}`;
+/** Tuần = Thứ 2 (period) → hết Chủ nhật. "19/09 – 25/09". */
+export function weekLabel(mon: string): string {
+  const end = shiftDay(mon, 6);
+  return `${mon.slice(8, 10)}/${mon.slice(5, 7)} – ${end.slice(8, 10)}/${end.slice(5, 7)}/${end.slice(0, 4)}`;
 }
-export function weekShort(sat: string): string {
-  return `${sat.slice(8, 10)}/${sat.slice(5, 7)}`;
+export function weekShort(mon: string): string {
+  return `${mon.slice(8, 10)}/${mon.slice(5, 7)}`;
 }
-export function nextWeek(sat: string): string {
-  return shiftDay(sat, 7);
+export function nextWeek(mon: string): string {
+  return shiftDay(mon, 7);
 }
 
 /** "2026-09" → "T9/2026" (hoặc "T9" khi short). */

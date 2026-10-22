@@ -18,7 +18,7 @@ const COPY: Record<AdsImportKind, { title: string; desc: string }> = {
   },
   week: {
     title: "Nhập Excel — Hàng tuần",
-    desc: "Số liệu tuần (Thứ 7 → Thứ 6) của từng SBU: ngân sách, mess, Lead (Ecom: MQL), HVM; B2C có thêm từng trung tâm.",
+    desc: "Số liệu tuần (Thứ 2 → Chủ nhật) của từng SBU: ngân sách, mess, Lead (Ecom: MQL), HVM; B2C có thêm từng trung tâm.",
   },
   month: {
     title: "Nhập Excel — Hàng tháng",

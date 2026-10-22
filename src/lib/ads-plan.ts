@@ -120,7 +120,7 @@ export function plannedUnitCost(plannedBudget: number | null, target: number | n
   return plannedBudget && target ? Math.round(plannedBudget / target) : null;
 }
 
-/** Các tuần (Thứ 7 bắt đầu) có ngày nằm trong tháng `month` — xếp số tuần vào tháng khi xem tiến độ. */
+/** Các tuần (Thứ 2 bắt đầu) có ngày nằm trong tháng `month` — xếp số tuần vào tháng khi xem tiến độ. */
 export function weeksOfMonth(month: string, weeks: string[]): string[] {
   const [first, last] = monthBounds(`${month}-01`);
   return weeks.filter((w) => w >= addDaysStr(first, -6) && w <= last).sort();

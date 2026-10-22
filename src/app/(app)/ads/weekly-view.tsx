@@ -21,7 +21,7 @@ const WEEK_METRICS: MetricKey[] = ["spend", "messages", "costPerMess", "leads", 
 const weekRangeText = (from: string, to: string, n: number) => (n <= 1 ? `tuần ${weekLabel(to)}` : `${weekLabel(from).split(" – ")[0]} – ${weekLabel(to).split(" – ")[1]} (${n} tuần)`);
 
 /**
- * Báo cáo TUẦN (chu kỳ Thứ 7 → hết Thứ 6) của MỌI SBU trong một bảng (SPEC Phụ lục D mục 26): Ngân sách · Mess · CP/Mess · Lead · HVM · CPL · CAC.
+ * Báo cáo TUẦN (chu kỳ Thứ 2 → hết Chủ nhật) của MỌI SBU trong một bảng (SPEC Phụ lục D mục 26): Ngân sách · Mess · CP/Mess · Lead · HVM · CPL · CAC.
  * Lead của Ecom = MQL. Số liệu chưa có để trống. Xem NHIỀU tuần cùng lúc (Từ – Đến) để thấy xu hướng.
  */
 export function WeeklyView({ metrics, units, canManage, weeks }: { metrics: MetricRow[]; units: AdsUnit[]; canManage: boolean; weeks: string[] }) {
@@ -40,7 +40,7 @@ export function WeeklyView({ metrics, units, canManage, weeks }: { metrics: Metr
     unit: "tuần",
     presets: [4, 8, 12, 0],
     defaultCount: 8,
-    footer: "tuần tính từ Thứ 7 đến hết Thứ 6",
+    footer: "tuần tính từ Thứ 2 đến hết Chủ nhật",
   });
   const toBucket = React.useCallback((w: string): Bucket => ({ key: w, label: weekLabel(w), short: weekShort(w), periods: [w], editPeriod: w }), []);
   const buckets = React.useMemo(() => range.shown.map(toBucket), [range.shown, toBucket]);
@@ -98,7 +98,7 @@ export function WeeklyView({ metrics, units, canManage, weeks }: { metrics: Metr
 export function AddWeekButton({ suggested, onAdd }: { suggested?: string; onAdd: (week: string) => void }) {
   const [open, setOpen] = React.useState(false);
   const [val, setVal] = React.useState(suggested ?? "");
-  const isSaturday = val && new Date(`${val}T00:00:00Z`).getUTCDay() === 6;
+  const isMonday = val && new Date(`${val}T00:00:00Z`).getUTCDay() === 1;
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => (setVal(suggested ?? ""), setOpen(true))}>
@@ -108,13 +108,13 @@ export function AddWeekButton({ suggested, onAdd }: { suggested?: string; onAdd:
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Thêm tuần báo cáo</DialogTitle>
-            <DialogDescription>Tuần tính từ Thứ 7 đến hết Thứ 6. Chọn ngày Thứ 7 bắt đầu tuần.</DialogDescription>
+            <DialogDescription>Tuần tính từ Thứ 2 đến hết Chủ nhật. Chọn ngày Thứ 2 bắt đầu tuần.</DialogDescription>
           </DialogHeader>
           <DateInput value={val} onChange={setVal} />
-          {val && !isSaturday && <p className="text-xs text-red-600">Ngày này không phải Thứ 7.</p>}
-          {isSaturday && <p className="text-xs text-muted-foreground">Tuần {weekLabel(val)}</p>}
+          {val && !isMonday && <p className="text-xs text-red-600">Ngày này không phải Thứ 2.</p>}
+          {isMonday && <p className="text-xs text-muted-foreground">Tuần {weekLabel(val)}</p>}
           <Button
-            disabled={!isSaturday}
+            disabled={!isMonday}
             onClick={() => {
               onAdd(val);
               setOpen(false);

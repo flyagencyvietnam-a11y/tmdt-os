@@ -33,7 +33,7 @@ export const adsMetrics = pgTable(
     id: pkUuid(),
     line: adsLineEnum("line").notNull(),
     periodType: adsPeriodTypeEnum("period_type").notNull().default("month"),
-    /** "2026-10" cho tháng; "2026-10-03" (ngày Thứ 7 bắt đầu tuần) cho tuần. */
+    /** "2026-10" cho tháng; "2026-10-03" (ngày Thứ 2 bắt đầu tuần) cho tuần. */
     period: text("period").notNull(),
     sbuId: uuid("sbu_id").references(() => sbus.id),
     /** Ngân sách chi — dùng cho mọi line trừ b2c_center. */

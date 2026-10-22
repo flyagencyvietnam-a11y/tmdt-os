@@ -25,17 +25,17 @@ function row(p: Partial<MetricRow> & Pick<MetricRow, "line" | "period" | "period
 const wk = (period: string, p: Partial<MetricRow> & Pick<MetricRow, "line">) => row({ periodType: "week", period, ...p });
 
 describe("tuần → tháng theo đa số ngày", () => {
-  it("tháng chứa Thứ 3 của tuần (ngày thứ 4)", () => {
-    expect(weekMonth("2026-08-29")).toBe("2026-09"); // 29/08–04/09: 4 ngày T9
-    expect(weekMonth("2026-09-26")).toBe("2026-09"); // 26/09–02/10: 5 ngày T9
-    expect(weekMonth("2026-10-24")).toBe("2026-10");
-    expect(weekMonth("2026-10-31")).toBe("2026-11"); // 31/10–06/11: 6 ngày T11
+  it("tháng chứa Thứ 5 của tuần (ngày thứ 4)", () => {
+    expect(weekMonth("2026-08-31")).toBe("2026-09"); // 31/08–06/09: 6 ngày T9
+    expect(weekMonth("2026-09-28")).toBe("2026-10"); // 28/09–04/10: 4 ngày T10 (đa số)
+    expect(weekMonth("2026-10-26")).toBe("2026-10"); // 26/10–01/11: 6 ngày T10
+    expect(weekMonth("2026-11-02")).toBe("2026-11");
   });
 
   it("mỗi tuần thuộc đúng 1 tháng (không trùng, không sót)", () => {
-    expect(expectedWeeks("2026-09")).toEqual(["2026-08-29", "2026-09-05", "2026-09-12", "2026-09-19", "2026-09-26"]);
-    expect(expectedWeeks("2026-10")).toEqual(["2026-10-03", "2026-10-10", "2026-10-17", "2026-10-24"]);
-    expect(expectedWeeks("2026-11")[0]).toBe("2026-10-31");
+    expect(expectedWeeks("2026-09")).toEqual(["2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21"]);
+    expect(expectedWeeks("2026-10")).toEqual(["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]);
+    expect(expectedWeeks("2026-11")[0]).toBe("2026-11-02");
     const all = ["2026-08", "2026-09", "2026-10", "2026-11", "2026-12"].flatMap(expectedWeeks);
     expect(new Set(all).size).toBe(all.length);
   });
@@ -48,10 +48,10 @@ describe("withDerivedMonths", () => {
   it("tháng đã qua, ĐỦ tuần: cộng các tuần vào dòng tháng ảo", () => {
     const out = withDerivedMonths(sepWeeks(1_000_000), "2026-10-19");
     const m = out.find((r) => r.periodType === "month" && r.period === "2026-09" && r.line === "ecom")!;
-    expect(m.budget).toBe("5000000");
-    expect(m.mql).toBe("50");
+    expect(m.budget).toBe("4000000");
+    expect(m.mql).toBe("40");
     expect(isSynthetic(m)).toBe(true);
-    expect(m.derivedWeeks).toBe("5/5");
+    expect(m.derivedWeeks).toBe("4/4");
   });
 
   it("tháng đã qua, THIẾU tuần đã kết thúc: không cộng dở", () => {
@@ -63,7 +63,7 @@ describe("withDerivedMonths", () => {
     const oct = expectedWeeks("2026-10").slice(0, 2).map((w) => wk(w, { line: "b2c_system", budget: "2000000", messages: "50" }));
     const out = withDerivedMonths(oct, "2026-10-19");
     const m = out.find((r) => r.periodType === "month")!;
-    expect(m).toMatchObject({ period: "2026-10", budget: "4000000", messages: "100", derivedWeeks: "2/4" });
+    expect(m).toMatchObject({ period: "2026-10", budget: "4000000", messages: "100", derivedWeeks: "2/5" });
   });
 
   it("số chính thức luôn thắng; chỉ ô trống mới lấy từ tuần (kể cả khi chính thức = 0)", () => {
@@ -72,7 +72,7 @@ describe("withDerivedMonths", () => {
     const m = out.find((r) => r.id === official.id)!;
     expect(m.budget).toBe("9000000"); // chính thức
     expect(m.mql).toBe("0"); // 0 vẫn là số chính thức
-    expect(m.messages).toBe("20"); // ô trống → cộng từ tuần
+    expect(m.messages).toBe("16"); // ô trống → cộng từ tuần
     expect(m.derivedFields).toEqual(["messages"]);
     expect(isSynthetic(m)).toBe(false);
     expect(isDerivedField(m, "messages")).toBe(true);
@@ -89,7 +89,7 @@ describe("withDerivedMonths", () => {
     ];
     const out = withDerivedMonths(rows, "2026-10-19").filter((r) => r.periodType === "month");
     expect(out.find((r) => r.sbuId === a)!.centerOrderBudget).toBe("777");
-    expect(out.find((r) => r.sbuId === b)!.centerOrderBudget).toBe("1000");
+    expect(out.find((r) => r.sbuId === b)!.centerOrderBudget).toBe("800");
   });
 
   it("officialOf bỏ phần tạm tính để mở form sửa không ghi nhầm vào số chính thức", () => {

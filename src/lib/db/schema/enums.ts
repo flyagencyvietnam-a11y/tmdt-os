@@ -294,7 +294,7 @@ export const adsLineEnum = pgEnum("ads_line", [
   "b2c_google",
 ]);
 
-/** Chu kỳ report ads thực tế: tuần (Thứ 7 → hết Thứ 6, xem reportWeekBounds) hoặc tháng. */
+/** Chu kỳ report ads thực tế: tuần (Thứ 2 → hết Chủ nhật, xem reportWeekBounds) hoặc tháng. */
 export const adsPeriodTypeEnum = pgEnum("ads_period_type", ["week", "month"]);
 
 export const reportExportKindEnum = pgEnum("report_export_kind", [

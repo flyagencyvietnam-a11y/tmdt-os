@@ -67,13 +67,13 @@ export function quarterBounds(dayStr: string): [string, string] {
 }
 
 /**
- * "Tuần báo cáo" theo quy ước VMG: **Thứ 7 tuần trước → Thứ 6 tuần này** (7 ngày).
- * Trả [from = Thứ 7, to = Thứ 6].
+ * "Tuần báo cáo" theo quy ước VMG: **Thứ 2 → Chủ nhật** (7 ngày; đổi từ Thứ 7 → Thứ 6 ngày 22/10/2026, SPEC Phụ lục D mục 32).
+ * Trả [from = Thứ 2, to = Chủ nhật].
  */
 export function reportWeekBounds(dayStr: string): [string, string] {
   const dow = new Date(`${dayStr}T00:00:00Z`).getUTCDay(); // 0=CN … 6=T7
-  const backToSat = (dow + 1) % 7; // T7->0, CN->1, … T6->6
-  const from = addDaysStr(dayStr, -backToSat);
+  const backToMon = (dow + 6) % 7; // T2->0, T3->1, … CN->6
+  const from = addDaysStr(dayStr, -backToMon);
   return [from, addDaysStr(from, 6)];
 }
 
@@ -83,8 +83,8 @@ function dm(dayStr: string): string {
 }
 
 /** Nhãn tuần báo cáo: "12/07 – 18/07". */
-export function reportWeekLabel(fromSat: string): string {
-  const [from, to] = reportWeekBounds(fromSat);
+export function reportWeekLabel(fromMon: string): string {
+  const [from, to] = reportWeekBounds(fromMon);
   return `${dm(from)} – ${dm(to)}`;
 }
 
@@ -97,7 +97,7 @@ export interface PeriodOption {
 
 /**
  * Danh sách các kỳ gần đây để chọn cụ thể trên bộ lọc dashboard.
- * kind: "week" (tuần báo cáo T7→T6) | "month" | "quarter". i=0 là kỳ hiện tại.
+ * kind: "week" (tuần báo cáo T2→CN) | "month" | "quarter". i=0 là kỳ hiện tại.
  */
 export function recentPeriods(
   kind: "week" | "month" | "quarter",
@@ -108,10 +108,10 @@ export function recentPeriods(
   const out: PeriodOption[] = [];
 
   if (kind === "week") {
-    const [thisSat] = reportWeekBounds(today);
+    const [thisMon] = reportWeekBounds(today);
     for (let i = 0; i < count; i++) {
-      const sat = addDaysStr(thisSat, -7 * i);
-      const [from, to] = reportWeekBounds(sat);
+      const mon = addDaysStr(thisMon, -7 * i);
+      const [from, to] = reportWeekBounds(mon);
       out.push({
         value: `week:${from}`,
         label: `${reportWeekLabel(from)}${i === 0 ? " (tuần này)" : i === 1 ? " (tuần trước)" : ""}`,
@@ -181,17 +181,17 @@ export function monthsOfYear(y: number): { value: string; label: string }[] {
   }));
 }
 
-/** Các tuần báo cáo VMG (T7→T6) có phần giao với tháng y-m. */
+/** Các tuần báo cáo VMG (T2→CN) có phần giao với tháng y-m. */
 export function weeksOfMonth(y: number, m: number): PeriodOption[] {
   const [mFirst, mLast] = monthBounds(`${y}-${String(m).padStart(2, "0")}-01`);
   const out: PeriodOption[] = [];
-  let [satFrom] = reportWeekBounds(mFirst);
+  let [monFrom] = reportWeekBounds(mFirst);
   // Bắt đầu từ tuần chứa ngày 1; đi tới khi qua hết tháng.
   for (let guard = 0; guard < 8; guard++) {
-    const [from, to] = reportWeekBounds(satFrom);
+    const [from, to] = reportWeekBounds(monFrom);
     if (from > mLast) break;
     out.push({ value: `week:${from}`, label: reportWeekLabel(from), from, to });
-    satFrom = addDaysStr(from, 7);
+    monFrom = addDaysStr(from, 7);
   }
   return out;
 }
@@ -220,13 +220,13 @@ export function parsePeriodParts(range: string): {
     return { year: y, quarter: Math.floor((m - 1) / 3) + 1, month: null, weekFrom: null };
   }
   if (range === "this_week") {
-    const [sat] = reportWeekBounds(today);
-    const [y, m] = sat.split("-").map(Number);
+    const [mon] = reportWeekBounds(today);
+    const [y, m] = mon.split("-").map(Number);
     return {
       year: y,
       quarter: Math.floor((m - 1) / 3) + 1,
       month: m,
-      weekFrom: sat,
+      weekFrom: mon,
     };
   }
 
@@ -243,7 +243,7 @@ export function parsePeriodParts(range: string): {
     return { year: yy, quarter: Math.floor((mm - 1) / 3) + 1, month: mm, weekFrom: null };
   }
   if (kind === "week" && /^\d{4}-\d{2}-\d{2}$/.test(rest ?? "")) {
-    // Tuần thuộc tháng chứa ngày Thứ 7 bắt đầu tuần.
+    // Tuần thuộc tháng chứa ngày Thứ 2 bắt đầu tuần.
     const [yy, mm] = rest.split("-").map(Number);
     return {
       year: yy,
