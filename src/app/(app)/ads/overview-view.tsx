@@ -142,7 +142,7 @@ export function OverviewView({
                     <div className="mb-1 flex items-center justify-between text-xs">
                       <span className="flex items-center gap-1.5 font-medium" title={s.u.label}>
                         <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: s.u.color }} />
-                        {s.u.kind === "ho" ? "Hệ thống (HO)" : s.u.code}
+                        {s.u.code}
                       </span>
                       <span className="tabular-nums text-muted-foreground">
                         {fmtMoney(s.spend)} · <b className="text-foreground">{Math.round((s.spend / shareTotal) * 100)}%</b>
@@ -190,7 +190,7 @@ export function OverviewView({
                   const d = unitFunnel(curRows, u);
                   const p = unitFunnel(prevRows, u);
                   const spark = sparkBuckets.map((b) => unitFunnel(rowsIn(b.months), u).spend);
-                  return <AggRow key={u.key} label={u.kind === "ho" ? "Hệ thống (HO)" : u.code} title={u.label} color={u.color} d={d} p={p} spark={spark} />;
+                  return <AggRow key={u.key} label={u.code} title={u.label} color={u.color} d={d} p={p} spark={spark} />;
                 })}
               </tbody>
               <tfoot className="border-t-2 bg-muted/40 font-semibold">

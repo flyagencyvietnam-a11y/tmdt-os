@@ -31,8 +31,8 @@ const units = buildAdsUnits([
 const unit = (key: string) => units.find((u) => u.key === key)!;
 
 describe("buildAdsUnits — SBU ngang hàng", () => {
-  it("một danh sách: Hệ thống, trung tâm, Ecom, VMP, VMT", () => {
-    expect(units.map((u) => u.code)).toEqual(["HO", "VTS", "PVT", "Ecom", "VMP", "VMT"]);
+  it("một danh sách: HO · FB, HO · Google, trung tâm, Ecom, VMP, VMT", () => {
+    expect(units.map((u) => u.code)).toEqual(["HO · FB", "HO · Google", "VTS", "PVT", "Ecom", "VMP", "VMT"]);
     expect(unit("ecom").leadField).toBe("mql");
     expect(unit("osir").label).toBe("VMT (khảo thí)");
   });

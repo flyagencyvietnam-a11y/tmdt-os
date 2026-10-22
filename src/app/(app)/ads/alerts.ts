@@ -135,7 +135,7 @@ export function computeAdsAlerts({
   const units = buildAdsUnits(sbus);
   const unplanned: string[] = [];
   for (const u of units) {
-    const name = u.kind === "ho" ? "Hệ thống" : u.code;
+    const name = u.code;
     const rows = rowsOfUnit(metrics.filter((m) => m.periodType === "month" && m.period === month), u);
     const planRow = plan.find((p) => p.line === u.line && p.period === month && (u.kind === "center" ? p.sbuId === u.sbuId : !p.sbuId));
     const planned = num(planRow?.plannedBudget);

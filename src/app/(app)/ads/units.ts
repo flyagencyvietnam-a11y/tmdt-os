@@ -2,11 +2,12 @@ import type { AdsLine } from "@/lib/ads-lines";
 import { aggregate, LINE_COLORS, num, type MetricRow, type PeriodType, type SbuLite } from "./shared";
 
 /**
- * "Đơn vị" của Growth Performance (SPEC Phụ lục D mục 26): Hệ thống (HO), từng trung tâm, Ecom, VMP, VMT là SBU NGANG HÀNG
+ * "Đơn vị" của Growth Performance (SPEC Phụ lục D mục 26): MKT HO (mục con FB + Google), từng trung tâm, Ecom, VMP, VMT là SBU NGANG HÀNG
  * trong một danh sách duy nhất — không còn cấp "mảng". Mỗi đơn vị = (line, sbuId) của bảng `ads_metrics`. THUẦN (client-safe, không DB).
  *
- * Quy ước Lead/HVM B2C giữ nguyên (CLAUDE.md "Ads — logic B2C"): dòng Hệ thống (HO) mang Lead/HVM TỔNG cả B2C, còn Lead/HVM của từng
- * trung tâm là phần quy riêng cho ads ngân sách trung tâm (tập con, KHÔNG cộng thêm vào tổng).
+ * Quy ước Lead/HVM B2C giữ nguyên (CLAUDE.md "Ads — logic B2C"): dòng HO · FB mang Lead/HVM TỔNG cả B2C (nguồn MXH), còn Lead/HVM của từng
+ * trung tâm là phần quy riêng cho ads ngân sách trung tâm (tập con, KHÔNG cộng thêm vào tổng). HO · Google (lead website) là nguồn
+ * CỘNG THÊM (SPEC Phụ lục D mục 31).
  */
 
 export type UnitKind = "ho" | "center" | "line";
@@ -28,7 +29,7 @@ export interface AdsUnit {
   region?: string;
 }
 
-/** Thứ tự cố định: Hệ thống → các trung tâm → Ecom → VMP → VMT. */
+/** Thứ tự cố định: HO · FB → HO · Google → các trung tâm → Ecom → VMP → VMT. */
 export function buildAdsUnits(centers: SbuLite[]): AdsUnit[] {
   const line = (key: AdsLine, code: string, label: string, conversionLabel: string, leadField: "leads" | "mql" = "leads"): AdsUnit => ({
     key,
@@ -42,7 +43,8 @@ export function buildAdsUnits(centers: SbuLite[]): AdsUnit[] {
     conversionLabel,
   });
   return [
-    { key: "ho", code: "HO", label: "Hệ thống (HO chạy chung)", kind: "ho", line: "b2c_system", sbuId: null, color: LINE_COLORS.b2c_system, leadField: "leads", conversionLabel: "HVM" },
+    { key: "ho", code: "HO · FB", label: "MKT HO — Facebook (HO chạy chung)", kind: "ho", line: "b2c_system", sbuId: null, color: LINE_COLORS.b2c_system, leadField: "leads", conversionLabel: "HVM" },
+    line("b2c_google", "HO · Google", "MKT HO — Google (lead website)", "HVM"),
     ...centers.map<AdsUnit>((s) => ({ key: s.id, code: s.code, label: `${s.code} — ${s.name}`, kind: "center", line: "b2c_center", sbuId: s.id, color: LINE_COLORS.b2c_center, leadField: "leads", conversionLabel: "HVM", region: s.region ?? undefined })),
     line("ecom", "Ecom", "Ecom (TMĐT)", "HVM online", "mql"),
     line("vmp", "VMP", "VMP (Du học)", "HS đăng ký DV"),
@@ -54,11 +56,15 @@ export function buildAdsUnits(centers: SbuLite[]): AdsUnit[] {
 export interface AdsUnitGroup {
   key: string;
   label: string;
+  /** "ho" = MKT HO (FB + Google); "region" = khu vực trung tâm. */
+  kind: "ho" | "region";
   members: AdsUnit[];
 }
 
-/** Các khu vực có trung tâm, theo thứ tự KV1 → KV2 → KV3 (trung tâm chưa có khu vực xếp nhóm "Khác" ở cuối). */
+/** Nhóm "MKT HO" (FB + Google) rồi các khu vực có trung tâm, KV1 → KV2 → KV3 (trung tâm chưa có khu vực xếp nhóm "Khác" ở cuối). */
 export function buildUnitGroups(units: AdsUnit[]): AdsUnitGroup[] {
+  const hoMembers = units.filter((u) => u.kind === "ho" || u.line === "b2c_google");
+  const head: AdsUnitGroup[] = hoMembers.length > 1 ? [{ key: "HO", label: "MKT HO", kind: "ho", members: hoMembers }] : [];
   const by = new Map<string, AdsUnit[]>();
   for (const u of units) {
     if (u.kind !== "center") continue;
@@ -67,7 +73,8 @@ export function buildUnitGroups(units: AdsUnit[]): AdsUnitGroup[] {
     if (list) list.push(u);
     else by.set(k, [u]);
   }
-  return [...by.entries()].sort(([a], [b]) => (a === "Khác" ? 1 : b === "Khác" ? -1 : a.localeCompare(b))).map(([key, members]) => ({ key, label: key, members }));
+  const regions = [...by.entries()].sort(([a], [b]) => (a === "Khác" ? 1 : b === "Khác" ? -1 : a.localeCompare(b))).map(([key, members]): AdsUnitGroup => ({ key, label: key, kind: "region", members }));
+  return [...head, ...regions];
 }
 
 /** Dòng số liệu thuộc đơn vị này (cùng line, và cùng SBU nếu là trung tâm). */
@@ -149,19 +156,22 @@ export function unitFunnel(bucket: MetricRow[], u: AdsUnit): Funnel {
   return rowsFunnel(rowsOfUnit(bucket, u), u.leadField, costOf);
 }
 
-/** Dòng cộng theo KHU VỰC: cộng số liệu các trung tâm thành viên (Lead/HVM là phần quy riêng cho ads trung tâm, không cộng vào Tổng cộng). */
+/**
+ * Dòng cộng của 1 NHÓM: khu vực (cộng các trung tâm — Lead/HVM là phần quy riêng cho ads trung tâm, không cộng vào Tổng cộng) hoặc MKT HO
+ * (FB + Google: Lead/HVM cộng lại; CPL/CAC chia chi phí B2C-wide (HO + trung tâm) + Google, cùng cơ sở với dòng HO · FB).
+ */
 export function groupFunnel(bucket: MetricRow[], members: AdsUnit[]): Funnel {
-  const ids = new Set(members.map((m) => m.sbuId));
-  return rowsFunnel(
-    bucket.filter((r) => r.line === "b2c_center" && !!r.sbuId && ids.has(r.sbuId)),
-    "leads",
-  );
+  const rows = rowsOfGroup(bucket, members);
+  if (members.some((m) => m.kind === "ho")) {
+    const spendOf = (p: string, pick: (r: MetricRow) => boolean) => aggregate(bucket.filter((r) => `${r.periodType}|${r.period}` === p && pick(r))).spend;
+    return rowsFunnel(rows, "leads", (p) => sumNullable([spendOf(p, isB2c), spendOf(p, (r) => r.line === "b2c_google")]));
+  }
+  return rowsFunnel(rows, "leads");
 }
 
-/** Các dòng của nhóm trung tâm (để kiểm tra ô tạm tính từ tuần). */
+/** Các dòng của nhóm (để cộng nhóm và kiểm tra ô tạm tính từ tuần). */
 export function rowsOfGroup(rows: MetricRow[], members: AdsUnit[]): MetricRow[] {
-  const ids = new Set(members.map((m) => m.sbuId));
-  return rows.filter((r) => r.line === "b2c_center" && !!r.sbuId && ids.has(r.sbuId));
+  return members.flatMap((m) => rowsOfUnit(rows, m));
 }
 
 /**

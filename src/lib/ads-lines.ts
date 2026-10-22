@@ -9,10 +9,10 @@
  * Giá trị enum `ads_line` lưu trong DB. `b2b` còn trong enum (dữ liệu cũ, không migrate) nhưng ĐÃ BỎ khỏi mọi màn hình/báo cáo/import —
  * B2B không phải SBU của Growth Performance (SPEC Phụ lục D mục 27).
  */
-export type AdsLine = "b2c_system" | "b2c_center" | "ecom" | "b2b" | "osir" | "vmp";
+export type AdsLine = "b2c_system" | "b2c_center" | "ecom" | "b2b" | "osir" | "vmp" | "b2c_google";
 
 /** Tab lớn trên giao diện. B2C gộp 2 line DB (Hệ thống + Trung tâm); các mảng còn lại 1 line. */
-export type AdsGroupKey = "b2c" | "ecom" | "osir" | "vmp";
+export type AdsGroupKey = "b2c" | "google" | "ecom" | "osir" | "vmp";
 
 /** Các chỉ số phễu có thể đặt mục tiêu / báo cáo theo tuần. Khoá trùng cột `ads_metrics`. */
 export type FunnelField = "leads" | "mql" | "messages" | "newStudents" | "revenue" | "deals";
@@ -78,6 +78,19 @@ export const ADS_GROUPS: AdsGroupConfig[] = [
     conversionLabel: "HVM",
     weeklyFields: ["messages", "leads", "newStudents"],
     expectWeekly: true,
+  },
+  {
+    // Mục con Google (lead website) của MKT HO — cùng phễu như một SBU thường; `b2c_system` là mục con FB.
+    key: "google",
+    label: "Google (Website)",
+    color: "var(--series-7)",
+    lines: ["b2c_google"],
+    primaryLine: "b2c_google",
+    funnel: [LEADS, conv("HVM"), MESS],
+    leadField: "leads",
+    conversionLabel: "HVM",
+    weeklyFields: ["leads", "newStudents", "messages"],
+    expectWeekly: false,
   },
   {
     key: "ecom",

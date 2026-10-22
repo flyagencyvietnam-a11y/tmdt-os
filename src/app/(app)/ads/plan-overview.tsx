@@ -85,7 +85,7 @@ export function PlanOverview({ units, metrics, plans, range, onOpenPlan }: { uni
   const partial = range.kind === "quarter" && planned.some((r) => r.planMonths.length < range.months.length);
   // Chỉ liệt kê SBU đã lập kế hoạch (còn lại gom vào 1 dòng ghi chú) để bảng không dài với 14 SBU.
   const shown = rows.filter((r) => r.planned != null || r.leadTarget != null || r.convTarget != null);
-  const missing = rows.filter((r) => !shown.includes(r)).map((r) => (r.unit.kind === "ho" ? "Hệ thống" : r.unit.code));
+  const missing = rows.filter((r) => !shown.includes(r)).map((r) => r.unit.code);
 
   return (
     <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -120,7 +120,7 @@ export function PlanOverview({ units, metrics, plans, range, onOpenPlan }: { uni
                   <td className="px-3 py-2 font-medium" title={r.unit.label}>
                     <span className="flex items-center gap-1.5">
                       <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: r.unit.color }} />
-                      {r.unit.kind === "ho" ? "Hệ thống (HO)" : r.unit.code}
+                      {r.unit.code}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.planned != null ? fmtMoney(r.planned) : <span className="text-muted-foreground/50">—</span>}</td>

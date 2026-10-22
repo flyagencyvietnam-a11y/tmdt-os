@@ -79,7 +79,7 @@ function usePlanSaver() {
   );
 }
 
-const ALL_LINES: AdsLine[] = ["b2c_system", "b2c_center", "ecom", "osir", "vmp"];
+const ALL_LINES: AdsLine[] = ["b2c_system", "b2c_google", "b2c_center", "ecom", "osir", "vmp"];
 
 /** Dòng kế hoạch của 1 SBU trong 1 tháng. */
 const planOfUnit = (plans: PlanRow[], u: AdsUnit, period: string) => plans.find((p) => p.line === u.line && p.period === period && (u.kind === "center" ? p.sbuId === u.sbuId : !p.sbuId));
@@ -257,7 +257,7 @@ export function PlanPanel({
                   <td className="px-3 py-2 font-medium" title={r.u.label}>
                     <span className="flex items-center gap-1.5">
                       <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: r.u.color }} />
-                      {r.u.kind === "ho" ? "Hệ thống (HO)" : r.u.code}
+                      {r.u.code}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{planCell(r)}</td>

@@ -282,6 +282,7 @@ export const adsStatusEnum = pgEnum("ads_status", [
  * sheet "Tổng hợp", Mục 1-6). b2c_system = Mục 1 (ngân sách hệ thống, không
  * theo SBU); b2c_center = Mục 2 (theo từng trung tâm — NS Trung tâm order +
  * NS P.MKT thêm tách riêng); ecom/b2b/osir/vmp = Mục 3-6, không theo SBU.
+ * b2c_google = mục con "Google" (lead website) của MKT HO, bên cạnh b2c_system = "FB" (SPEC Phụ lục D mục 31).
  */
 export const adsLineEnum = pgEnum("ads_line", [
   "b2c_system",
@@ -290,6 +291,7 @@ export const adsLineEnum = pgEnum("ads_line", [
   "b2b",
   "osir",
   "vmp",
+  "b2c_google",
 ]);
 
 /** Chu kỳ report ads thực tế: tuần (Thứ 7 → hết Thứ 6, xem reportWeekBounds) hoặc tháng. */

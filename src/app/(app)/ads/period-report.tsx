@@ -165,7 +165,7 @@ function show(kind: MetricDef["kind"], v: number): string {
 
 const kN = (n: number) => `${Math.round(n / 1000).toLocaleString("vi-VN")}N`;
 
-const unitName = (u: AdsUnit) => (u.kind === "ho" ? "Hệ thống (HO)" : u.code);
+const unitName = (u: AdsUnit) => u.code;
 
 export function PeriodReport({
   kind,
@@ -269,12 +269,12 @@ export function PeriodReport({
     const visible = new Set(visibleUnits.map((u) => u.key));
     for (const u of units) {
       if (!visible.has(u.key)) continue;
-      if (u.kind !== "center") {
+      const g = groups.find((x) => x.members.includes(u));
+      if (!g) {
         out.push({ kind: "unit", u, indent: false });
         continue;
       }
-      const g = groups.find((x) => x.members.includes(u));
-      if (!g || emitted.has(g.key)) continue;
+      if (emitted.has(g.key)) continue;
       emitted.add(g.key);
       const members = g.members.filter((m) => visible.has(m.key));
       out.push({ kind: "group", g, members });
@@ -418,7 +418,7 @@ export function PeriodReport({
             {groups.length > 0 && (
               <button type="button" onClick={() => setCollapsed(allCollapsed ? [] : groups.map((g) => g.key))} className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 font-medium hover:bg-muted">
                 {allCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                {allCollapsed ? "Mở các khu vực" : "Thu gọn các khu vực"}
+                {allCollapsed ? "Mở các nhóm" : "Thu gọn các nhóm"}
               </button>
             )}
           </span>
@@ -457,12 +457,13 @@ export function PeriodReport({
                 const pool: MetricKey[] = compact ? ["spend"] : active;
                 const defs = pool.filter((m) => (e.kind === "unit" ? !METRICS[m].only || METRICS[m].only!(e.u) : METRICS[m].inTotal));
                 const stickyBg = isTotal ? "bg-muted" : isGroup ? "bg-accent" : "bg-card";
-                // Thang CAC xây cho ads trung tâm: chỉ áp cho trung tâm và dòng khu vực.
+                // Thang CAC xây cho ads trung tâm: chỉ áp cho trung tâm và dòng khu vực (không áp cho nhóm MKT HO).
+                const isRegion = e.kind === "group" && e.g.kind === "region";
                 const eff =
                   rubric && recent
                     ? e.kind === "unit" && e.u.kind === "center"
                       ? efficiency(unitFunnel(recent.rows, e.u), rubric)
-                      : e.kind === "group"
+                      : isRegion
                         ? efficiency(groupFunnel(recent.rows, e.members), rubric)
                         : null
                     : null;
@@ -483,10 +484,10 @@ export function PeriodReport({
                           isTotal ? (
                             "Tổng cộng"
                           ) : e.kind === "group" ? (
-                            <button type="button" aria-expanded={!isCollapsed} onClick={() => toggleGroup(e.g.key)} className="inline-flex items-center gap-1 font-semibold" title={isCollapsed ? "Mở danh sách trung tâm của khu vực" : "Thu gọn khu vực"}>
+                            <button type="button" aria-expanded={!isCollapsed} onClick={() => toggleGroup(e.g.key)} className="inline-flex items-center gap-1 font-semibold" title={isCollapsed ? "Mở danh sách của nhóm" : "Thu gọn nhóm"}>
                               {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                               {e.g.label}
-                              <span className="text-[11px] font-normal text-muted-foreground">· {e.members.length} TT</span>
+                              <span className="text-[11px] font-normal text-muted-foreground">· {e.g.kind === "ho" ? "FB + Google" : `${e.members.length} TT`}</span>
                             </button>
                           ) : (
                             <span className={cn(e.indent && "pl-5 text-muted-foreground")}>{unitName(e.u)}</span>
@@ -513,7 +514,7 @@ export function PeriodReport({
                             show(def.kind, v)
                           );
                         const openable = canManage && !!x.bucket.editPeriod && clickable;
-                        const tier = rubric && (isGroup || u?.kind === "center") ? cellTier(m, v, funnelOf(x), rubric) : null;
+                        const tier = rubric && (isRegion || u?.kind === "center") ? cellTier(m, v, funnelOf(x), rubric) : null;
                         return (
                           <td
                             key={x.bucket.key}
@@ -574,7 +575,7 @@ export function PeriodReport({
         )}
         <p className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
           Dòng <b>Hệ thống</b> mang Lead/HVM <b>tổng cả B2C</b> (CPL/CAC chia tổng ngân sách Hệ thống + trung tâm); số Lead/HVM của từng trung tâm là phần quy riêng cho ads ngân sách trung tâm — một phần của số tổng, không cộng thêm. Dòng Tổng cộng lấy số tổng B2C
-          (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT. Dòng khu vực (KV1/KV2/KV3) cộng các trung tâm trong khu vực — chỉ xem, là phần quy riêng cho ads trung tâm nên không cộng thêm vào Tổng cộng; bấm tên khu vực để đóng/mở danh sách trung tâm. Ô trống = chưa có số.
+          (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT. Nhóm MKT HO = HO · FB + HO · Google (Google là nguồn lead website, cộng thêm vào Tổng cộng). Dòng khu vực (KV1/KV2/KV3) cộng các trung tâm trong khu vực — chỉ xem, là phần quy riêng cho ads trung tâm nên không cộng thêm vào Tổng cộng; bấm tên khu vực để đóng/mở danh sách trung tâm. Ô trống = chưa có số.
         </p>
       </section>
 

@@ -1,6 +1,6 @@
 import { computeAdsDerived, type EffectivenessRubric } from "@/lib/ads-metrics";
 
-export type Line = "b2c_system" | "b2c_center" | "ecom" | "b2b" | "osir" | "vmp";
+export type Line = "b2c_system" | "b2c_center" | "ecom" | "b2b" | "osir" | "vmp" | "b2c_google";
 export type PeriodType = "month" | "week";
 
 export interface MetricRow {
@@ -78,10 +78,11 @@ export interface PlanRow {
 }
 
 /** Các line còn dùng trên giao diện (b2b đã bỏ — xem lib/ads-lines.ts). */
-export const LINES: Line[] = ["b2c_system", "b2c_center", "ecom", "osir", "vmp"];
+export const LINES: Line[] = ["b2c_system", "b2c_google", "b2c_center", "ecom", "osir", "vmp"];
 
 export const LINE_LABELS: Record<Line, string> = {
-  b2c_system: "B2C Hệ thống",
+  b2c_system: "MKT HO · FB",
+  b2c_google: "MKT HO · Google",
   b2c_center: "B2C Trung tâm",
   ecom: "Ecom (TMĐT)",
   b2b: "B2B",
@@ -95,6 +96,7 @@ export const LINE_LABELS: Record<Line, string> = {
  */
 export const LINE_COLORS: Record<Line, string> = {
   b2c_system: "var(--series-1)",
+  b2c_google: "var(--series-7)",
   b2c_center: "var(--series-2)",
   ecom: "var(--series-3)",
   b2b: "var(--series-4)",

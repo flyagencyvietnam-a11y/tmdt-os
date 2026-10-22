@@ -33,13 +33,15 @@ const units = buildAdsUnits([
 describe("nhóm trung tâm theo khu vực", () => {
   it("nhóm theo sbus.region, KV1 → KV2 → KV3, chưa có khu vực xếp 'Khác' cuối", () => {
     const g = buildUnitGroups(units);
-    expect(g.map((x) => x.key)).toEqual(["KV1", "KV2", "KV3", "Khác"]);
-    expect(g[0].members.map((u) => u.code)).toEqual(["VTS", "PVT"]);
-    expect(g[2].members.map((u) => u.code)).toEqual(["BPH"]);
+    expect(g.map((x) => x.key)).toEqual(["HO", "KV1", "KV2", "KV3", "Khác"]);
+    expect(g[1].members.map((u) => u.code)).toEqual(["VTS", "PVT"]);
+    expect(g[3].members.map((u) => u.code)).toEqual(["BPH"]);
+    expect(g[0].members.map((u) => u.code)).toEqual(["HO · FB", "HO · Google"]);
   });
 
-  it("chỉ trung tâm được nhóm (Hệ thống, Ecom, VMP, VMT đứng riêng)", () => {
-    expect(buildUnitGroups(units).flatMap((g) => g.members).every((u) => u.kind === "center")).toBe(true);
+  it("khu vực chỉ gồm trung tâm; Ecom, VMP, VMT đứng riêng, không thuộc nhóm nào", () => {
+    const regions = buildUnitGroups(units).filter((g) => g.kind === "region");
+    expect(regions.flatMap((g) => g.members).every((u) => u.kind === "center")).toBe(true);
   });
 
   it("dòng cộng khu vực = cộng các trung tâm thành viên; CPL/CAC chỉ chia chi phí của phần đã có Lead/HVM", () => {
@@ -48,7 +50,7 @@ describe("nhóm trung tâm theo khu vực", () => {
       row({ line: "b2c_center", period: "2026-09", sbuId: "pvt", centerOrderBudget: "5000000", leads: "20", newStudents: "3" }),
       row({ line: "b2c_center", period: "2026-09", sbuId: "tpu", centerOrderBudget: "7000000", leads: "50" }), // khu vực khác: không tính
     ];
-    const kv1 = buildUnitGroups(units)[0];
+    const kv1 = buildUnitGroups(units).find((g) => g.key === "KV1")!;
     const f = groupFunnel(rows, kv1.members);
     expect(f.spend).toBe(15_000_000);
     expect(f.leads).toBe(120);
@@ -59,8 +61,22 @@ describe("nhóm trung tâm theo khu vực", () => {
     expect(rowsOfGroup(rows, kv1.members)).toHaveLength(2);
   });
 
+  it("nhóm MKT HO = FB + Google: Lead cộng; CPL chia chi phí B2C-wide (HO + trung tâm) + Google", () => {
+    const rows = [
+      row({ line: "b2c_system", period: "2026-09", budget: "40000000", leads: "150", newStudents: "20" }),
+      row({ line: "b2c_google", period: "2026-09", budget: "5000000", leads: "50", newStudents: "5" }),
+      row({ line: "b2c_center", period: "2026-09", sbuId: "vts", centerOrderBudget: "10000000", leads: "60", newStudents: "4" }),
+    ];
+    const ho = buildUnitGroups(units)[0];
+    const f = groupFunnel(rows, ho.members);
+    expect(f.spend).toBe(45_000_000); // chỉ NS của FB + Google
+    expect(f.leads).toBe(200);
+    expect(f.hvm).toBe(25);
+    expect(f.cpl).toBeCloseTo(55_000_000 / 200); // (HO 40 + TT 10 + Google 5) ÷ 200
+  });
+
   it("khu vực chưa có số thì để trống, không thành 0", () => {
-    const f = groupFunnel([], buildUnitGroups(units)[1].members);
+    const f = groupFunnel([], buildUnitGroups(units).find((g) => g.key === "KV2")!.members);
     expect(f.spend).toBeNull();
     expect(f.leads).toBeNull();
     expect(f.cpl).toBeNull();

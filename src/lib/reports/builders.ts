@@ -308,7 +308,7 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
   const cur = totalFunnel(rowsCur);
   const old = totalFunnel(rowsOld);
   const sections: ReportSection[] = [];
-  const unitName = (u: AdsUnit) => (u.kind === "ho" ? "Hệ thống (HO)" : u.code);
+  const unitName = (u: AdsUnit) => u.code;
 
   const aS = arrow(cur.spend, old.spend, "down");
   const aL = arrow(cur.leads, old.leads);

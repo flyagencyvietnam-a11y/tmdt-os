@@ -34,7 +34,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ kind: st
   const centers = await db.select({ code: sbus.code, name: sbus.name }).from(sbus).where(eq(sbus.kind, "center")).orderBy(asc(sbus.code));
   // Danh sách SBU của Growth Performance, đúng thứ tự trên giao diện.
   const units: { code: string; name: string; note: string }[] = [
-    { code: "HO", name: "Hệ thống (HO chạy chung)", note: "NS Hệ thống + Lead/HVM TỔNG cả B2C (Hệ thống + các trung tâm)" },
+    { code: "HO", name: "MKT HO · FB (Facebook)", note: "NS MKT HO chạy FB + Lead/HVM TỔNG cả B2C nguồn MXH (HO + các trung tâm; gõ HO hoặc FB)" },
+    { code: "GOOGLE", name: "MKT HO · Google (website)", note: "Mục con Google của MKT HO: NS Google, Lead website, HVM — cộng thêm vào tổng B2C" },
     ...centers.map((c) => ({ code: c.code, name: c.name, note: "Trung tâm — NS TT order (+ NS P.MKT thêm ở sheet THANG), Lead/HVM quy riêng cho ads ngân sách TT (một phần của số tổng B2C)" })),
     { code: "ECOM", name: "Ecom (TMĐT)", note: "Lead của Ecom = MQL (cột mql)" },
     { code: "VMP", name: "VMP (Du học)", note: "" },

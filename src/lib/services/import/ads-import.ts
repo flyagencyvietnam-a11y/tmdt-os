@@ -122,7 +122,19 @@ async function loadSbus(db: DB) {
 // (cột `line` + `sbu_code`). B2B đã bỏ (mục 27) — dòng B2B bị báo lỗi, không ghi.
 // ---------------------------------------------------------------------------
 
-const SBU_ALIAS: Record<string, Line> = { HO: "b2c_system", HE_THONG: "b2c_system", HETHONG: "b2c_system", ECOM: "ecom", VMP: "vmp", VMT: "osir", OSIR: "osir" };
+const SBU_ALIAS: Record<string, Line> = {
+  HO: "b2c_system",
+  HO_FB: "b2c_system",
+  FB: "b2c_system",
+  HE_THONG: "b2c_system",
+  HETHONG: "b2c_system",
+  HO_GOOGLE: "b2c_google",
+  GOOGLE: "b2c_google",
+  ECOM: "ecom",
+  VMP: "vmp",
+  VMT: "osir",
+  OSIR: "osir",
+};
 const B2B_REMOVED = "B2B đã bỏ khỏi Growth Performance — không nhập";
 
 type TargetMode = "week" | "month" | "plan" | "request";
@@ -142,12 +154,12 @@ function resolveTarget(r: ParsedRow, centers: Map<string, string>, mode: TargetM
     } else if (centers.has(sbuRaw)) {
       line = "b2c_center";
       code = sbuRaw;
-    } else errors.push(`sbu không hợp lệ: "${r.data.sbu}" (HO, mã trung tâm, ECOM, VMP, VMT — xem sheet DANH_MUC)`);
+    } else errors.push(`sbu không hợp lệ: "${r.data.sbu}" (HO/FB, GOOGLE, mã trung tâm, ECOM, VMP, VMT — xem sheet DANH_MUC)`);
   } else if (lineRaw === "b2b") {
     errors.push(B2B_REMOVED);
   } else if (lineRaw) {
     line = LINE_ALIAS[lineRaw];
-    if (!line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_center, ecom, osir/vmt, vmp)`);
+    if (!line) errors.push(`line không hợp lệ: "${r.data.line}" (b2c_system, b2c_google, b2c_center, ecom, osir/vmt, vmp)`);
   } else if (mode === "week") line = codeRaw ? "b2c_center" : "b2c_system";
   else if (mode === "request") line = "b2c_center";
   else errors.push("Thiếu sbu (hoặc line)");
@@ -158,7 +170,7 @@ function resolveTarget(r: ParsedRow, centers: Map<string, string>, mode: TargetM
     else if (!centers.has(code)) errors.push(`sbu_code không tồn tại: ${code}`);
     else sbuId = centers.get(code)!;
   } else if (line && code && !sbuRaw) errors.push(`line ${line} không dùng sbu_code`);
-  if (mode === "request" && line === "b2c_system") errors.push("Hệ thống (HO) không có request riêng — request của trung tâm dùng sbu = mã trung tâm; của Ecom/VMP/VMT dùng sbu tương ứng");
+  if (mode === "request" && line === "b2c_system") errors.push("HO · FB không có request riêng — request của trung tâm dùng sbu = mã trung tâm; của Google/Ecom/VMP/VMT dùng sbu tương ứng");
   return { line, sbuId, code };
 }
 
@@ -237,9 +249,11 @@ async function planWeek(db: DB, sheets: Record<string, ParsedRow[]>): Promise<Ad
 // HÀNG THÁNG — sheet THANG (6 mảng) + ECOM_SP (Ecom theo sản phẩm)
 // ---------------------------------------------------------------------------
 
-type Line = "b2c_system" | "b2c_center" | "ecom" | "b2b" | "osir" | "vmp";
+type Line = "b2c_system" | "b2c_center" | "ecom" | "b2b" | "osir" | "vmp" | "b2c_google";
 const LINE_ALIAS: Record<string, Line> = {
   b2c_system: "b2c_system",
+  b2c_google: "b2c_google",
+  google: "b2c_google",
   he_thong: "b2c_system",
   b2c_center: "b2c_center",
   trung_tam: "b2c_center",
@@ -248,16 +262,16 @@ const LINE_ALIAS: Record<string, Line> = {
   vmt: "osir",
   vmp: "vmp",
 };
-const LINE_NAME: Record<Line, string> = { b2c_system: "B2C Hệ thống (tổng B2C)", b2c_center: "B2C Trung tâm", ecom: "Ecom", b2b: "B2B", osir: "VMT (khảo thí)", vmp: "VMP" };
+const LINE_NAME: Record<Line, string> = { b2c_google: "MKT HO · Google", b2c_system: "MKT HO · FB (tổng B2C)", b2c_center: "B2C Trung tâm", ecom: "Ecom", b2b: "B2B", osir: "VMT (khảo thí)", vmp: "VMP" };
 
 /** Cột số của sheet THANG → trường ads_metrics + mảng được phép dùng. */
 const MONTH_FIELDS: { col: string; field: keyof UpsertAdsMetricInput; lines: Line[]; label: string }[] = [
-  { col: "budget", field: "budget", lines: ["b2c_system", "ecom", "osir", "vmp"], label: "NS" },
+  { col: "budget", field: "budget", lines: ["b2c_system", "b2c_google", "ecom", "osir", "vmp"], label: "NS" },
   { col: "center_order_budget", field: "centerOrderBudget", lines: ["b2c_center"], label: "NS TT order" },
   { col: "ho_topup_budget", field: "hoTopupBudget", lines: ["b2c_center"], label: "NS MKT thêm" },
-  { col: "leads", field: "leads", lines: ["b2c_system", "b2c_center", "osir", "vmp"], label: "Lead" },
-  { col: "new_students", field: "newStudents", lines: ["b2c_system", "b2c_center", "ecom", "osir", "vmp"], label: "HVM" },
-  { col: "messages", field: "messages", lines: ["b2c_system", "b2c_center", "ecom", "osir", "vmp"], label: "Mess" },
+  { col: "leads", field: "leads", lines: ["b2c_system", "b2c_google", "b2c_center", "osir", "vmp"], label: "Lead" },
+  { col: "new_students", field: "newStudents", lines: ["b2c_system", "b2c_google", "b2c_center", "ecom", "osir", "vmp"], label: "HVM" },
+  { col: "messages", field: "messages", lines: ["b2c_system", "b2c_google", "b2c_center", "ecom", "osir", "vmp"], label: "Mess" },
   { col: "mql", field: "mql", lines: ["ecom"], label: "MQL" },
   { col: "revenue", field: "revenue", lines: ["ecom"], label: "Doanh thu" },
   { col: "actual_revenue", field: "actualRevenue", lines: ["ecom"], label: "Thực thu" },

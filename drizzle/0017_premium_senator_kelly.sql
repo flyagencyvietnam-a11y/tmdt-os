@@ -1,0 +1,1 @@
+ALTER TYPE "public"."ads_line" ADD VALUE 'b2c_google';
