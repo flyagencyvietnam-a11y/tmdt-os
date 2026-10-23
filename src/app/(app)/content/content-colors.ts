@@ -14,6 +14,7 @@ export const BRAND_COLORS: Record<string, TagColor> = {
   VMP: "emerald",
   VMT: "purple",
   UPLEARN: "teal",
+  VMG_EACADEMY: "cyan",
 };
 
 const FALLBACK_PALETTE: TagColor[] = ["slate", "cyan", "lime", "pink", "indigo", "yellow", "gray"];

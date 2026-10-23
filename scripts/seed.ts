@@ -103,6 +103,8 @@ async function seedSbus(khietId: string, datId: string) {
     { code: "VMG_TESOL", name: "VMG TESOL", kind: "brand", region: "BRAND" },
     { code: "VMG_TRUNG", name: "VMG Tiếng Trung", kind: "brand", region: "BRAND" },
     { code: "UPLEARN", name: "UpLearn by VMG", kind: "brand", region: "BRAND" },
+    // Brand thuộc nhóm Ecom (TMĐT) — thêm 23/10/2026 từ Content plan e-Academy (SPEC Phụ lục D mục 34).
+    { code: "VMG_EACADEMY", name: "VMG e-Academy", kind: "brand", region: "BRAND" },
   ];
   for (const r of rows) {
     await db.insert(schema.sbus).values(r).onConflictDoNothing({ target: schema.sbus.code });
@@ -120,6 +122,7 @@ async function seedBrands() {
     { code: "VMP", name: "VMP by VMG", kind: "product", publicNameAllowed: true },
     { code: "VMT", name: "VMT", kind: "product", publicNameAllowed: false },
     { code: "UPLEARN", name: "UpLearn by VMG", kind: "product", publicNameAllowed: true },
+    { code: "VMG_EACADEMY", name: "VMG e-Academy", kind: "product", publicNameAllowed: true },
   ];
   for (const r of rows) {
     await db.insert(schema.brands).values(r).onConflictDoNothing({ target: schema.brands.code });
@@ -358,7 +361,7 @@ async function seedRecurringRules(adminId: string) {
         "(Khiết/Đạt) — cập nhật Ngân sách + Mess cho mỗi trung tâm ở /ads.",
       taskTemplate: { title: "Báo cáo ads tuần — hạn {{due_date}}", type: "ads", priority: "high" },
       freq: "weekly",
-      byWeekday: [5], // Thứ Sáu
+      byWeekday: [1], // Thứ Hai — báo cáo tuần vừa kết thúc (Chủ nhật), SPEC Phụ lục D mục 34
       dayRule: "calendar_day",
       holidayPolicy: "shift_earlier",
       startsOn,
