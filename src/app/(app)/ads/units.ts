@@ -115,6 +115,9 @@ export interface Funnel {
   cvr: number | null;
   costPerMess: number | null;
   roas: number | null;
+  /** Chi phí đã chia để ra CPL / CAC (chỉ gồm phần ĐÃ có Lead / HVM) — để rê chuột xem "= chi ÷ Lead". */
+  cplBase?: number | null;
+  cacBase?: number | null;
 }
 
 function build(f: { spend: number | null; messages: number | null; leads: number | null; hvm: number | null; revenue: number | null; deals: number | null }, costBase: number | null): Funnel {
@@ -122,6 +125,8 @@ function build(f: { spend: number | null; messages: number | null; leads: number
     ...f,
     cpl: ratio(costBase, f.leads),
     cac: ratio(costBase, f.hvm),
+    cplBase: costBase,
+    cacBase: costBase,
     cvr: ratio(f.hvm, f.leads),
     costPerMess: f.spend != null && f.messages ? Math.round(f.spend / f.messages) : null,
     roas: ratio(f.revenue, f.spend),
@@ -129,13 +134,14 @@ function build(f: { spend: number | null; messages: number | null; leads: number
 }
 
 const isB2c = (r: MetricRow) => r.line === "b2c_system" || r.line === "b2c_center";
+const periodKey = (r: MetricRow) => `${r.periodType}|${r.period}`;
 const leadOfRow = (r: MetricRow) => (r.line === "ecom" ? num(r.mql) : num(r.leads));
 
 /**
  * Chỉ số của 1 tập dòng `rows` (đã lọc đúng đơn vị/khu vực). `costOf(period)` cho phép đổi cơ sở chi phí để chia CPL/CAC (dòng Hệ thống chia tổng NS B2C).
  * CPL/CAC (nhiều kỳ, vd. quý): chỉ chia chi phí của những kỳ ĐÃ nhập Lead/HVM — kỳ còn trống không kéo lệch chỉ số.
  */
-function rowsFunnel(rows: MetricRow[], leadField: "leads" | "mql", costOf?: (periodKey: string) => number | null): Funnel {
+function rowsFunnel(rows: MetricRow[], leadField: "leads" | "mql", costOf?: (periodKey: string) => number | null, costOfHvm?: (periodKey: string) => number | null): Funnel {
   const a = aggregate(rows);
   const leads = leadField === "mql" ? a.mql : a.leads;
   let leadCost: number | null = null;
@@ -144,16 +150,31 @@ function rowsFunnel(rows: MetricRow[], leadField: "leads" | "mql", costOf?: (per
     const pa = aggregate(rows.filter((r) => `${r.periodType}|${r.period}` === p));
     const spend = costOf ? costOf(p) : pa.spend;
     if ((leadField === "mql" ? pa.mql : pa.leads) != null) leadCost = sumNullable([leadCost, spend]);
-    if (pa.newStudents != null) hvmCost = sumNullable([hvmCost, spend]);
+    if (pa.newStudents != null) hvmCost = sumNullable([hvmCost, costOfHvm ? costOfHvm(p) : spend]);
   }
   const f = build({ spend: a.spend, messages: a.messages, leads, hvm: a.newStudents, revenue: a.revenue, deals: a.deals }, a.spend);
-  return { ...f, cpl: ratio(leadCost, leads), cac: ratio(hvmCost, a.newStudents) };
+  return { ...f, cpl: ratio(leadCost, leads), cac: ratio(hvmCost, a.newStudents), cplBase: leadCost, cacBase: hvmCost };
 }
 
-/** Chỉ số của 1 đơn vị trên tập dòng `bucket` (đã lọc đúng kỳ). Dòng Hệ thống: CPL/CAC chia TỔNG ngân sách B2C (HO + trung tâm). */
+const b2cSpendOf = (bucket: MetricRow[], p: string) => aggregate(bucket.filter((r) => periodKey(r) === p && isB2c(r))).spend;
+const googleSpendOf = (bucket: MetricRow[], p: string) => aggregate(bucket.filter((r) => periodKey(r) === p && r.line === "b2c_google")).spend;
+
+/**
+ * Chỉ số của 1 đơn vị trên tập dòng `bucket` (đã lọc đúng kỳ). Dòng HO · FB:
+ *  - đã tách phần page Tổng (b2c-own.ts): CPL = chi HO ÷ Lead HO — mỗi dòng tự chia; CAC cũng vậy, trừ HVM TUẦN (vẫn là tổng B2C → chia tổng chi B2C);
+ *  - chưa tách (kỳ trung tâm chưa có số / dữ liệu gốc): Lead/HVM là tổng B2C nên CPL/CAC chia TỔNG chi B2C (HO + trung tâm).
+ */
 export function unitFunnel(bucket: MetricRow[], u: AdsUnit): Funnel {
-  const costOf = u.kind === "ho" ? (p: string) => aggregate(bucket.filter((r) => `${r.periodType}|${r.period}` === p && isB2c(r))).spend : undefined;
-  return rowsFunnel(rowsOfUnit(bucket, u), u.leadField, costOf);
+  const rows = rowsOfUnit(bucket, u);
+  if (u.kind !== "ho") return rowsFunnel(rows, u.leadField);
+  const hoRow = (p: string) => rows.find((r) => periodKey(r) === p);
+  const own = (p: string) => aggregate(rows.filter((r) => periodKey(r) === p)).spend;
+  return rowsFunnel(
+    rows,
+    u.leadField,
+    (p) => (hoRow(p)?.b2cOwn ? own(p) : b2cSpendOf(bucket, p)),
+    (p) => (hoRow(p)?.b2cOwn && !hoRow(p)?.hvmTotal ? own(p) : b2cSpendOf(bucket, p)),
+  );
 }
 
 /**
@@ -163,8 +184,15 @@ export function unitFunnel(bucket: MetricRow[], u: AdsUnit): Funnel {
 export function groupFunnel(bucket: MetricRow[], members: AdsUnit[]): Funnel {
   const rows = rowsOfGroup(bucket, members);
   if (members.some((m) => m.kind === "ho")) {
-    const spendOf = (p: string, pick: (r: MetricRow) => boolean) => aggregate(bucket.filter((r) => `${r.periodType}|${r.period}` === p && pick(r))).spend;
-    return rowsFunnel(rows, "leads", (p) => sumNullable([spendOf(p, isB2c), spendOf(p, (r) => r.line === "b2c_google")]));
+    const hoRow = (p: string) => rows.find((r) => r.line === "b2c_system" && periodKey(r) === p);
+    const own = (p: string) => aggregate(rows.filter((r) => periodKey(r) === p)).spend;
+    const wide = (p: string) => sumNullable([b2cSpendOf(bucket, p), googleSpendOf(bucket, p)]);
+    return rowsFunnel(
+      rows,
+      "leads",
+      (p) => (hoRow(p)?.b2cOwn ? own(p) : wide(p)),
+      (p) => (hoRow(p)?.b2cOwn && !hoRow(p)?.hvmTotal ? own(p) : wide(p)),
+    );
   }
   return rowsFunnel(rows, "leads");
 }
@@ -186,9 +214,17 @@ export function totalFunnel(bucket: MetricRow[]): Funnel {
   for (const p of new Set(bucket.map((r) => `${r.periodType}|${r.period}`))) {
     const rows = bucket.filter((r) => `${r.periodType}|${r.period}` === p && isB2c(r));
     if (!rows.length) continue;
-    const sys = aggregate(rows.filter((r) => r.line === "b2c_system"));
+    const sysRows = rows.filter((r) => r.line === "b2c_system");
+    const sys = aggregate(sysRows);
     const ctr = aggregate(rows.filter((r) => r.line === "b2c_center"));
-    parts.push({ spend: aggregate(rows).spend, leads: sys.leads ?? ctr.leads, hvm: sys.newStudents ?? ctr.newStudents });
+    // HO · FB đã tách (b2c-own.ts): Lead = page Tổng + trung tâm (CỘNG); HVM tuần vẫn là tổng B2C nên không cộng thêm trung tâm.
+    const own = sysRows.some((r) => r.b2cOwn);
+    const hvmTotal = sysRows.some((r) => r.hvmTotal);
+    parts.push({
+      spend: aggregate(rows).spend,
+      leads: own ? sumNullable([sys.leads, ctr.leads]) : (sys.leads ?? ctr.leads),
+      hvm: own && !hvmTotal ? sumNullable([sys.newStudents, ctr.newStudents]) : (sys.newStudents ?? ctr.newStudents),
+    });
   }
   for (const r of bucket) if (!isB2c(r)) parts.push({ spend: aggregate([r]).spend, leads: leadOfRow(r), hvm: num(r.newStudents) });
 
@@ -197,7 +233,9 @@ export function totalFunnel(bucket: MetricRow[]): Funnel {
   // CPL/CAC chỉ chia chi phí của những thành phần ĐÃ có số Lead/HVM — thành phần chưa nhập (còn trống) không kéo lệch chỉ số.
   const costWith = (pick: (x: (typeof parts)[number]) => number | null) => sumNullable(parts.filter((x) => pick(x) != null).map((x) => x.spend));
   const f = build({ spend: a.spend, messages: a.messages, leads, hvm, revenue: a.revenue, deals: a.deals }, a.spend);
-  return { ...f, cpl: ratio(costWith((x) => x.leads), leads), cac: ratio(costWith((x) => x.hvm), hvm) };
+  const cplBase = costWith((x) => x.leads);
+  const cacBase = costWith((x) => x.hvm);
+  return { ...f, cpl: ratio(cplBase, leads), cac: ratio(cacBase, hvm), cplBase, cacBase };
 }
 
 // ---------------------------------------------------------------------------

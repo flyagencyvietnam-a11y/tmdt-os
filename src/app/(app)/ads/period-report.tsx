@@ -9,6 +9,7 @@ import { addDaysStr } from "@/lib/time";
 import { useSessionState } from "@/lib/use-session-state";
 import { cn } from "@/lib/utils";
 import { InlineNum, useMetricSaver, type NumField } from "./ads-inline";
+import { splitB2cOwn } from "./b2c-own";
 import { axisProps, ChartCard, ChartTooltip, gridProps, heatStyle } from "./charts";
 import { isDerivedField, isSynthetic } from "./month-derive";
 import { change, fmt, fmtMoney, fmtPct, weekLabel, type MetricRow, type PeriodType } from "./shared";
@@ -90,9 +91,9 @@ function efficiency(f: Funnel, rubric: EffectivenessRubric): { label: string; ti
   return { label: TIER_NAME[tier], tier, cac: f.cac };
 }
 
-/** Nhãn dòng chỉ số theo đơn vị. Dòng Hệ thống mang số TỔNG B2C nên ghi rõ. */
-function metricLabel(m: MetricKey, u?: AdsUnit): string {
-  const ho = u?.kind === "ho";
+/** Nhãn dòng chỉ số theo đơn vị. HVM TUẦN của HO · FB vẫn là tổng B2C (HVM riêng trung tâm chỉ có theo tháng) nên ghi rõ. */
+function metricLabel(m: MetricKey, u?: AdsUnit, kind?: "week" | "month" | "quarter"): string {
+  const ho = u?.kind === "ho" && kind === "week";
   switch (m) {
     case "spend":
       return "Ngân sách";
@@ -101,11 +102,11 @@ function metricLabel(m: MetricKey, u?: AdsUnit): string {
     case "costPerMess":
       return "CP / Mess";
     case "leads":
-      return ho ? "Lead · tổng B2C" : u?.leadField === "mql" ? "Lead (MQL)" : "Lead";
+      return u?.leadField === "mql" ? "Lead (MQL)" : "Lead";
     case "hvm":
       return ho ? "HVM · tổng B2C" : "HVM";
     case "cpl":
-      return ho ? "CPL · tổng B2C" : u?.leadField === "mql" ? "CPL (CP/MQL)" : "CPL";
+      return u?.leadField === "mql" ? "CPL (CP/MQL)" : "CPL";
     case "cac":
       return ho ? "CAC · tổng B2C" : "CAC";
     case "cvr":
@@ -167,10 +168,22 @@ const kN = (n: number) => `${Math.round(n / 1000).toLocaleString("vi-VN")}N`;
 
 const unitName = (u: AdsUnit) => u.code;
 
+/**
+ * Ô Lead/HVM của HO · FB hiển thị phần page Tổng (đã trừ trung tâm) — khi sửa phải cộng lại phần đã trừ để DB vẫn lưu số TỔNG B2C.
+ * HVM tuần không trừ nên không cộng lại.
+ */
+function withOwnOffset(val: string | null, field: NumField, u: AdsUnit, rows: MetricRow[], periodType: PeriodType): string | null {
+  if (val == null || val.trim() === "" || u.kind !== "ho") return val;
+  if (field !== "leads" && !(field === "newStudents" && periodType === "month")) return val;
+  const off = rows.filter((r) => r.line === "b2c_center").reduce((s, r) => s + (Number(r[field]) || 0), 0);
+  const n = Number(val.replace(/s/g, ""));
+  return off && Number.isFinite(n) ? String(n + off) : val;
+}
+
 export function PeriodReport({
   kind,
   periodType,
-  metrics,
+  metrics: rawMetrics,
   units,
   buckets,
   prevBuckets,
@@ -223,6 +236,8 @@ export function PeriodReport({
   const active = metricSet.filter((m) => on.includes(m));
 
   const groups = React.useMemo(() => buildUnitGroups(units), [units]);
+  // HO · FB chỉ còn Lead (và HVM tháng/quý) của page Tổng để mỗi dòng tự chia được CPL/CAC — xem b2c-own.ts.
+  const metrics = React.useMemo(() => splitB2cOwn(rawMetrics), [rawMetrics]);
   const idx = React.useMemo(() => indexRows(metrics), [metrics]);
   // 4 tuần gần nhất = 4 tuần liên tiếp kết thúc ở tuần mới nhất có số liệu (không phụ thuộc khoảng kỳ đang xem).
   const recent = React.useMemo(() => {
@@ -497,7 +512,7 @@ export function PeriodReport({
                         )}
                       </td>
                       <td className={cn("sticky left-44 z-10 whitespace-nowrap px-2 py-1 text-xs font-normal text-muted-foreground", stickyBg)} title={m === "hvm" && u ? u.conversionLabel : undefined}>
-                        {metricLabel(m, u ?? undefined)}
+                        {metricLabel(m, u ?? undefined, kind)}
                       </td>
                       {data.map((x, i) => {
                         const v = vals[i];
@@ -514,21 +529,25 @@ export function PeriodReport({
                             show(def.kind, v)
                           );
                         const openable = canManage && !!x.bucket.editPeriod && clickable;
+                        const f = funnelOf(x);
+                        const base = m === "cpl" ? f.cplBase : m === "cac" ? f.cacBase : null;
+                        const calcTitle = v != null && base != null ? `= ${fmtMoney(base)} chi ÷ ${fmt((m === "cpl" ? f.leads : f.hvm) ?? 0)} ${m === "cpl" ? "Lead" : "HVM"}` : undefined;
+                        const warn = u?.kind === "ho" && row?.b2cWarn && ((m === "leads" && row.b2cWarn.includes("Lead các")) || (m === "hvm" && row.b2cWarn.includes("HVM các"))) ? row.b2cWarn : undefined;
                         const tier = rubric && (isRegion || u?.kind === "center") ? cellTier(m, v, funnelOf(x), rubric) : null;
                         return (
                           <td
                             key={x.bucket.key}
                             style={isTotal || tier ? undefined : heatStyle(v, min, max, def.badWhenHigh)}
-                            className={cn("whitespace-nowrap px-2 py-1 text-right tabular-nums", tier && TIER_CLASS[tier], tier && m === "hvm" && "font-semibold", openable && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
+                            className={cn("whitespace-nowrap px-2 py-1 text-right tabular-nums", warn && "text-amber-600 outline outline-1 -outline-offset-1 outline-amber-400/70", tier && TIER_CLASS[tier], tier && m === "hvm" && "font-semibold", openable && "cursor-pointer hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-brand/50")}
                             onClick={openable ? () => onOpenDetail!(u!, x.bucket) : undefined}
-                            title={fromWeeks ? "Tạm tính từ các tuần của tháng (chưa có số chính thức)" : openable ? "Bấm để mở form đầy đủ của SBU và kỳ này" : undefined}
+                            title={warn ?? calcTitle ?? (fromWeeks ? "Tạm tính từ các tuần của tháng (chưa có số chính thức)" : openable ? "Bấm để mở form đầy đủ của SBU và kỳ này" : undefined)}
                           >
                             {editable ? (
                               <InlineNum
                                 value={row && !isDerivedField(row, field!) ? row[field!] : null}
                                 display={display}
-                                title={`Sửa ${metricLabel(m, u!)} — ${unitName(u!)}, ${x.bucket.label}${m === "spend" && u!.kind === "center" ? " (phần NS Trung tâm order)" : ""}`}
-                                onSave={(val) => saveMetric(row && !isSynthetic(row) ? row : null, { line: u!.line, periodType, period: x.bucket.editPeriod!, sbuId: u!.sbuId }, field!, val)}
+                                title={`Sửa ${metricLabel(m, u!, kind)} — ${unitName(u!)}, ${x.bucket.label}${m === "spend" && u!.kind === "center" ? " (phần NS Trung tâm order)" : ""}`}
+                                onSave={(val) => saveMetric(row && !isSynthetic(row) ? row : null, { line: u!.line, periodType, period: x.bucket.editPeriod!, sbuId: u!.sbuId }, field!, withOwnOffset(val, field!, u!, x.rows, periodType))}
                               />
                             ) : (
                               display
@@ -574,8 +593,8 @@ export function PeriodReport({
           </div>
         )}
         <p className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
-          Dòng <b>Hệ thống</b> mang Lead/HVM <b>tổng cả B2C</b> (CPL/CAC chia tổng ngân sách Hệ thống + trung tâm); số Lead/HVM của từng trung tâm là phần quy riêng cho ads ngân sách trung tâm — một phần của số tổng, không cộng thêm. Dòng Tổng cộng lấy số tổng B2C
-          (nếu dòng Hệ thống chưa nhập thì tạm cộng từ các trung tâm) + Ecom (MQL) + VMP + VMT. Nhóm MKT HO = HO · FB + HO · Google (Google là nguồn lead website, cộng thêm vào Tổng cộng). Dòng khu vực (KV1/KV2/KV3) cộng các trung tâm trong khu vực — chỉ xem, là phần quy riêng cho ads trung tâm nên không cộng thêm vào Tổng cộng; bấm tên khu vực để đóng/mở danh sách trung tâm. Ô trống = chưa có số.
+          <b>CPL = Ngân sách ÷ Lead, CAC = Ngân sách ÷ HVM của chính dòng đó</b> (rê chuột vào ô để xem phép chia). HO · FB hiển thị Lead (và HVM tháng/quý) của <b>page Tổng</b> = tổng B2C trừ các trung tâm, nên Tổng cộng cộng thẳng HO + trung tâm + Google + Ecom (MQL) + VMP + VMT;
+          trước 03/2026 chưa tách page Tổng và page TT nên toàn bộ Lead tạm ghi ở HO · FB (CPL của HO thấp hơn thực tế). Riêng <b>HVM theo tuần</b> của HO · FB vẫn là tổng B2C (HVM riêng trung tâm chỉ có theo tháng) nên CAC dòng này chia tổng chi B2C. Tổng cộng chỉ chia chi phí của các SBU đã có Lead/HVM. Nhóm MKT HO = HO · FB + HO · Google. Dòng khu vực (KV1/KV2/KV3) cộng các trung tâm trong khu vực — chỉ xem; bấm tên khu vực để đóng/mở danh sách. Form đầy đủ của SBU hiện số đang lưu (HO · FB: tổng B2C). Ô trống = chưa có số.
         </p>
       </section>
 
