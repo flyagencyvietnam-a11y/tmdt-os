@@ -30,8 +30,6 @@ export interface MetricRow {
   derivedWeeks?: string;
   /** Dòng HO · FB đã tách phần trung tâm (b2c-own.ts): Lead/HVM chỉ còn phần page Tổng. Chỉ có khi xem bảng theo dõi. */
   b2cOwn?: boolean;
-  /** HVM tuần của HO · FB vẫn là TỔNG B2C (HVM riêng trung tâm chỉ có theo tháng nên không trừ theo tuần được). */
-  hvmTotal?: boolean;
   /** Phần đã trừ (tổng Lead/HVM các trung tâm cùng kỳ) — cộng lại khi sửa ô để ghi đúng số tổng vào DB. */
   b2cOffset?: { leads: number; newStudents: number };
   /** Có khi Lead/HVM các trung tâm LỚN HƠN số tổng B2C đã lưu (nhập thiếu/chậm) — HO · FB bị chặn ở 0, cần cập nhật số tổng. */

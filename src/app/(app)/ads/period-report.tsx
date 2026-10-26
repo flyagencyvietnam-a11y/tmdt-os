@@ -91,9 +91,8 @@ function efficiency(f: Funnel, rubric: EffectivenessRubric): { label: string; ti
   return { label: TIER_NAME[tier], tier, cac: f.cac };
 }
 
-/** Nhãn dòng chỉ số theo đơn vị. HVM TUẦN của HO · FB vẫn là tổng B2C (HVM riêng trung tâm chỉ có theo tháng) nên ghi rõ. */
-function metricLabel(m: MetricKey, u?: AdsUnit, kind?: "week" | "month" | "quarter"): string {
-  const ho = u?.kind === "ho" && kind === "week";
+/** Nhãn dòng chỉ số theo đơn vị. */
+function metricLabel(m: MetricKey, u?: AdsUnit): string {
   switch (m) {
     case "spend":
       return "Ngân sách";
@@ -104,11 +103,11 @@ function metricLabel(m: MetricKey, u?: AdsUnit, kind?: "week" | "month" | "quart
     case "leads":
       return u?.leadField === "mql" ? "Lead (MQL)" : "Lead";
     case "hvm":
-      return ho ? "HVM · tổng B2C" : "HVM";
+      return "HVM";
     case "cpl":
       return u?.leadField === "mql" ? "CPL (CP/MQL)" : "CPL";
     case "cac":
-      return ho ? "CAC · tổng B2C" : "CAC";
+      return "CAC";
     case "cvr":
       return "CVR";
     case "revenue":
@@ -172,10 +171,12 @@ const unitName = (u: AdsUnit) => u.code;
  * Ô Lead/HVM của HO · FB hiển thị phần page Tổng (đã trừ trung tâm) — khi sửa phải cộng lại phần đã trừ để DB vẫn lưu số TỔNG B2C.
  * HVM tuần không trừ nên không cộng lại.
  */
-function withOwnOffset(val: string | null, field: NumField, u: AdsUnit, rows: MetricRow[], periodType: PeriodType): string | null {
+function withOwnOffset(val: string | null, field: NumField, u: AdsUnit, rows: MetricRow[]): string | null {
   if (val == null || val.trim() === "" || u.kind !== "ho") return val;
-  if (field !== "leads" && !(field === "newStudents" && periodType === "month")) return val;
-  const off = rows.filter((r) => r.line === "b2c_center").reduce((s, r) => s + (Number(r[field]) || 0), 0);
+  if (field !== "leads" && field !== "newStudents") return val;
+  // Phần đã trừ (b2cOffset) ghi sẵn trên dòng HO · FB đã tách; chưa có dòng thì tính từ các trung tâm cùng kỳ (Lead; HVM tuần chưa có gì để cộng lại).
+  const hoRow = rows.find((r) => r.line === "b2c_system" && !r.sbuId);
+  const off = hoRow?.b2cOffset ? hoRow.b2cOffset[field] : field === "leads" ? rows.filter((r) => r.line === "b2c_center").reduce((s, r) => s + (Number(r.leads) || 0), 0) : 0;
   const n = Number(val.replace(/s/g, ""));
   return off && Number.isFinite(n) ? String(n + off) : val;
 }
@@ -512,7 +513,7 @@ export function PeriodReport({
                         )}
                       </td>
                       <td className={cn("sticky left-44 z-10 whitespace-nowrap px-2 py-1 text-xs font-normal text-muted-foreground", stickyBg)} title={m === "hvm" && u ? u.conversionLabel : undefined}>
-                        {metricLabel(m, u ?? undefined, kind)}
+                        {metricLabel(m, u ?? undefined)}
                       </td>
                       {data.map((x, i) => {
                         const v = vals[i];
@@ -546,8 +547,8 @@ export function PeriodReport({
                               <InlineNum
                                 value={row && !isDerivedField(row, field!) ? row[field!] : null}
                                 display={display}
-                                title={`Sửa ${metricLabel(m, u!, kind)} — ${unitName(u!)}, ${x.bucket.label}${m === "spend" && u!.kind === "center" ? " (phần NS Trung tâm order)" : ""}`}
-                                onSave={(val) => saveMetric(row && !isSynthetic(row) ? row : null, { line: u!.line, periodType, period: x.bucket.editPeriod!, sbuId: u!.sbuId }, field!, withOwnOffset(val, field!, u!, x.rows, periodType))}
+                                title={`Sửa ${metricLabel(m, u!)} — ${unitName(u!)}, ${x.bucket.label}${m === "spend" && u!.kind === "center" ? " (phần NS Trung tâm order)" : ""}`}
+                                onSave={(val) => saveMetric(row && !isSynthetic(row) ? row : null, { line: u!.line, periodType, period: x.bucket.editPeriod!, sbuId: u!.sbuId }, field!, withOwnOffset(val, field!, u!, x.rows))}
                               />
                             ) : (
                               display
@@ -593,8 +594,8 @@ export function PeriodReport({
           </div>
         )}
         <p className="border-t px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
-          <b>CPL = Ngân sách ÷ Lead, CAC = Ngân sách ÷ HVM của chính dòng đó</b> (rê chuột vào ô để xem phép chia). HO · FB hiển thị Lead (và HVM tháng/quý) của <b>page Tổng</b> = tổng B2C trừ các trung tâm, nên Tổng cộng cộng thẳng HO + trung tâm + Google + Ecom (MQL) + VMP + VMT;
-          trước 03/2026 chưa tách page Tổng và page TT nên toàn bộ Lead tạm ghi ở HO · FB (CPL của HO thấp hơn thực tế). Riêng <b>HVM theo tuần</b> của HO · FB vẫn là tổng B2C (HVM riêng trung tâm chỉ có theo tháng) nên CAC dòng này chia tổng chi B2C. Tổng cộng chỉ chia chi phí của các SBU đã có Lead/HVM. Nhóm MKT HO = HO · FB + HO · Google. Dòng khu vực (KV1/KV2/KV3) cộng các trung tâm trong khu vực — chỉ xem; bấm tên khu vực để đóng/mở danh sách. Form đầy đủ của SBU hiện số đang lưu (HO · FB: tổng B2C). Ô trống = chưa có số.
+          <b>CPL = Ngân sách ÷ Lead, CAC = Ngân sách ÷ HVM của chính dòng đó</b> (rê chuột vào ô để xem phép chia). <b>Tổng cộng = cộng các khối</b> (MKT HO + KV1 + KV2 + KV3 + Ecom + VMP + VMT). HO · FB hiển thị Lead/HVM của <b>page Tổng</b> = tổng B2C đã lưu trừ phần các trung tâm (HVM theo tuần: phần HVM tháng của trung tâm đang nằm ở tuần cuối tháng nên được trừ dần từ tuần cuối ngược về trước);
+          trước 03/2026 chưa tách page Tổng và page TT nên toàn bộ Lead tạm ghi ở HO · FB (CPL của HO thấp hơn thực tế). Nhiều kỳ (quý, thẻ KPI) chỉ chia chi phí của những kỳ đã nhập Lead/HVM. Nhóm MKT HO = HO · FB + HO · Google. Dòng khu vực (KV1/KV2/KV3) cộng các trung tâm trong khu vực — chỉ xem; bấm tên khu vực để đóng/mở danh sách. Form đầy đủ của SBU hiện số đang lưu (HO · FB: tổng B2C). Ô trống = chưa có số.
         </p>
       </section>
 

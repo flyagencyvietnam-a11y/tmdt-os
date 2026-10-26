@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MetricRow } from "./shared";
+import { splitB2cOwn } from "./b2c-own";
 import { bucketRows, buildAdsUnits, indexRows, totalFunnel, unitFunnel } from "./units";
 
 let n = 0;
@@ -62,20 +63,25 @@ describe("unitFunnel / totalFunnel", () => {
     expect(f.cpl).toBeCloseTo(100000);
   });
 
-  it("dòng Hệ thống: Lead/HVM là tổng B2C nên CPL/CAC chia TỔNG ngân sách B2C (HO + trung tâm)", () => {
+  it("dòng Hệ thống: CPL/CAC = NS Hệ thống ÷ Lead/HVM của chính dòng đó", () => {
     const f = unitFunnel(rows, unit("ho"));
     expect(f.spend).toBe(40000000);
     expect(f.leads).toBe(150);
-    expect(f.cpl).toBeCloseTo(55000000 / 150);
-    expect(f.cac).toBeCloseTo(55000000 / 20);
+    expect(f.cpl).toBeCloseTo(40000000 / 150);
+    expect(f.cac).toBeCloseTo(40000000 / 20);
   });
 
-  it("Tổng cộng: trung tâm là tập con của số tổng B2C — không cộng thêm Lead/HVM", () => {
-    const t = totalFunnel(rows);
+  it("sau khi tách phần trung tâm (b2c-own): HO · FB chỉ còn page Tổng, Tổng cộng CỘNG thẳng các khối", () => {
+    const split = splitB2cOwn(rows);
+    const f = unitFunnel(split, unit("ho"));
+    expect(f.leads).toBe(150 - 120);
+    expect(f.cpl).toBeCloseTo(40000000 / 30);
+    const t = totalFunnel(split);
     expect(t.spend).toBe(95000000);
-    expect(t.leads).toBe(150 + 300 + 50);
-    expect(t.hvm).toBe(20 + 30 + 5);
+    expect(t.leads).toBe(30 + 120 + 300 + 50); // = 150 (tổng B2C) + 300 + 50
+    expect(t.hvm).toBe(17 + 3 + 30 + 5);
     expect(t.cpl).toBeCloseTo(95000000 / 500);
+    expect(t.cac).toBeCloseTo(95000000 / 55);
   });
 
   it("Tổng cộng: dòng Hệ thống chưa nhập thì tạm cộng Lead/HVM từ các trung tâm", () => {
@@ -91,19 +97,25 @@ describe("unitFunnel / totalFunnel", () => {
       row({ line: "b2c_center", period: "2026-08", sbuId: "a", centerOrderBudget: "1", leads: "40" }),
       row({ line: "b2c_center", period: "2026-09", sbuId: "a", centerOrderBudget: "1", leads: "30" }),
     ];
-    // Tháng 8 có số tổng (50) → bỏ qua trung tâm; tháng 9 không có → dùng trung tâm (30).
-    expect(totalFunnel(two).leads).toBe(80);
+    // Tháng 8: HO 50 là tổng B2C gồm cả trung tâm (40) → HO còn 10; tháng 9 không có dòng HO → chỉ có trung tâm (30). Tổng = 10 + 40 + 30.
+    expect(totalFunnel(splitB2cOwn(two)).leads).toBe(80);
   });
 
-  it("CPL/CAC của dòng Tổng chỉ chia chi phí của phần đã có Lead/HVM", () => {
+  it("CPL/CAC của dòng Tổng = tổng chi ÷ tổng Lead/HVM của kỳ (một kỳ: đọc được ngay từ ô Ngân sách và Lead)", () => {
     const partial = [
-      row({ line: "b2c_system", period: "2026-09", budget: "40000000" }), // B2C chưa nhập Lead/HVM
+      row({ line: "b2c_system", period: "2026-09", budget: "40000000" }),
       row({ line: "ecom", period: "2026-09", budget: "30000000", mql: "300", newStudents: "30" }),
     ];
     const t = totalFunnel(partial);
     expect(t.spend).toBe(70000000);
-    expect(t.cpl).toBeCloseTo(100000); // 30tr ÷ 300, không phải 70tr ÷ 300
-    expect(t.cac).toBeCloseTo(1000000);
+    expect(t.cpl).toBeCloseTo(70000000 / 300);
+    expect(t.cac).toBeCloseTo(70000000 / 30);
+    expect(t.cplBase).toBe(70000000);
+  });
+
+  it("Tổng nhiều kỳ: chỉ chia chi phí của kỳ đã nhập Lead", () => {
+    const t = totalFunnel([row({ line: "vmp", period: "2026-07", budget: "10000000" }), row({ line: "vmp", period: "2026-08", budget: "10000000", leads: "100" })]);
+    expect(t.cpl).toBeCloseTo(100000);
   });
 
   it("nhiều kỳ (quý): CPL chỉ chia chi phí của tháng đã nhập Lead", () => {

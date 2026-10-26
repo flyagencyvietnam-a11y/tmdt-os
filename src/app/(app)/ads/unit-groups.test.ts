@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MetricRow } from "./shared";
+import { splitB2cOwn } from "./b2c-own";
 import { buildAdsUnits, buildUnitGroups, groupFunnel, rowsOfGroup } from "./units";
 
 let n = 0;
@@ -61,18 +62,19 @@ describe("nhóm trung tâm theo khu vực", () => {
     expect(rowsOfGroup(rows, kv1.members)).toHaveLength(2);
   });
 
-  it("nhóm MKT HO = FB + Google: Lead cộng; CPL chia chi phí B2C-wide (HO + trung tâm) + Google", () => {
-    const rows = [
+  it("nhóm MKT HO = FB + Google: Lead/HVM cộng (HO · FB đã tách phần trung tâm); CPL = chi nhóm ÷ Lead nhóm", () => {
+    const rows = splitB2cOwn([
       row({ line: "b2c_system", period: "2026-09", budget: "40000000", leads: "150", newStudents: "20" }),
       row({ line: "b2c_google", period: "2026-09", budget: "5000000", leads: "50", newStudents: "5" }),
       row({ line: "b2c_center", period: "2026-09", sbuId: "vts", centerOrderBudget: "10000000", leads: "60", newStudents: "4" }),
-    ];
+    ]);
     const ho = buildUnitGroups(units)[0];
     const f = groupFunnel(rows, ho.members);
     expect(f.spend).toBe(45_000_000); // chỉ NS của FB + Google
-    expect(f.leads).toBe(200);
-    expect(f.hvm).toBe(25);
-    expect(f.cpl).toBeCloseTo(55_000_000 / 200); // (HO 40 + TT 10 + Google 5) ÷ 200
+    expect(f.leads).toBe(90 + 50); // HO · FB còn 150 − 60
+    expect(f.hvm).toBe(16 + 5);
+    expect(f.cpl).toBeCloseTo(45_000_000 / 140);
+    expect(f.cac).toBeCloseTo(45_000_000 / 21);
   });
 
   it("khu vực chưa có số thì để trống, không thành 0", () => {

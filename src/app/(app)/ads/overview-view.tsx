@@ -10,6 +10,7 @@ import { PlanOverview } from "./plan-overview";
 import { axisProps, ChartCard, ChartTooltip, gridProps, Sparkline } from "./charts";
 import { quarterKey, quarterLabel, quarterMonths } from "./rollups";
 import { change, fmt, fmtMoney, fmtPct, monthLabel, type MetricRow, type PlanRow } from "./shared";
+import { splitB2cOwn } from "./b2c-own";
 import { bucketRows, indexRows, totalFunnel, unitFunnel, type AdsUnit, type Funnel } from "./units";
 
 /** Khoảng thời gian đang xem ở Tổng quan: 1 tháng hoặc 1 quý (= cộng 3 dòng THÁNG; số tháng thiếu đã tự cộng từ tuần). */
@@ -52,7 +53,8 @@ export function OverviewView({
   onOpenPlan: () => void;
 }) {
   const isQuarter = range.kind === "quarter";
-  const idx = React.useMemo(() => indexRows(metrics), [metrics]);
+  // Tổng cộng = cộng các khối: HO · FB chỉ còn phần page Tổng (b2c-own.ts); kế hoạch/B2C gộp vẫn dùng số lưu.
+  const idx = React.useMemo(() => indexRows(splitB2cOwn(metrics)), [metrics]);
   const rowsIn = React.useCallback((ms: string[]) => bucketRows(idx, "month", ms), [idx]);
   const cur = totalFunnel(rowsIn(range.months));
   const old = totalFunnel(rowsIn(range.prevMonths));

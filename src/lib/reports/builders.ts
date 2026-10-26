@@ -13,6 +13,7 @@ import { overdueSqlFragment } from "@/lib/services/tasks";
 import { todayVnDayStr } from "@/lib/time";
 import { ecomAggregate, prevQuarter, quarterKey, quarterLabel, quarterMonths, type EcomProductRow } from "@/app/(app)/ads/rollups";
 import { aggregate, derive, monthLabel, num, prevMonth, type MetricRow } from "@/app/(app)/ads/shared";
+import { splitB2cOwn } from "@/app/(app)/ads/b2c-own";
 import { withDerivedMonths } from "@/app/(app)/ads/month-derive";
 import { bucketRows, buildAdsUnits, indexRows, rowsOfUnit, totalFunnel, unitFunnel, type AdsUnit } from "@/app/(app)/ads/units";
 import { BRAND_COLORS, SERIES_COLORS, type ReportDoc, type ReportKind, type ReportSection, type TableSection } from "./types";
@@ -292,7 +293,7 @@ async function buildGrowth(db: DB, o: BuildOptions): Promise<ReportDoc> {
   // Số tháng chưa có số chính thức được tự cộng từ các tuần (SPEC Phụ lục D mục 28) — cùng quy tắc với màn hình.
   const metrics = withDerivedMonths(metricsRaw as unknown as MetricRow[], todayVnDayStr());
   const units = buildAdsUnits(centers);
-  const idx = indexRows(metrics);
+  const idx = indexRows(splitB2cOwn(metrics)); // Tổng cộng = cộng các khối (HO · FB chỉ còn phần page Tổng)
   const rowsIn = (ms: string[]) => bucketRows(idx, "month", ms);
   const dataMonths = [...new Set(metrics.filter((m) => m.periodType === "month").map((m) => m.period))].sort();
 

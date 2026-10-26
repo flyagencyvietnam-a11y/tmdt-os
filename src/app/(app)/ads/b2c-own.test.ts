@@ -41,16 +41,7 @@ describe("splitB2cOwn — HO · FB chỉ còn phần page Tổng", () => {
     expect(ho1.leads).toBe("38");
     expect(ho1.newStudents).toBe("18");
     expect(ho1.b2cOwn).toBe(true);
-    expect(ho1.hvmTotal).toBe(false);
     expect(ho1.b2cOffset).toEqual({ leads: 120, newStudents: 3 });
-  });
-
-  it("tuần: Lead trừ theo tuần, HVM giữ TỔNG (HVM riêng trung tâm chỉ có theo tháng)", () => {
-    const wk = month.map((r) => ({ ...r, periodType: "week" as const, period: "2026-09-07" }));
-    const ho1 = splitB2cOwn(wk).find((r) => r.line === "b2c_system")!;
-    expect(ho1.leads).toBe("38");
-    expect(ho1.newStudents).toBe("21");
-    expect(ho1.hvmTotal).toBe(true);
   });
 
   it("kỳ trung tâm chưa có số: HO · FB giữ nguyên toàn bộ, không trừ, không âm", () => {
@@ -69,22 +60,42 @@ describe("splitB2cOwn — HO · FB chỉ còn phần page Tổng", () => {
   });
 });
 
-describe("CPL/CAC: mỗi dòng tự chia", () => {
+describe("HVM theo TUẦN: phần HVM tháng của trung tâm (nằm ở tuần cuối tháng) trừ dần từ tuần cuối ngược về trước", () => {
+  const wk = (period: string, p: Partial<MetricRow> & Pick<MetricRow, "line">) => row({ periodType: "week", period, ...p });
+  // Tháng 9/2026 theo đa số ngày gồm 4 tuần: 31/08, 07/09, 14/09, 21/09. HVM tổng B2C của HO: 5, 7, 12, 7 = 31; trung tâm: 23 dồn vào tuần 21/09.
+  const rows = [
+    wk("2026-08-31", { line: "b2c_system", budget: "10000000", leads: "20", newStudents: "5" }),
+    wk("2026-09-07", { line: "b2c_system", budget: "10000000", leads: "20", newStudents: "7" }),
+    wk("2026-09-14", { line: "b2c_system", budget: "10000000", leads: "20", newStudents: "12" }),
+    wk("2026-09-21", { line: "b2c_system", budget: "10000000", leads: "20", newStudents: "7" }),
+    wk("2026-09-21", { line: "b2c_center", sbuId: "a", centerOrderBudget: "4000000", leads: "6", newStudents: "23" }),
+  ];
+  const out = splitB2cOwn(rows);
+  const hvmOf = (p: string) => out.find((r) => r.line === "b2c_system" && r.period === p)!.newStudents;
+
+  it("HVM của HO · FB: 5, 3, 0, 0 — tổng 8 = 31 − 23 (đúng số trừ trực tiếp theo tháng)", () => {
+    expect([hvmOf("2026-08-31"), hvmOf("2026-09-07"), hvmOf("2026-09-14"), hvmOf("2026-09-21")]).toEqual(["5", "3", "0", "0"]);
+  });
+
+  it("Tổng cộng cả 4 tuần = HVM tổng B2C đã lưu (31): cộng thẳng HO + trung tâm", () => {
+    expect(totalFunnel(out).hvm).toBe(31);
+  });
+
+  it("Lead tuần trừ trực tiếp theo từng tuần", () => {
+    expect(out.find((r) => r.line === "b2c_system" && r.period === "2026-09-21")!.leads).toBe("14");
+    expect(out.find((r) => r.line === "b2c_system" && r.period === "2026-09-07")!.leads).toBe("20");
+  });
+});
+
+describe("Tổng cộng = cộng các khối; CPL/CAC mỗi dòng tự chia", () => {
   const rows = splitB2cOwn(month);
 
-  it("HO · FB: CPL = NS HO ÷ Lead page Tổng; CAC = NS HO ÷ HVM page Tổng (tháng)", () => {
+  it("HO · FB: CPL = NS HO ÷ Lead page Tổng; CAC = NS HO ÷ HVM page Tổng", () => {
     const f = unitFunnel(rows, ho);
     expect(f.leads).toBe(38);
     expect(f.cpl).toBeCloseTo(40_000_000 / 38);
     expect(f.cac).toBeCloseTo(40_000_000 / 18);
     expect(f.cplBase).toBe(40_000_000);
-  });
-
-  it("HO · FB theo TUẦN: HVM là tổng B2C nên CAC chia tổng chi B2C (HO + trung tâm)", () => {
-    const wk = splitB2cOwn(month.map((r) => ({ ...r, periodType: "week" as const, period: "2026-09-07" })));
-    const f = unitFunnel(wk, ho);
-    expect(f.cpl).toBeCloseTo(40_000_000 / 38);
-    expect(f.cac).toBeCloseTo(55_000_000 / 21);
   });
 
   it("nhóm MKT HO: CPL = (HO + Google) ÷ (Lead HO + Lead Google)", () => {
@@ -95,17 +106,17 @@ describe("CPL/CAC: mỗi dòng tự chia", () => {
     expect(f.cpl).toBeCloseTo(45_000_000 / 48);
   });
 
-  it("Tổng cộng cộng thẳng HO + trung tâm + Google; CPL = chi các SBU có Lead ÷ Lead", () => {
+  it("Tổng cộng: Ngân sách, Lead, HVM đều bằng tổng các nhóm; CPL = tổng chi ÷ tổng Lead", () => {
+    const groups = buildUnitGroups(units);
+    const parts = groups.map((g) => groupFunnel(rows, g.members));
     const f = totalFunnel(rows);
+    const sum = (k: "spend" | "leads" | "hvm") => parts.reduce((s, x) => s + (x[k] ?? 0), 0);
+    expect(f.spend).toBe(sum("spend"));
+    expect(f.leads).toBe(sum("leads"));
+    expect(f.hvm).toBe(sum("hvm"));
     expect(f.leads).toBe(38 + 120 + 10);
     expect(f.hvm).toBe(18 + 3);
-    expect(f.cpl).toBeCloseTo(60_000_000 / 168); // 40 + 9 + 6 + 5
-    expect(f.cplBase).toBe(60_000_000);
-  });
-
-  it("dữ liệu chưa tách (không qua splitB2cOwn) vẫn tính như quy ước cũ: HO = tổng B2C", () => {
-    const f = unitFunnel(month, ho);
-    expect(f.leads).toBe(158);
-    expect(f.cpl).toBeCloseTo(55_000_000 / 158);
+    expect(f.cpl).toBeCloseTo(60_000_000 / 168);
+    expect(f.cac).toBeCloseTo(60_000_000 / 21);
   });
 });
