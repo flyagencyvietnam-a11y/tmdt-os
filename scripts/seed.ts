@@ -53,6 +53,8 @@ async function seedUsers() {
   const khiet = await upsertUser({ email: "khiet", fullName: "Khiết", role: "member", canAssign: true, password: "khiet", mustChangePassword: false });
   const dat = await upsertUser({ email: "dat", fullName: "Đạt", role: "member", canAssign: true, password: "dat", mustChangePassword: false });
   const tran = await upsertUser({ email: "tran", fullName: "Trân", role: "member", canAssign: true, password: "tran", mustChangePassword: false });
+  // Nhân viên Marketing mới (11/2026) — cùng quy ước với Khiết/Đạt/Trân.
+  const trang = await upsertUser({ email: "trang", fullName: "Trang", role: "member", canAssign: true, password: "trang", mustChangePassword: false });
   // Tài khoản dự phòng luôn đăng nhập được — theo yêu cầu người dùng. KHÔNG dùng
   // mật khẩu này sau khi mời người dùng thật / trước khi public ra ngoài đội.
   const fallbackAdmin = await upsertUser({
@@ -64,10 +66,10 @@ async function seedUsers() {
     mustChangePassword: false,
   });
   console.log(
-    `users: admin=${admin.email} khiet=${khiet.email} dat=${dat.email} tran=${tran.email} fallback=${fallbackAdmin.email}`,
+    `users: admin=${admin.email} khiet=${khiet.email} dat=${dat.email} tran=${tran.email} trang=${trang.email} fallback=${fallbackAdmin.email}`,
   );
   console.warn(
-    "[seed] Khiết/Đạt/Trân đăng nhập bằng 'khiet'/'dat'/'tran' (mật khẩu trùng tên) — mật khẩu YẾU, " +
+    "[seed] Khiết/Đạt/Trân/Trang đăng nhập bằng 'khiet'/'dat'/'tran'/'trang' (mật khẩu trùng tên) — mật khẩu YẾU, " +
       "đổi qua Cài đặt ▸ Người dùng trước khi public ra ngoài đội. Trưởng phòng: 'nghiem'/'nghiem'.",
   );
   console.warn(
@@ -75,7 +77,7 @@ async function seedUsers() {
       "yêu cầu — mật khẩu YẾU, chỉ dùng nội bộ lúc test. Đổi hoặc vô hiệu hoá (set active=false) " +
       "qua Cài đặt ▸ Người dùng trước khi mời người dùng thật / public ra ngoài.",
   );
-  return { admin, khiet, dat, tran, fallbackAdmin };
+  return { admin, khiet, dat, tran, trang, fallbackAdmin };
 }
 
 /** SPEC Mục 15 — 12 SBU. [CẦN XÁC NHẬN] danh sách trung tâm thuộc KV2 và KV3 (gộp tạm KV2_KV3). */
